@@ -207,6 +207,7 @@ class NuvuCamUtils(nc_camera):
     @disconnect_if_error
     def get_queued_image(self):
         """get a uint16 image"""
+        print("get_queued_image in user_devices/Nuvu_sdk/Nuvu_cam_utils.py")
         return self.getImg()
 
     @disconnect_if_error
