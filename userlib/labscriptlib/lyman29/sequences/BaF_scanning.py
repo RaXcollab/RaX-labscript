@@ -117,7 +117,7 @@ if True:
             "timeout": 1000, #See above for units
             "square_bin": 1, #NxN bin size
             'target_detector_temp':-60, 
-            "emccd_gain": 100, #Max 5000
+            "emccd_gain": 5000, #Max 5000
             "trigger_mode":2, # 1 = EXT_LOW_HIGH, #0 = INT, 2 "EXT_LOW_HIGH_EXP" (minus for HIGH_LOW),
             "shutter_mode":1, #0= undefined, 1=open, 2=closed
         },
@@ -127,7 +127,7 @@ if True:
             "timeout": 1000,
             "square_bin": 1,
             'target_detector_temp':-60,
-            "emccd_gain": 100,
+            "emccd_gain": 5000,
             "trigger_mode":0,
             "shutter_mode":1,
         },
