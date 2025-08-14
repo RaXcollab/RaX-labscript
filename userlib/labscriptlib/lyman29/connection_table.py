@@ -55,7 +55,7 @@ ni_6363 = NI_PCIe_6363(
 
 # ###Commented out by Shungo on 05/30/2025#####################
 # # # Remote Operation of Laser Lock GUI 
-# RemoteControl(name='LaserLockGUI', host="192.168.69.3", reqrep_port=3796,pubsub_port=3797, mock=False) # add IP address and Port of the host software
+RemoteControl(name='LaserLockGUI', host="192.168.69.3", reqrep_port=3796,pubsub_port=3797, mock=False) # add IP address and Port of the host software
 
 # RemoteAnalogOut(
 #     name='Vexlum_Setpoint', 
@@ -73,21 +73,21 @@ ni_6363 = NI_PCIe_6363(
 #     decimals=9
 # )
 
-# RemoteAnalogOut(
-#     name='Matisse_Setpoint', 
-#     parent_device=LaserLockGUI, 
-#     connection=4,
-#     units="THz",
-#     decimals=9
-# )
+RemoteAnalogOut(
+    name='Matisse_Setpoint', 
+    parent_device=LaserLockGUI, 
+    connection=4,
+    units="THz",
+    decimals=9
+)
 
-# RemoteAnalogMonitor(
-#     name='Matisse_Value', 
-#     parent_device=LaserLockGUI, 
-#     connection=4,
-#     units="THz",
-#     decimals=9
-# )
+RemoteAnalogMonitor(
+    name='Matisse_Value', 
+    parent_device=LaserLockGUI, 
+    connection=4,
+    units="THz",
+    decimals=9
+)
 # ###############################################################
 # Analog Output Channels
 # The AnalogOut objects must be referenced below with the name of the object (e.g. 'ao0')
@@ -99,9 +99,11 @@ YAG_trig = DigitalOut(
     name='do1', parent_device=ni_6363, connection='port0/line1'
 )
 
-camera_trig = DigitalOut(
-    name='do2', parent_device=ni_6363, connection='port0/line2'
-)
+# NI wants an even number of DO, so this is code is available for that purpose
+# TODO: automatically check if DO number is even and handle it if not
+# extra_digital = DigitalOut(
+#     name='do2', parent_device=ni_6363, connection='port0/line2'
+# )
 
 # Analog Input Channels
 mol_abs = AnalogIn(name="ai0", parent_device=ni_6363, connection='ai0')

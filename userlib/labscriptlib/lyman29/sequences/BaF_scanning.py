@@ -43,14 +43,13 @@ if True:
         acquisition_rate=100e3,
         stop_order=-1,
         AI_term = 'Diff',
-        num_AI = 2,
+        num_AI = 4,
         num_AO = 0,
         num_CI=1,
     )
 
 # ###Commented out by Shungo on 05/30/2025#####################
-    # # # Remote Operation of Laser Raster GUI
-    # RemoteControl(name='LaserLockGUI', host="192.168.69.3", reqrep_port=3796,pubsub_port=3797, mock=False) # add IP address and Port of the host software
+    RemoteControl(name='LaserLockGUI', host="192.168.69.3", reqrep_port=3796,pubsub_port=3797, mock=False) # add IP address and Port of the host software
 
     # RemoteAnalogOut(
     #     name='Vexlum_Setpoint', 
@@ -68,21 +67,21 @@ if True:
     #     decimals=9
     # )
 
-    # RemoteAnalogOut(
-    #     name='Matisse_Setpoint', 
-    #     parent_device=LaserLockGUI, 
-    #     connection=4,
-    #     units="THz",
-    #     decimals=9
-    # )
+    RemoteAnalogOut(
+        name='Matisse_Setpoint', 
+        parent_device=LaserLockGUI, 
+        connection=4,
+        units="THz",
+        decimals=9
+    )
 
-    # RemoteAnalogMonitor(
-    #     name='Matisse_Value', 
-    #     parent_device=LaserLockGUI, 
-    #     connection=4,
-    #     units="THz",
-    #     decimals=9
-    # )
+    RemoteAnalogMonitor(
+        name='Matisse_Value', 
+        parent_device=LaserLockGUI, 
+        connection=4,
+        units="THz",
+        decimals=9
+    )
 ################################################################################
     # Analog Output Channels
     # The AnalogOut objects must be referenced below with the name of the object (e.g. 'ao0')
@@ -93,9 +92,12 @@ if True:
     YAG_trig = DigitalOut(
         name='do1', parent_device=ni_6363, connection='port0/line1'
     )
-    # camera_trig = DigitalOut(
-    #     name='do2', parent_device=ni_6363, connection='port0/line2'
-    # )
+
+    # NI wants an even number of DO, so this is code is available for that purpose
+    # TODO: automatically check if DO number is even and handle it if not
+    extra_digital = DigitalOut(
+        name='do2', parent_device=ni_6363, connection='port0/line2'
+)
 
     # Analog Input Channels
     mol_abs = AnalogIn(name="ai0", parent_device=ni_6363, connection='ai0')
@@ -139,7 +141,7 @@ if True:
 from labscriptlib.lyman29.subsequences.subsequences import *
 
 start()
-Vexlum_Setpoint.constant(freq_ramp)
+Matisse_Setpoint.constant(freq_ramp)
 # tbackground = 0
 # camera.expose(tbackground,'fluorescence','background')
 
@@ -155,7 +157,7 @@ digital_pulse(YAG_trig,tYAG, 0.5e-3)
 
 # tEMCCD = tYAG+0.1e-3
 # digital_pulse(camera_trig,tEMCCD, 20e-3)
-camera.expose(tEMCCD,'fluorescence',trigger_duration=20e-3) 
+# camera.expose(tEMCCD,'fluorescence',trigger_duration=20e-3) 
 
 
 stop(30e-3)
