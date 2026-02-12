@@ -76,6 +76,7 @@ class NuvuCamera(object):
 
     # used for grabbing during buffered
     def grab(self):
+        print("grab in user_devices/NuvuCamera/Nuvu_sdk/blacs_workers.py")
         return self.camera_utils.get_queued_image()
     
     # used for grabbing continuous

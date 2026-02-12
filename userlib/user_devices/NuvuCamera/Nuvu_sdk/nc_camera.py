@@ -385,6 +385,7 @@ class nc_camera:
         try:
             error = ncCamReadChronological(self.ncCam, self.ncImage, byref(c_int()))
             if (error):
+                print('error coming from ncCamReadChronological')
                 raise NuvuException(error)
         except NuvuException as nuvuException:
             self.errorHandling(nuvuException.value())
@@ -395,6 +396,7 @@ class nc_camera:
         Call read() then cast the image pointer to a 16-bit array and copy it to another part of memory.
         """
         self.read()
+        self.logger.info('getIMG in user_devices/Nuvu_sdk/nc_camera.py')
         return np.copy(np.ctypeslib.as_array(cast(self.ncImage, POINTER(c_uint16)),(self.width.value,self.height.value)))
 
 

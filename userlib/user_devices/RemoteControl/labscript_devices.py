@@ -281,7 +281,7 @@ class RemoteControl(Device):
         if len(analogs.keys()) == 0:
             return
         connections = sorted(analogs)
-        dtypes = [(str(connection), np.float32) for connection in connections]
+        dtypes = [(str(connection), np.float64) for connection in connections]
         static_value_table = np.empty(1, dtype=dtypes)
         for connection, analog in analogs.items():
             static_value_table[str(connection)][0] = analog.static_value

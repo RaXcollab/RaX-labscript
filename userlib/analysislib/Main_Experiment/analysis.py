@@ -1,9 +1,10 @@
-#Post-shot analysis code. Adjusted from Lyse website 
-# example, "Single shot analysis with global file opening"
-
 import lyse
 import numpy as np
 import matplotlib.pyplot as plt
+from pylab import *
+import time
+import matplotlib.gridspec as gridspec
+from scipy.optimize import curve_fit
 
 # Is this script being run from within an interactive lyse session?
 if lyse.spinning_top:
@@ -16,28 +17,31 @@ else:
 
 run = lyse.Run(h5_path)
 
-# # Get a dictionary of the global variables used in this shot
-# run_globals = run.get_globals()
-# print(run_globals)
+
 
 # extract the traces
 trace_data = {}
 trace_data["Absorption"] = run.get_trace("Absorption")
-trace_data["Absorption2"] = run.get_trace("Absorption2") #added 07/14/2025
-trace_data["Absorption3"] = run.get_trace("Absorption3") #added 08/07/2025
+trace_data["Absorption2"] = run.get_trace("Absorption2")
+trace_data["Absorption3"] = run.get_trace("Absorption3")
 
-#extract the image
-image_data = run.get_image("camera","fluorescence", "frame")
+# #extract the EMCCD image
+# image_data = run.get_image("camera","fluorescence", "frame")
 
-fig = plt.figure(4, figsize=(10, 4))
-# Create a gridspec layout with 1 row and 2 columns, and set the width ratio
-gs = fig.add_gridspec(1, 2, width_ratios=[2, 1])
+
 
 #get global variable
 global_dict = run.get_globals()
 tYAG = float(global_dict['tYAG'])
+ENH_START = float(global_dict['ENH_START'])
+ENH_DURATION = float(global_dict['ENH_DURATION'])
+YAG_delay = float(global_dict['YAG_DELAY'])
 
 ################Comment this out if you don't want to view##################
+# fig = plt.figure(4, figsize=(10, 4))
+# # Create a gridspec layout with 1 row and 2 columns, and set the width ratio
+# gs = fig.add_gridspec(1, 2, width_ratios=[2, 1])
+
 ## First subplot (top-left) - analog output vs time
 # ax1 = fig.add_subplot(gs[0, 0])  # The first subplot
 # for (name, analog_data) in trace_data.items():
@@ -66,17 +70,14 @@ tYAG = float(global_dict['tYAG'])
 # plt.show()
 #########################################################################################
 ##Version 2 for including two absorption plots for FM quadratures
-import matplotlib.pyplot as plt
-import matplotlib.gridspec as gridspec
-import numpy as np
-from scipy.optimize import curve_fit
+
 
 # Define linear function for drift fitting
 def line_func(x, A, B):
     return A * x + B
 
-fig = plt.figure(figsize=(10, 8))
-gs = gridspec.GridSpec(2, 2, width_ratios=[1.5, 1])
+fig = plt.figure(figsize=(12, 8))
+gs = gridspec.GridSpec(2, 2, width_ratios=[0.9, 1.0])
 
 # --- First subplot (top left) for Absorption and Absorption2---
 ax1 = fig.add_subplot(gs[0, 0])
@@ -89,10 +90,10 @@ if 'Absorption' in trace_data:
     values_2 = analog_data_2[1].flatten()
 
     #collect useful indices. Could have also done times.searchsorted()
-    trigger_index = np.searchsorted(times,2/1000)
-    beforeYAG_index = np.searchsorted(times,1.95/1000) # hardcoded values are on the absorption data timeframe.
-    after_abs_index = np.searchsorted(times,10/1000)
-    end_index = np.searchsorted(times,15/1000)
+    trigger_index = np.searchsorted(times,2/1000) # HARDCODED!!
+    beforeYAG_index = np.searchsorted(times,1.95/1000) # HARDCODED!! hardcoded values are on the absorption data timeframe.
+    after_abs_index = np.searchsorted(times,10/1000) # HARDCODED!!
+    end_index = np.searchsorted(times,15/1000) # HARDCODED!!
 
     # ---- Process Absorption ----
     fit_time = np.concatenate((times[:beforeYAG_index], times[after_abs_index:end_index]))
@@ -120,9 +121,11 @@ if 'Absorption' in trace_data:
     ax1.plot(times * 1000, values_corrected, 'b', label='Absorption')
     ax1.plot(times_2 * 1000, values_2_corrected, 'g', label='Absorption2')
     ax1.axvline(x=tYAG * 1000, color='r', linestyle='--', label='YAG')
+    ax1.axvspan((tYAG + ENH_START) * 1000, (tYAG + ENH_START + ENH_DURATION) * 1000,
+                color='yellow', alpha=0.3, label='ENH window')
 
     # Plot formatting
-    ax1.set_xlim([0, 15])
+    # ax1.set_xlim([0, 15])
     # ax1.set_ylim([-0.05, 0.05])
     ax1.set_xlabel('Time [ms]', fontsize=12)
     ax1.set_ylabel('Offset Value', fontsize=12)
@@ -137,8 +140,11 @@ if 'Absorption3' in trace_data:
     times_3 = analog_data_3[0].flatten()
     values_3 = analog_data_3[1].flatten()
     ax3.plot(times_3 * 1000, values_3, 'g')
-    ax3.axvline(x=tYAG * 1000, color='r', linestyle='--', label='YAG')
-    ax3.set_xlim([0, 15])
+    ax3.axvline(x=tYAG * 1000, color='r', linestyle='--', label='YAG1')
+    # ax3.axvline(x=(tYAG + YAG_delay) * 1000, color='r', linestyle='--', label='YAG2')
+    # ax3.axvspan((tYAG + ENH_START) * 1000, (tYAG + ENH_START + ENH_DURATION) * 1000,
+    #             color='yellow', alpha=0.3, label='ENH window')
+    ax3.set_xlim([0, 80])
     # ax3.set_ylim([-0.3, 0.3])
     ax3.set_xlabel('Time [ms]', fontsize=12)
     ax3.set_ylabel('Value', fontsize=12)
@@ -146,20 +152,40 @@ if 'Absorption3' in trace_data:
     ax3.grid(True)
     ax3.legend(loc='upper right')
 
-# --- Third subplot (right side spanning both rows) for fluorescence image ---
-ax2 = fig.add_subplot(gs[:, 1])   # span both rows vertically
-ax2.imshow(image_data,
-           extent=[0, 512, 0, 512],
-           cmap='magma',
-           vmin=1568,
-           vmax=1700)
-ax2.set_title('Fluorescence Image', fontsize=16)
-ax2.set_xlabel('x', fontsize=16)
-ax2.set_ylabel('y', fontsize=16)
+# # --- Third subplot for EMCCD image ---
+# ax2 = fig.add_subplot(gs[:, 1])   # span both rows vertically
+# ax2.imshow(image_data,
+#            extent=[0, 512, 0, 512],
+#            cmap='magma',
+#            vmin=1568,
+#            vmax=1700)
+# ax2.set_title('Fluorescence Image', fontsize=16)
+# ax2.set_xlabel('x', fontsize=16)
+# ax2.set_ylabel('y', fontsize=16)
+# # ---------------------------------------
+
+
+# # --- Third subplot for PMT (NI-5922) ---
+ax2 = fig.add_subplot(gs[1, 1])   # span both rows vertically
+voltages = run.get_trace('NI_SCOPE', raw_data = True)
+times_SCOPE=np.arange(len(voltages[0]))/1_000_000 #HARD CODED!!! REPLACE WITH SAVE/IMPORT!! -- Shungo
+times_SCOPE=times_SCOPE*1000 #s to ms
+ax2.plot(times_SCOPE, voltages[0],label='Ch0',alpha=0.5)
+# ax2.plot(times_SCOPE, voltages[1],label='Ch1',alpha=0.5)
+ax2.set_xlim([0, 20])
+# ax2.set_ylim([-0.07, 0.01])
+ax2.axvline(x=tYAG*1000, color='r', linestyle='--', label='YAG')
+ax2.set_title('NI-5922 Readout', fontsize=16)
+ax2.set_xlabel('Time [ms]', fontsize=16)
+ax2.set_ylabel('Voltage [V]', fontsize=16)
+ax2.legend()
+# # ---------------------------------------
+
+
 
 # Adjust layout
 plt.tight_layout()  # Automatically adjusts subplot params for better spacing
-plt.show()
+# plt.show()
 #########################################################################################
 
 
@@ -167,21 +193,20 @@ plt.show()
 
 
 
-# Compute a result based on the data processing and save it to the 'results' group of
-# the shot file
-analog_int = trace_data["Absorption"][1].mean()
-analog_int_err = trace_data["Absorption"][1].std()/np.sqrt(len(trace_data["Absorption"][1])) #Why divide with sqrt of N?
-run.save_result('BaF_abs integrated', analog_int)
-run.save_result('BaF_abs integrated err', analog_int_err)
+# Compute a result based on the data processing and save it to the 'results' group of the shot file
+# analog_int = trace_data["Absorption"][1].mean()
+# analog_int_err = trace_data["Absorption"][1].std()/np.sqrt(len(trace_data["Absorption"][1])) #Why divide with sqrt of N?
+# run.save_result('BaF_abs integrated', analog_int)
+# run.save_result('BaF_abs integrated err', analog_int_err)
 
-# print(np.shape(image_data))
-### For scatter reduction purposes
-#pixel_sum = np.sum(image_data) #just to look at the sum
-photon_counting_threshold = 1690
-# photon_counting_threshold = 1810#1570 #for 1x1 binning! #1810 for 4x4 binning
-pixel_sum = np.mean(image_data > photon_counting_threshold)
-###
-run.save_result('pixel_sum', pixel_sum)
+# # print(np.shape(image_data))
+# ### For scatter reduction purposes
+# #pixel_sum = np.sum(image_data) #just to look at the sum
+# photon_counting_threshold = 1690
+# # photon_counting_threshold = 1810#1570 #for 1x1 binning! #1810 for 4x4 binning
+# pixel_sum = np.mean(image_data > photon_counting_threshold)
+# ###
+# run.save_result('pixel_sum', pixel_sum)
 
 
  

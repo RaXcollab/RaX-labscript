@@ -79,7 +79,7 @@ if True:
             "timeout": 5000, #See above for units
             "square_bin": 1, #NxN bin size
             'target_detector_temp':-60, 
-            "emccd_gain": 5000, #Max 5000
+            "emccd_gain": 100, #Max 5000
             "trigger_mode":2, # 1 = EXT_LOW_HIGH, #0 = INT, 2 "EXT_LOW_HIGH_EXP" (minus for HIGH_LOW),
             "shutter_mode":1, #0= undefined, 1=open, 2=closed
         },
@@ -89,7 +89,7 @@ if True:
             "timeout": 5000,
             "square_bin": 1,
             'target_detector_temp':-60,
-            "emccd_gain": 5000,
+            "emccd_gain": 100,
             "trigger_mode":0,
             "shutter_mode":1,
         },
@@ -103,6 +103,7 @@ if True:
 from labscriptlib.lyman29.subsequences.subsequences import *
 
 start()
+
 
 # tbackground = 0
 # camera.expose(tbackground,'fluorescence','background')
@@ -120,7 +121,9 @@ digital_pulse(YAG_trig,tYAG, 0.5e-3)
 
 # tEMCCD = tYAG+0.1e-3
 # digital_pulse(camera_trig,tEMCCD, 20e-3)
-camera.expose(tEMCCD,'fluorescence',trigger_duration=20e-3) 
+
+
+camera.expose(tEMCCD,'fluorescence',trigger_duration=30e-3) 
 
 
 stop(100e-3)
