@@ -7,7 +7,7 @@ import matplotlib.gridspec as gridspec
 from scipy.optimize import curve_fit
 
 # Is this script being run from within an interactive lyse session?
-if lyse.spinning_top:
+if lyse.utils.worker.spinning_top:
     # If so, use the filepath of the current shot
     h5_path = lyse.path
 else:
@@ -166,19 +166,19 @@ if 'Absorption3' in trace_data:
 
 
 # # --- Third subplot for PMT (NI-5922) ---
-ax2 = fig.add_subplot(gs[1, 1])   # span both rows vertically
-voltages = run.get_trace('NI_SCOPE', raw_data = True)
-times_SCOPE=np.arange(len(voltages[0]))/1_000_000 #HARD CODED!!! REPLACE WITH SAVE/IMPORT!! -- Shungo
-times_SCOPE=times_SCOPE*1000 #s to ms
-ax2.plot(times_SCOPE, voltages[0],label='Ch0',alpha=0.5)
-# ax2.plot(times_SCOPE, voltages[1],label='Ch1',alpha=0.5)
-ax2.set_xlim([0, 20])
-# ax2.set_ylim([-0.07, 0.01])
-ax2.axvline(x=tYAG*1000, color='r', linestyle='--', label='YAG')
-ax2.set_title('NI-5922 Readout', fontsize=16)
-ax2.set_xlabel('Time [ms]', fontsize=16)
-ax2.set_ylabel('Voltage [V]', fontsize=16)
-ax2.legend()
+# ax2 = fig.add_subplot(gs[1, 1])   # span both rows vertically
+# voltages = run.get_trace('NI_SCOPE', raw_data = True)
+# times_SCOPE=np.arange(len(voltages[0]))/1_000_000 #HARD CODED!!! REPLACE WITH SAVE/IMPORT!! -- Shungo
+# times_SCOPE=times_SCOPE*1000 #s to ms
+# ax2.plot(times_SCOPE, voltages[0],label='Ch0',alpha=0.5)
+# # ax2.plot(times_SCOPE, voltages[1],label='Ch1',alpha=0.5)
+# ax2.set_xlim([0, 20])
+# # ax2.set_ylim([-0.07, 0.01])
+# ax2.axvline(x=tYAG*1000, color='r', linestyle='--', label='YAG')
+# ax2.set_title('NI-5922 Readout', fontsize=16)
+# ax2.set_xlabel('Time [ms]', fontsize=16)
+# ax2.set_ylabel('Voltage [V]', fontsize=16)
+# ax2.legend()
 # # ---------------------------------------
 
 
