@@ -1,7 +1,8 @@
 {
   "permissions": {
     "allow": [
-      "Bash(winget upgrade:*)"
+      "Bash(winget upgrade:*)",
+      "Read(//c/Users/radmo/Desktop/GUIs/rastering/**)"
     ]
   }
 }
