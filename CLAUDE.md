@@ -67,6 +67,31 @@ Each device has 3 classes:
 2. `blacs_tabs.py` — BLACS GUI tab (`RemoteControlTab`)
 3. `blacs_workers.py` — Worker process (`RemoteControlWorker`, `RemoteCommunication`)
 
+For the full protocol spec, see `userlib/user_devices/BLACS_COMMUNICATION_CONTRACT.md`. For a worked example of subclassing this pattern, see `userlib/user_devices/RasteringDevice/` and its `BLACS_Integration_Notes.md`. For the step-by-step integration workflow, see "Workflow: Adding a New External GUI Integration" below.
+
+### External GUI Registry
+
+| Name | BLACS Device Class | GUI Codebase | REQ-REP Port | PUB-SUB Port | Connection Table Name |
+|------|-------------------|--------------|-------------|-------------|----------------------|
+| Laser Lock | `RemoteControl` | LabVIEW (not in git) | 3796 | 3797 | `LaserLockGUI` |
+| Rastering GUI | `RasteringDevice` | `C:\Users\radmo\Desktop\GUIs\rastering` | 55535 | 55536 | `RasteringGUI` |
+
+When adding a new external GUI, add it to this table.
+
+### Workflow: Adding a New External GUI Integration
+
+**Prerequisite:** The external GUI must have (or be given) a ZMQ REP server that speaks the JSON protocol defined in `BLACS_COMMUNICATION_CONTRACT.md`.
+
+1. **Decide: subclass or use directly.** If the new GUI only needs setpoint control + monitors (like laser lock), use `RemoteControl` directly — no new device class needed. If it needs custom behavior (raster stepping, arm/disarm), subclass `RemoteControl`.
+2. **Check the external GUI folder for `.claude/agents/`** — if a local agent exists, use it for domain-specific questions about the GUI's internals. Use `labscript-amo-expert` for BLACS-side architecture. Point the external agent to `BLACS_COMMUNICATION_CONTRACT.md` so it understands the protocol.
+3. **External GUI side:** Add ZMQ server handling `HELLO`, `PROGRAM_VALUE`, `CHECK_VALUE`. Optionally add PUB-SUB with heartbeat. See the contract doc for the full spec.
+4. **Create device class (if subclassing):** 5 files in `userlib/user_devices/{DeviceName}/`: `__init__.py`, `labscript_devices.py`, `register_classes.py`, `blacs_tabs.py`, `blacs_workers.py`.
+5. **Connection table entry:** Import, instantiate with host/ports, add `RemoteAnalogOut` + `RemoteAnalogMonitor` children.
+6. **Test:** Start external GUI first, then BLACS. Verify REQ-REP (spinbox sync), PUB-SUB (heartbeat + monitors), and buffered mode.
+7. **Update this file:** Add the new GUI to the External GUI Registry table above.
+
+**Worked examples:** `RemoteControl` (generic, laser lock) | `RasteringDevice` (subclassed, raster stepping + status indicators)
+
 ### State Machine Event Ordering
 
 Events queued by `@define_state` methods execute in FIFO order in the mainloop thread. The base class `DeviceTab.__init__` runs: `initialise_GUI()` → `restore_save_data()` → `initialise_workers()` → `program_device()`. Events queued during `initialise_workers` (like `connect_to_reqrep`) execute before `program_device`.

@@ -1,0 +1,18 @@
+{
+  "permissions": {
+    "allow": [
+      "Read(//c/Users/radmo/Desktop/GUIs/rastering/**)",
+      "Bash(python -c:*)",
+      "Bash(pip show:*)",
+      "Read(//c/Users/radmo/miniconda/envs/labscript/Lib/site-packages/labscript/**)",
+      "Read(//c/Users/radmo/miniconda/envs/labscript/Lib/site-packages/labscript_utils/**)",
+      "Read(//c/Users/radmo/miniconda/envs/labscript/Lib/site-packages/blacs/**)",
+      "Bash(grep:*)",
+      "Bash(source:*)",
+      "Bash(conda activate:*)"
+    ],
+    "additionalDirectories": [
+      "C:\\Users\\radmo\\Desktop\\GUIs\\rastering"
+    ]
+  }
+}

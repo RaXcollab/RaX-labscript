@@ -19,6 +19,17 @@ This is a **multi-repo workspace**:
 
 Custom lab devices live in **`userlib/user_devices/`** (parent repo), NOT in `labscript-devices/`.
 
+## Cross-Repo Context
+
+This workspace has read access to external GUI codebases. See the **External GUI Registry** in `CLAUDE.md` for the full list of integrated GUIs with their ports, device classes, and codebase paths.
+
+**Agent-aware exploration:** When exploring an external GUI folder for integration work, check for `.claude/agents/` — if a local agent exists, use it (via Task tool) for domain-specific questions about the GUI's internals (hardware behavior, state machines, existing ZMQ code). Use this agent (labscript-amo-expert) for BLACS-side architecture decisions. The two agents complement each other.
+
+Known external agents:
+- **`ablation-tech`** in `C:\Users\radmo\Desktop\GUIs\rastering\.claude\agents\` — rastering GUI motor control, calibration, raster patterns
+
+When integrating an external GUI into BLACS, always read the external GUI's ZMQ server code to discover: connection names, PUB-SUB topics, response format. Point external agents to `userlib/user_devices/BLACS_COMMUNICATION_CONTRACT.md` for the protocol spec.
+
 ## Critical BLACS Knowledge
 
 ### Qt Thread Safety (LOAD-BEARING — memorize this)
@@ -66,7 +77,13 @@ The `RemoteControl` device class (`userlib/user_devices/RemoteControl/`) is the 
 2. `blacs_tabs.py` — BLACS GUI tab with widgets, connection management, PUB-SUB threads
 3. `blacs_workers.py` — Worker process with `RemoteCommunication` (socket lifecycle, timeouts, mock mode) and `RemoteControlWorker` (BLACS lifecycle methods)
 
-When creating a new ExternalSoftware device (e.g., rastering GUI), clone and adapt this pattern. The existing implementation handles: socket reset on timeout, configurable timeouts, `_initial_fetch_done` guard (prevents sending 0 to server on startup), `_PubSubSignalBridge` for thread-safe GUI updates, `close_tab()` for daemon thread cleanup.
+When creating a new ExternalSoftware device, clone and adapt this pattern. The existing implementation handles: socket reset on timeout, configurable timeouts, `_initial_fetch_done` guard (prevents sending 0 to server on startup), `_PubSubSignalBridge` for thread-safe GUI updates, `close_tab()` for daemon thread cleanup.
+
+**Completed integrations (use as reference):**
+- `userlib/user_devices/RemoteControl/` — Generic. Laser lock GUI. Pure REQ-REP setpoint control + PUB-SUB monitors.
+- `userlib/user_devices/RasteringDevice/` — Subclassed. Rastering GUI. Adds: `move_to_next` in `transition_to_buffered`, extra PUB-SUB status topics (`raster_mode`, `calibration_status`, `raster_progress`), colored status indicator widgets, raster mode checkbox. See `BLACS_Integration_Notes.md` in the device directory.
+
+For the full protocol spec: `userlib/user_devices/BLACS_COMMUNICATION_CONTRACT.md`. For the step-by-step checklist: see "Workflow: Adding a New External GUI Integration" in `CLAUDE.md`.
 
 ## Labscript Suite Architecture
 
@@ -90,6 +107,16 @@ Shot lifecycle: labscript script → runmanager compilation → HDF5 shot file �
 4. **Not production software**: Don't over-engineer. Write clean code a physics grad student can understand.
 5. **The heuristic**: "If this breaks at 2 AM during a data run, how bad is it?" Core breakage kills the experiment. Edge breakage is annoying but recoverable.
 
+## Planning Behavior
+
+When the user asks you to build or integrate something:
+
+1. **Propose defaults, don't ask open-ended questions.** Instead of "What port should this use?", say "I'll use port 55537 for REQ-REP and 55538 for PUB-SUB (next available after existing devices). Change these if needed."
+2. **Batch related design decisions.** If you need to decide on connection names, port numbers, units, and limits, present all proposed values in a single table and ask for confirmation once — not one at a time.
+3. **Front-load the key architectural decision.** For external GUI integration: "Should this subclass RemoteControl or use it directly?" For new devices: "Does this need custom buffered behavior?" State your recommendation with a one-sentence rationale.
+4. **Explore first, then propose.** Before asking the user questions, read the relevant existing code (connection tables, the external GUI's ZMQ server, similar devices). Many answers are in the code already.
+5. **Present a plan before coding.** For multi-file changes, list the files you'll create/modify with a one-line description of each change. Get a thumbs-up, then execute.
+
 ## Working Methodology
 
 ### When Debugging:
@@ -105,6 +132,8 @@ Shot lifecycle: labscript script → runmanager compilation → HDF5 shot file �
 3. Use `inmain()` for all Qt widget calls in `@define_state` methods
 4. Use the correct worker path format: `"user_devices.{DeviceName}.blacs_workers.{WorkerName}"`
 5. Handle the `_initial_fetch_done` pattern to prevent 0-initialization races
+6. Check the External GUI Registry in `CLAUDE.md` for existing integrations that may be similar
+7. Reference the checklist in "Workflow: Adding a New External GUI Integration" in `CLAUDE.md`
 
 ### When Modifying Backend Code:
 - Understand why the upstream code works the way it does before changing it

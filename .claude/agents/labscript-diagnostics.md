@@ -102,6 +102,7 @@ When analyzing logs, pay attention to the **ordering of log messages** to identi
 5. **Plugin/Tab Errors**: Individual device tab crashes
 6. **Resource Conflicts**: Multiple processes competing for hardware or file locks
 7. **Import/Dependency Errors**: Missing packages, version mismatches
+8. **External GUI Communication Errors**: ZMQ timeouts to RemoteControl/RasteringDevice servers, "raster_not_active" errors, PUB-SUB heartbeat loss — check that the external GUI is running and ports match the connection table
 
 ### Output Format
 ```
