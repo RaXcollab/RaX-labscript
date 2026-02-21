@@ -1,0 +1,181 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<style>
+  body { font-family: Calibri, Segoe UI, sans-serif; font-size: 11pt; color: #333; max-width: 900px; margin: 20px auto; }
+  h1 { font-size: 20pt; border-bottom: 2px solid #0078d4; padding-bottom: 6px; color: #0078d4; }
+  h2 { font-size: 14pt; color: #0078d4; margin-top: 24px; }
+  h3 { font-size: 12pt; color: #444; }
+  table { border-collapse: collapse; width: 100%; margin: 10px 0; }
+  th, td { border: 1px solid #ccc; padding: 6px 10px; text-align: left; vertical-align: top; }
+  th { background: #f0f0f0; font-weight: bold; }
+  code { font-family: Consolas, monospace; font-size: 10pt; background: #f4f4f4; padding: 1px 4px; border-radius: 3px; }
+  pre { background: #f4f4f4; border: 1px solid #ddd; border-radius: 4px; padding: 10px; font-family: Consolas, monospace; font-size: 10pt; overflow-x: auto; white-space: pre; }
+  .badge { display: inline-block; padding: 2px 8px; border-radius: 10px; color: white; font-size: 9pt; font-weight: bold; }
+  .green { background: #4CAF50; }
+  .yellow { background: #FFC107; color: #333; }
+  .red { background: #f44336; }
+  .gray { background: #9E9E9E; }
+  .meta { color: #888; font-size: 10pt; }
+  ol, ul { margin: 6px 0; padding-left: 24px; }
+  li { margin: 3px 0; }
+  strong { color: #222; }
+</style>
+</head>
+<body>
+
+<h1>Rastering GUI &mdash; BLACS Integration</h1>
+<p class="meta">
+  <strong>Date:</strong> 2026-02-21 &nbsp;&bull;&nbsp;
+  <strong>Repos:</strong> <code>RaX-labscript</code> (labscript-suite) + rastering GUI (<code>Desktop/GUIs/rastering</code>)
+</p>
+
+<h2>What We Did</h2>
+<p>Integrated the rastering GUI (Thorlabs KCube motor control for laser ablation) into BLACS:</p>
+<ol>
+  <li><strong>Manual motor positioning</strong> from BLACS &mdash; X/Y spinboxes in the BLACS tab</li>
+  <li><strong>Per-shot raster stepping</strong> &mdash; BLACS automatically advances the raster one point per shot during <code>transition_to_buffered</code></li>
+  <li><strong>Live status monitoring</strong> &mdash; PUB-SUB broadcasts position, raster mode, calibration status, and progress to BLACS with colored indicators</li>
+  <li><strong>Position recording</strong> &mdash; X/Y motor position captured to HDF5 each shot for analysis</li>
+</ol>
+
+<h2>Architecture</h2>
+<pre>
+Rastering GUI (localhost)            BLACS (RasteringDevice tab)
+&#9484;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9488;           &#9484;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9488;
+&#9474;  ZMQ REP :55535     &#9474;&#9668;&#9472;&#9472;REQ&#9472;&#9472;&#9472;&#9472;&#9658;&#9474;  RasteringWorker         &#9474;
+&#9474;  (HELLO, PROGRAM,   &#9474;           &#9474;  (move_to_next, CHECK)   &#9474;
+&#9474;   CHECK_VALUE)      &#9474;           &#9474;                          &#9474;
+&#9474;                     &#9474;           &#9474;                          &#9474;
+&#9474;  ZMQ PUB :55536     &#9474;&#9472;&#9472;&#9472;SUB&#9472;&#9472;&#9472;&#9472;&#9658;&#9474;  RasteringTab            &#9474;
+&#9474;  (heartbeat, pos,   &#9474;           &#9474;  (position monitors,     &#9474;
+&#9474;   mode, cal, prog)  &#9474;           &#9474;   colored indicators)    &#9474;
+&#9492;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9496;           &#9492;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9496;
+</pre>
+
+<h2>Files Changed</h2>
+
+<h3>Rastering GUI (<code>Desktop/GUIs/rastering/</code>)</h3>
+<table>
+  <tr><th>File</th><th>Change</th></tr>
+  <tr><td><code>config.py</code></td><td>Added <code>pub_bind: str = "tcp://*:55536"</code> to NetworkConfig</td></tr>
+  <tr><td><code>raster_controller.py</code></td><td>Added HELLO handler, PUB-SUB publisher in <code>_zmq_loop</code>, raster step counter tracking</td></tr>
+  <tr><td><code>main_rastering.py</code></td><td>Pass <code>pub_bind</code> to <code>start_zmq_server()</code></td></tr>
+</table>
+
+<h3>Labscript-suite (<code>labscript-suite/</code>)</h3>
+<table>
+  <tr><th>File</th><th>Change</th></tr>
+  <tr><td><code>RasteringDevice/__init__.py</code></td><td>Empty (new)</td></tr>
+  <tr><td><code>RasteringDevice/labscript_devices.py</code></td><td><code>RasteringDevice(RemoteControl)</code> subclass (new)</td></tr>
+  <tr><td><code>RasteringDevice/register_classes.py</code></td><td>BLACS registration (new)</td></tr>
+  <tr><td><code>RasteringDevice/blacs_workers.py</code></td><td><code>RasteringWorker</code> with <code>move_to_next</code> logic (new)</td></tr>
+  <tr><td><code>RasteringDevice/blacs_tabs.py</code></td><td><code>RasteringTab</code> with colored indicators + raster checkbox (new)</td></tr>
+  <tr><td><code>connection_table.py</code></td><td>Added RasteringGUI device + X/Y outputs/monitors</td></tr>
+</table>
+
+<h2>Connection Table Entry</h2>
+<pre>
+from user_devices.RasteringDevice.labscript_devices import RasteringDevice
+
+RasteringDevice(name='RasteringGUI', host="127.0.0.1",
+    reqrep_port=55535, pubsub_port=55536, mock=False)
+
+# Writable position controls (manual mode)
+RemoteAnalogOut(name='Raster_X', parent_device=RasteringGUI,
+    connection="laser_raster_x_coord", units="mm",
+    limits=(0, 25.0), decimals=4, step_size=0.001)
+RemoteAnalogOut(name='Raster_Y', parent_device=RasteringGUI,
+    connection="laser_raster_y_coord", units="mm",
+    limits=(0, 25.0), decimals=4, step_size=0.001)
+
+# Live position monitors (PUB-SUB)
+RemoteAnalogMonitor(name='Raster_X_Monitor', parent_device=RasteringGUI,
+    connection="laser_raster_x_coord_monitor", units="mm",
+    limits=(0, 25.0), decimals=4)
+RemoteAnalogMonitor(name='Raster_Y_Monitor', parent_device=RasteringGUI,
+    connection="laser_raster_y_coord_monitor", units="mm",
+    limits=(0, 25.0), decimals=4)
+</pre>
+
+<h2>How to Use</h2>
+
+<h3>Manual Positioning</h3>
+<ol>
+  <li>Start rastering GUI, then start BLACS</li>
+  <li>Use X/Y spinboxes in the RasteringGUI tab to move motors</li>
+  <li>Position updates live via PUB-SUB (~4 Hz)</li>
+</ol>
+
+<h3>Per-Shot Rastering</h3>
+<ol>
+  <li>In the rastering GUI: configure a raster path, click "Start Raster" in <strong>step mode</strong></li>
+  <li>In BLACS: check the <strong>"Raster Mode"</strong> checkbox in the RasteringGUI tab</li>
+  <li>Queue shots &mdash; each shot's <code>transition_to_buffered</code> sends <code>move_to_next</code> to the rastering GUI</li>
+  <li>The rastering GUI moves to the next point, waits for the motor to settle, replies</li>
+  <li>BLACS captures X/Y position to HDF5, then proceeds with the shot</li>
+  <li>When the raster path is exhausted, the shot queue stops with a "Raster sequence complete" error</li>
+</ol>
+
+<h3>Status Indicators</h3>
+<table>
+  <tr><th>Indicator</th><th>Green</th><th>Yellow</th><th>Red / Gray</th></tr>
+  <tr>
+    <td><strong>Raster Mode</strong></td>
+    <td><span class="badge green">Step</span> ready for BLACS</td>
+    <td><span class="badge yellow">Continuous</span> autonomous</td>
+    <td><span class="badge gray">Idle</span></td>
+  </tr>
+  <tr>
+    <td><strong>Calibration</strong></td>
+    <td><span class="badge green">Calibrated</span></td>
+    <td>&mdash;</td>
+    <td><span class="badge red">Uncalibrated</span></td>
+  </tr>
+  <tr>
+    <td><strong>Progress</strong></td>
+    <td colspan="3">Text: "Step 5/20" or "&mdash;"</td>
+  </tr>
+</table>
+
+<h2>PUB-SUB Message Format</h2>
+<p>Messages follow the RemoteControl convention: <code>"{topic} {value}"</code> (space-separated string).</p>
+<table>
+  <tr><th>Topic</th><th>Example</th><th>Rate</th></tr>
+  <tr><td><code>heartbeat</code></td><td><code>"heartbeat"</code></td><td>~1 Hz</td></tr>
+  <tr><td><code>laser_raster_x_coord_monitor</code></td><td><code>"laser_raster_x_coord_monitor 12.345"</code></td><td>~4 Hz</td></tr>
+  <tr><td><code>laser_raster_y_coord_monitor</code></td><td><code>"laser_raster_y_coord_monitor 6.789"</code></td><td>~4 Hz</td></tr>
+  <tr><td><code>raster_mode</code></td><td><code>"raster_mode step"</code></td><td>~1 Hz</td></tr>
+  <tr><td><code>calibration_status</code></td><td><code>"calibration_status calibrated"</code></td><td>~1 Hz</td></tr>
+  <tr><td><code>raster_progress</code></td><td><code>"raster_progress 5/20"</code></td><td>~1 Hz</td></tr>
+</table>
+
+<h2>HDF5 Data Location</h2>
+<p>After each shot, X/Y position is saved to:</p>
+<pre>
+data/RasteringGUI/monitor_values/initial_monitor_values
+data/RasteringGUI/monitor_values/final_monitor_values
+</pre>
+<p>Each dataset contains columns: <code>laser_raster_x_coord</code>, <code>laser_raster_y_coord</code>, <code>laser_raster_x_coord_monitor</code>, <code>laser_raster_y_coord_monitor</code>.</p>
+
+<h2>Troubleshooting</h2>
+<table>
+  <tr><th>Issue</th><th>Fix</th></tr>
+  <tr><td>BLACS tab shows red "CONNECTION FAILED"</td><td>Start the rastering GUI before BLACS, or click reconnect</td></tr>
+  <tr><td>"Raster move_to_next error: raster_not_active"</td><td>Arm the raster in the rastering GUI (step mode) before starting shots</td></tr>
+  <tr><td>"Raster sequence complete" stops queue</td><td>Re-arm the raster with a new path in the rastering GUI</td></tr>
+  <tr><td>Status indicators stay gray</td><td>Check that PUB-SUB port 55536 matches in both <code>config.py</code> and connection table</td></tr>
+  <tr><td>Motor move timeout</td><td>Large moves may exceed the 5s default timeout; position small moves from BLACS, large moves from rastering GUI</td></tr>
+</table>
+
+<h2>Future Enhancements</h2>
+<ul>
+  <li>Save raster path geometry and calibration to HDF5 for each shot</li>
+  <li><code>arm_raster</code> and <code>move_to_next</code> as connection table channels (needs custom <code>program_manual</code> to skip in manual mode)</li>
+  <li>Raster state persistence across BLACS restarts (save checkbox state)</li>
+  <li>Camera integration in BLACS tab (if latency is acceptable)</li>
+</ul>
+
+</body>
+</html>
