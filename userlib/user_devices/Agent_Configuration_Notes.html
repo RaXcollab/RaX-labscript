@@ -1,0 +1,200 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<style>
+  body { font-family: Calibri, Segoe UI, sans-serif; font-size: 11pt; color: #333; max-width: 900px; margin: 20px auto; }
+  h1 { font-size: 20pt; border-bottom: 2px solid #0078d4; padding-bottom: 6px; color: #0078d4; }
+  h2 { font-size: 14pt; color: #0078d4; margin-top: 24px; }
+  h3 { font-size: 12pt; color: #444; }
+  table { border-collapse: collapse; width: 100%; margin: 10px 0; }
+  th, td { border: 1px solid #ccc; padding: 6px 10px; text-align: left; vertical-align: top; }
+  th { background: #f0f0f0; font-weight: bold; }
+  code { font-family: Consolas, monospace; font-size: 10pt; background: #f4f4f4; padding: 1px 4px; border-radius: 3px; }
+  pre { background: #f4f4f4; border: 1px solid #ddd; border-radius: 4px; padding: 10px; font-family: Consolas, monospace; font-size: 10pt; overflow-x: auto; white-space: pre; }
+  .badge { display: inline-block; padding: 2px 8px; border-radius: 10px; color: white; font-size: 9pt; font-weight: bold; }
+  .blue { background: #0078d4; }
+  .orange { background: #F57C00; }
+  .yellow { background: #FFC107; color: #333; }
+  .green { background: #4CAF50; }
+  .gray { background: #9E9E9E; }
+  .meta { color: #888; font-size: 10pt; }
+  ol, ul { margin: 6px 0; padding-left: 24px; }
+  li { margin: 3px 0; }
+  strong { color: #222; }
+  .callout { background: #e8f4fd; border-left: 4px solid #0078d4; padding: 8px 12px; margin: 10px 0; }
+</style>
+</head>
+<body>
+
+<h1>Agent Configuration &amp; Cross-Repo Awareness</h1>
+<p class="meta">
+  <strong>Date:</strong> 2026-02-21 &nbsp;&bull;&nbsp;
+  <strong>Context:</strong> Retrospective on rastering GUI BLACS integration &mdash; improving agentic workflow for future integrations
+</p>
+
+<h2>What We Changed</h2>
+<p>After integrating the rastering GUI into BLACS, we identified friction points in the agent-assisted workflow: too many planning rounds, no cross-repo awareness between agents, no checklists for common tasks. These changes address all of those.</p>
+
+<h2>Agent Architecture (Cross-Repo Awareness Model)</h2>
+
+<pre>
+labscript-suite/                          Desktop/GUIs/rastering/
+&#9484;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9488;       &#9484;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9488;
+&#9474; CLAUDE.md                    &#9474;       &#9474; CLAUDE.md                  &#9474;
+&#9474;  &#9500; External GUI Registry    &#9474;       &#9474;  &#9500; Signpost &#8594; CONTRACT   &#9474;
+&#9474;  &#9492; Integration Workflow     &#9474;       &#9474;  &#9492; Key files list         &#9474;
+&#9474;                              &#9474;       &#9474;                            &#9474;
+&#9474; .claude/agents/              &#9474;       &#9474; .claude/agents/            &#9474;
+&#9474;  &#9500; labscript-amo-expert &#9608;  &#9474;&#9668;&#9472;&#9472;&#9472;&#9472;&#9658;&#9474;  &#9492; ablation-tech &#9608;        &#9474;
+&#9474;  &#9492; labscript-diagnostics &#9608; &#9474;       &#9474;    (BLACS integration    &#9474;
+&#9474;    (planning behavior,       &#9474;       &#9474;     section added)         &#9474;
+&#9474;     cross-repo context)      &#9474;       &#9474;                            &#9474;
+&#9474;                              &#9474;       &#9492;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9496;
+&#9474; BLACS_COMMUNICATION_         &#9474;
+&#9474;   CONTRACT.md                &#9474;
+&#9474;  (signpost for external      &#9474;
+&#9474;   GUI agents)                &#9474;
+&#9492;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9496;
+</pre>
+
+<div class="callout">
+<strong>Key idea:</strong> The <code>BLACS_COMMUNICATION_CONTRACT.md</code> acts as a <strong>signpost</strong> &mdash; external GUI agents read it to learn the protocol without needing to explore the labscript-suite codebase. The labscript-amo-expert knows to check external GUI folders for local agents and delegate domain questions to them.
+</div>
+
+<h2>Files Changed</h2>
+
+<h3>labscript-suite/ (commit <code>9e0d067</code>)</h3>
+<table>
+  <tr><th>File</th><th>Change</th><th>Why</th></tr>
+  <tr>
+    <td><code>CLAUDE.md</code></td>
+    <td>Added External GUI Registry table and 7-step integration workflow checklist</td>
+    <td>Record of completed integrations + repeatable process for new ones</td>
+  </tr>
+  <tr>
+    <td><code>.claude/agents/<br>labscript-amo-expert.md</code></td>
+    <td>Added: Planning Behavior (5 rules), Cross-Repo Context (agent-aware exploration), completed integrations list, updated "When Building New Devices" steps</td>
+    <td>Reduce question rounds, leverage local agents in external GUI folders</td>
+  </tr>
+  <tr>
+    <td><code>.claude/agents/<br>labscript-diagnostics.md</code></td>
+    <td>Added error category: External GUI Communication Errors</td>
+    <td>Help diagnose ZMQ timeouts to RemoteControl/RasteringDevice servers</td>
+  </tr>
+  <tr>
+    <td><code>.claude/settings.json</code></td>
+    <td>Added read permissions for <code>labscript_utils</code> and <code>blacs</code> site-packages</td>
+    <td>Allow agents to inspect runtime-resolved package paths</td>
+  </tr>
+  <tr>
+    <td><code>userlib/user_devices/<br>BLACS_COMMUNICATION_CONTRACT.md</code></td>
+    <td><strong>NEW</strong> &mdash; Protocol spec: ZMQ REQ-REP + PUB-SUB format, connection naming, BLACS lifecycle</td>
+    <td>Signpost document for external GUI agents to read on initialization</td>
+  </tr>
+</table>
+
+<h3>Desktop/GUIs/rastering/ (commit <code>34f03af</code>)</h3>
+<table>
+  <tr><th>File</th><th>Change</th><th>Why</th></tr>
+  <tr>
+    <td><code>CLAUDE.md</code></td>
+    <td><strong>NEW</strong> &mdash; Project context with BLACS integration section, signpost to contract, key files list</td>
+    <td>Context for agents working directly in the rastering GUI workspace</td>
+  </tr>
+  <tr>
+    <td><code>.claude/agents/<br>ablation-tech.md</code></td>
+    <td>Added BLACS Integration section (shared connection names, protocol references, cross-repo pointers) + new example</td>
+    <td>ablation-tech now knows about BLACS and flags cross-repo impacts</td>
+  </tr>
+</table>
+
+<h2>BLACS Communication Contract (Summary)</h2>
+<p>The full document lives at <code>userlib/user_devices/BLACS_COMMUNICATION_CONTRACT.md</code>. Key points:</p>
+
+<table>
+  <tr><th>Protocol</th><th>Format</th><th>Purpose</th></tr>
+  <tr>
+    <td><strong>ZMQ REQ-REP</strong></td>
+    <td><code>{"action": "HELLO|PROGRAM_VALUE|CHECK_VALUE", "connection": str, "value": any}</code></td>
+    <td>Synchronous control: set values, read values, connection check</td>
+  </tr>
+  <tr>
+    <td><strong>ZMQ PUB-SUB</strong></td>
+    <td><code>"{topic} {value}"</code> (space-separated string)</td>
+    <td>Async monitoring: heartbeat (~1 Hz), positions (~4 Hz), status (~1 Hz)</td>
+  </tr>
+</table>
+
+<h3>Connection Naming</h3>
+<table>
+  <tr><th>Type</th><th>Convention</th><th>Example</th></tr>
+  <tr><td>Writable output</td><td>Descriptive physical quantity</td><td><code>laser_raster_x_coord</code></td></tr>
+  <tr><td>Read-only monitor</td><td>Same name + <code>_monitor</code></td><td><code>laser_raster_x_coord_monitor</code></td></tr>
+</table>
+
+<h2>Integration Workflow Checklist</h2>
+<ol>
+  <li><strong>Decide:</strong> subclass <code>RemoteControl</code> or use it directly?</li>
+  <li><strong>Check for local agents:</strong> look in the external GUI folder for <code>.claude/agents/</code> &mdash; use local agents for domain questions, <code>labscript-amo-expert</code> for BLACS-side architecture</li>
+  <li><strong>External GUI side:</strong> add ZMQ server (HELLO, PROGRAM_VALUE, CHECK_VALUE + optional PUB-SUB). Follow <code>BLACS_COMMUNICATION_CONTRACT.md</code></li>
+  <li><strong>Create device class</strong> (if subclassing): 5 files in <code>userlib/user_devices/{DeviceName}/</code></li>
+  <li><strong>Connection table entry:</strong> import, instantiate, add children</li>
+  <li><strong>Test:</strong> start GUI first, then BLACS. Verify REQ-REP + PUB-SUB + buffered mode</li>
+  <li><strong>Update registry:</strong> add to External GUI Registry in <code>CLAUDE.md</code></li>
+</ol>
+
+<h2>Planning Behavior Rules (labscript-amo-expert)</h2>
+<table>
+  <tr><th>#</th><th>Rule</th><th>Addresses</th></tr>
+  <tr><td>1</td><td>Propose defaults, don't ask open-ended questions</td><td>Too many question rounds</td></tr>
+  <tr><td>2</td><td>Batch related design decisions into single confirmation rounds</td><td>Too many question rounds</td></tr>
+  <tr><td>3</td><td>Front-load the key architectural decision with a recommendation</td><td>Slow planning convergence</td></tr>
+  <tr><td>4</td><td>Explore code first, then propose &mdash; many answers are already in the code</td><td>Redundant questions</td></tr>
+  <tr><td>5</td><td>Present a plan before coding for multi-file changes</td><td>Alignment before implementation</td></tr>
+</table>
+
+<h2>Agent Summary</h2>
+<table>
+  <tr><th>Agent</th><th>Location</th><th>Role</th><th>Color</th></tr>
+  <tr>
+    <td><span class="badge orange">labscript-amo-expert</span></td>
+    <td><code>labscript-suite/.claude/agents/</code></td>
+    <td>BLACS architecture, device development, integration planning</td>
+    <td>Orange</td>
+  </tr>
+  <tr>
+    <td><span class="badge yellow">labscript-diagnostics</span></td>
+    <td><code>labscript-suite/.claude/agents/</code></td>
+    <td>Log analysis, error triage, debugging</td>
+    <td>Yellow</td>
+  </tr>
+  <tr>
+    <td><span class="badge blue">ablation-tech</span></td>
+    <td><code>rastering/.claude/agents/</code></td>
+    <td>Rastering GUI internals: motors, calibration, patterns, ZMQ server</td>
+    <td>Blue</td>
+  </tr>
+</table>
+
+<h2>External GUI Registry</h2>
+<table>
+  <tr><th>Name</th><th>BLACS Device</th><th>GUI Codebase</th><th>REQ-REP</th><th>PUB-SUB</th></tr>
+  <tr>
+    <td>Laser Lock</td>
+    <td><code>RemoteControl</code></td>
+    <td>LabVIEW (not in git)</td>
+    <td>:3796</td>
+    <td>:3797</td>
+  </tr>
+  <tr>
+    <td>Rastering GUI</td>
+    <td><code>RasteringDevice</code></td>
+    <td><code>Desktop/GUIs/rastering</code></td>
+    <td>:55535</td>
+    <td>:55536</td>
+  </tr>
+</table>
+
+</body>
+</html>
