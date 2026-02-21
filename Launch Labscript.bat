@@ -2,23 +2,45 @@
 setlocal enabledelayedexpansion
 title Labscript Launcher
 color 0A
-
-:: 1. Cleanup old session flags
 del "%TEMP%\lab_pane*.tmp" >nul 2>&1
+
+:: Write per-pane scripts to avoid escaping hell
+(
+:: For per-tab title echo $Host.UI.RawUI.WindowTitle='BLACS'
+echo ^& "$env:USERPROFILE\miniconda\shell\condabin\conda-hook.ps1"
+echo conda activate labscript
+echo New-Item -Path "$env:TEMP\lab_pane1.tmp" -Force ^| Out-Null
+echo Write-Host ' [OK] BLACS starting...' -ForegroundColor Green
+echo blacs
+) > "%TEMP%\blacs_start.ps1"
+
+(
+:: echo $Host.UI.RawUI.WindowTitle='RUNMANAGER'
+echo ^& "$env:USERPROFILE\miniconda\shell\condabin\conda-hook.ps1"
+echo conda activate labscript
+echo New-Item -Path "$env:TEMP\lab_pane2.tmp" -Force ^| Out-Null
+echo Write-Host ' [OK] RUNMANAGER starting...' -ForegroundColor Magenta
+echo runmanager
+) > "%TEMP%\runmanager_start.ps1"
+
+(
+:: echo $Host.UI.RawUI.WindowTitle='LYSE'
+echo ^& "$env:USERPROFILE\miniconda\shell\condabin\conda-hook.ps1"
+echo conda activate labscript
+echo New-Item -Path "$env:TEMP\lab_pane3.tmp" -Force ^| Out-Null
+echo Write-Host ' [OK] LYSE starting...' -ForegroundColor Yellow
+echo lyse
+) > "%TEMP%\lyse_start.ps1"
 
 echo ==================================================
 echo                 LABSCRIPT LAUNCHER
 echo ==================================================
 echo.
 
-:: 2. Launch Windows Terminal with robust PowerShell syntax
-set "INIT_CONDA=& '%USERPROFILE%\miniconda\shell\condabin\conda-hook.ps1'"
-
-:: Open window to the right on a 1440p monitor
 start "" wt -w -1 --pos 1280,50 ^
-  new-tab pwsh -NoProfile -NoExit -Command "%INIT_CONDA% && conda activate labscript && New-Item -Path \"$env:TEMP\lab_pane1.tmp\" -Force | Out-Null && Write-Host ' [OK] BLACS starting...' -ForegroundColor Green && blacs" ^
-  ; split-pane -V pwsh -NoProfile -NoExit -Command "%INIT_CONDA% && conda activate labscript && New-Item -Path \"$env:TEMP\lab_pane2.tmp\" -Force | Out-Null && Write-Host ' [OK] RUNMANAGER starting...' -ForegroundColor Magenta && runmanager" ^
-  ; split-pane -H pwsh -NoProfile -NoExit -Command "%INIT_CONDA% && conda activate labscript && New-Item -Path \"$env:TEMP\lab_pane3.tmp\" -Force | Out-Null && Write-Host ' [OK] LYSE starting...' -ForegroundColor Yellow && lyse"
+  new-tab --title "Labscript Suite" pwsh -NoProfile -NoExit -File "%TEMP%\blacs_start.ps1" ^
+  ; split-pane -V --title "Labscript Suite" pwsh -NoProfile -NoExit -File "%TEMP%\runmanager_start.ps1" ^
+  ; split-pane -H --title "Labscript Suite" pwsh -NoProfile -NoExit -File "%TEMP%\lyse_start.ps1"
 
 echo   Status: Booting Windows Terminal...
 echo.

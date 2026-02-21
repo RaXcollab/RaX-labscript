@@ -4,13 +4,13 @@ from labscript_devices.PrawnBlaster.labscript_devices import PrawnBlaster
 from labscript_devices.NI_DAQmx.models.NI_PXIe_6361 import NI_PXIe_6361
 from labscript_devices.NI_DAQmx.models.NI_PXIe_6535 import NI_PXIe_6535
 from user_devices.NI_SCOPE.labscript_devices import NI_SCOPE
-# from user_devices.RemoteControl.labscript_devices import RemoteControl, RemoteAnalogOut, RemoteAnalogMonitor
+from user_devices.RemoteControl.labscript_devices import RemoteControl, RemoteAnalogOut, RemoteAnalogMonitor
 
 
 # === Initialize pseudoclock ===
 pb = PrawnBlaster(
     name='pb',
-    com_port='COM7',
+    com_port='COM4',
     num_pseudoclocks=2
 )
 
@@ -44,48 +44,49 @@ ni_6535 = NI_PXIe_6535(
 )
 
 
-# # === Laser Lock Communication === #
-# RemoteControl(name='LaserLockGUI', host="127.0.0.1", reqrep_port=3796,pubsub_port=3797, mock=False) # add IP address and Port of the host software
+# === Laser Lock Communication === #
+RemoteControl(name='LaserLockGUI', host="127.0.0.1", reqrep_port=3796,pubsub_port=3797, mock=False) # add IP address and Port of the host software
 
-# # Name convention: <wavemeter channel>_Setpoint and <wavemeter channel>_Value
+# Name convention: <wavemeter channel>_Setpoint and <wavemeter channel>_Value
 
-# RemoteAnalogOut(
-#     name='Vexlum_Setpoint', 
-#     parent_device=LaserLockGUI, 
-#     connection=3,
-#     units="THz",
-#     decimals=9
-# )
+RemoteAnalogOut(
+    name='Vexlum_Setpoint', 
+    parent_device=LaserLockGUI, 
+    connection=3,
+    units="THz",
+    decimals=9
+)
 
-# RemoteAnalogOut(
-#     name='TiSa_1_Setpoint', 
-#     parent_device=LaserLockGUI, 
-#     connection=4,
-#     units="THz",
-#     decimals=9
-# )
+RemoteAnalogOut(
+    name='TiSa_1_Setpoint', 
+    parent_device=LaserLockGUI, 
+    connection=4,
+    units="THz",
+    decimals=9
+)
 
-# RemoteAnalogMonitor(
-#     name='Vexlum_Value', 
-#     parent_device=LaserLockGUI, 
-#     connection=3,
-#     units="THz",
-#     decimals=9
-# )
+RemoteAnalogMonitor(
+    name='Vexlum_Value', 
+    parent_device=LaserLockGUI, 
+    connection=3,
+    units="THz",
+    decimals=9
+)
 
-# RemoteAnalogMonitor(
-#     name='TiSa_1_Value', 
-#     parent_device=LaserLockGUI, 
-#     connection=4,
-#     units="THz",
-#     decimals=9
-# )
+RemoteAnalogMonitor(
+    name='TiSa_1_Value', 
+    parent_device=LaserLockGUI, 
+    connection=4,
+    units="THz",
+    decimals=9
+)
 
 # Define digital output line on PXIe-6535
+DigitalOut('LIF_shutter', ni_6535, 'port0/line0')
 DigitalOut('YAG1_line', ni_6535, 'port0/line1') 
 DigitalOut('YAG2_line', ni_6535, 'port0/line2') 
 DigitalOut('ENH_line', ni_6535, 'port0/line3') 
-DigitalOut('dummy_line', ni_6535, 'port0/line4')    #for even number
+# DigitalOut('dummy_line', ni_6535, 'port0/line4')    #for even number
 
 
 NI_SCOPE(

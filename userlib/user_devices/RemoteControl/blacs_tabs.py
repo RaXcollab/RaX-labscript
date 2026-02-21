@@ -1,6 +1,5 @@
-from labscript_utils import dedent
 from qtutils.qt import QtWidgets, QtGui, QtCore
-from qtutils import qtlock
+from qtutils import inmain
 
 from blacs.device_base_class import (
     DeviceTab,
@@ -9,12 +8,14 @@ from blacs.device_base_class import (
     MODE_MANUAL,
     MODE_TRANSITION_TO_BUFFERED,
     MODE_TRANSITION_TO_MANUAL,
-    inmain,
 )
 
 import threading
 import zmq
 import time
+
+
+# ── Helper widgets ───────────────────────────────────────────────────
 
 class DynamicStackedWidget(QtWidgets.QStackedWidget):
     def __init__(self, parent=None):
@@ -37,10 +38,11 @@ class DynamicStackedWidget(QtWidgets.QStackedWidget):
         if self.parent() and isinstance(self.parent(), QtWidgets.QWidget):
             self.parent().adjustSize()
 
+
 class FailureButton(QtWidgets.QWidget):
     def __init__(self, parent=None):
         super().__init__(parent)
-        
+
         self.button = QtWidgets.QPushButton("CONNECTION FAILED, CLICK TO RECONNECT")
         self.button.setStyleSheet("""
             QPushButton {
@@ -52,12 +54,8 @@ class FailureButton(QtWidgets.QWidget):
                 padding: 20px 40px;
                 font-size: 18px;
             }
-            QPushButton:hover {
-                background-color: #ff4d4d;
-            }
-            QPushButton:pressed {
-                background-color: #ff3333;
-            }
+            QPushButton:hover { background-color: #ff4d4d; }
+            QPushButton:pressed { background-color: #ff3333; }
         """)
 
         layout = QtWidgets.QVBoxLayout()
@@ -65,42 +63,28 @@ class FailureButton(QtWidgets.QWidget):
         layout.addStretch(1)
         layout.addWidget(self.button, alignment=QtCore.Qt.AlignCenter)
         layout.addStretch(1)
-
         self.setLayout(layout)
 
     def connect_clicked(self, slot):
         self.button.clicked.connect(slot)
 
+
+# ── Signal bridge for thread-safe GUI updates from subscriber threads ──
+
+class _PubSubSignalBridge(QtCore.QObject):
+    """
+    Background subscriber threads emit these signals; the tab connects
+    slots that run on the main (GUI) thread via auto-connection.
+    """
+    pubsub_status_changed = QtCore.pyqtSignal(bool)     # connected True/False
+    monitor_value_received = QtCore.pyqtSignal(str, str) # connection, value
+
+
+# ── Main Tab ─────────────────────────────────────────────────────────
+
 class RemoteControlTab(DeviceTab):
-    def create_centered_button_widget(self, button):
-        layout = QtWidgets.QVBoxLayout()
-        layout.addStretch()
-        layout.addWidget(button, alignment=QtCore.Qt.AlignCenter)
-        layout.addStretch()
-        
-        widget = QtWidgets.QWidget()
-        widget.setLayout(layout)
-        return widget
 
-
-    def _dump_backend_ids(self, tag):
-        ao = getattr(self, "_AO", {})
-        keys = sorted(list(ao.keys()))
-        self.logger.debug(f"{tag}: _AO keys = {keys}")
-        for k in keys:
-            try:
-                self.logger.debug(f"{tag}: _AO[{k}] id={id(ao[k])}")
-            except Exception as e:
-                self.logger.debug(f"{tag}: _AO[{k}] id=<err {e!r}>")
-
-    def _dump_widget_keys(self, tag):
-        ao_k = sorted(list(getattr(self, "AO_widgets", {}).keys()))
-        am_k = sorted(list(getattr(self, "AM_widgets", {}).keys()))
-        self.logger.debug(f"{tag}: AO_widgets keys = {ao_k}")
-        self.logger.debug(f"{tag}: AM_widgets keys = {am_k}")
-    
     def initialise_GUI(self):
-        self._suppress_first_program = True
         connection_table = self.settings['connection_table']
         device = connection_table.find_by_name(self.device_name)
         self.properties = device.properties
@@ -113,6 +97,12 @@ class RemoteControlTab(DeviceTab):
         self.reqrep_connected = False
         self.pubsub_connected = False
 
+        # Signal bridge for thread-safe GUI updates from subscriber threads
+        self._pubsub_bridge = _PubSubSignalBridge()
+        self._pubsub_bridge.pubsub_status_changed.connect(self._on_pubsub_status_changed)
+        self._pubsub_bridge.monitor_value_received.connect(self._on_monitor_value_received)
+
+        # ── Discover child devices ──
         self.child_output_devices = []
         self.child_monitor_devices = []
         self.child_output_connections = []
@@ -125,379 +115,93 @@ class RemoteControlTab(DeviceTab):
             elif child_device.device_class == "RemoteAnalogMonitor":
                 self.child_monitor_devices.append(child_device)
                 self.child_monitor_connections.append(child_device.parent_port)
-            else:
-                # throw an error
-                pass
-        
 
-        # --- Build AO and AM properties ---
+        # ── Analog Output widgets (read/write) ──
         AO_prop = {}
-        for analog_out_device in self.child_output_devices:
-            p = analog_out_device._properties
-            lo, hi = p["limits"]
-            AO_prop[analog_out_device.parent_port] = {
-                "base_unit": p["units"],
-                "min": lo,
-                "max": hi,
-                "step": p["step_size"],
-                "decimals": p["decimals"],
+        for dev in self.child_output_devices:
+            cp = dev._properties
+            lo, hi = cp["limits"]
+            AO_prop[dev.parent_port] = {
+                'base_unit': cp["units"],
+                'min': lo,
+                'max': hi,
+                'step': cp["step_size"],
+                'decimals': cp["decimals"],
             }
+        self.create_analog_outputs(AO_prop)
+        _, self.AO_widgets, _ = self.auto_create_widgets()
+        self.ao_toolpalette_widget = self.auto_place_widgets(
+            ("Analog Outputs", self.AO_widgets)
+        )
 
+        # ── Analog Monitor widgets (read-only) ──
         AM_prop = {}
-        for analog_monitor_device in self.child_monitor_devices:
-            p = analog_monitor_device._properties
-            lo, hi = p["limits"]
-            AM_prop[analog_monitor_device.parent_port] = {
-                "base_unit": p["units"],
-                "min": lo,
-                "max": hi,
-                "step": p["step_size"],
-                "decimals": p["decimals"],
+        for dev in self.child_monitor_devices:
+            cp = dev._properties
+            lo, hi = cp["limits"]
+            AM_prop[dev.parent_port] = {
+                'base_unit': cp["units"],
+                'min': lo,
+                'max': hi,
+                'step': cp["step_size"],
+                'decimals': cp["decimals"],
             }
-
-        # --- Register ALL AO+AM channels ONCE ---
-        all_props = {}
-        all_props.update(AO_prop)
-        all_props.update(AM_prop)
-        self.create_analog_outputs(all_props)
-
-        # --- Build AO widgets from AO_prop ---
-        self.AO_widgets = self.create_analog_widgets(AO_prop)
-        self.ao_toolpalette_widget = self.auto_place_widgets(("Analog Outputs", self.AO_widgets))
-
-
-        # --- AM: independent backends + read-only widgets ---
-        self._monitor_backends = {}
-        self.AM_widgets = {}
-
-        for port, props in AM_prop.items():
-            mon = self._create_AO_object(
-                self.device_name,
-                f"{port}_monitor",  # unique name so it won't collide with AO
-                port,
-                props,
-            )
-            self._monitor_backends[port] = mon
-            w = mon.create_widget(None, False, None)
-            w.setEnabled(False)
-            self.AM_widgets[port] = w
-
+        self.create_analog_outputs(AM_prop)
+        _, self.AM_widgets, _ = self.create_subset_widgets(AM_prop)
         self.am_toolpalette_widget = self.auto_place_widgets(
             ("Analog Monitors", self.AM_widgets)
         )
+        for _, widget in self.AM_widgets.items():
+            widget.setEnabled(False)
 
-        # # --- Build AM widgets as subset from AM_prop ---
-        # _, self.AM_widgets, _ = self.create_subset_widgets(AM_prop)
-        # self.am_toolpalette_widget = self.auto_place_widgets(("Analog Monitors", self.AM_widgets))
-
-        # # Disable all AM widgets (read‐only monitors)
-        # for w in self.AM_widgets.values():
-        #     w.setEnabled(False)
-
-        # Optional: debug logging to confirm keys match expectations
-        # self.logger.debug(f"AO_prop keys: {list(AO_prop.keys())}")
-        # self.logger.debug(f"AM_prop keys: {list(AM_prop.keys())}")
-        # self.logger.debug(f"_AO keys after registration: {list(self._AO.keys())}")
-        # self.logger.debug(f"AO_widgets keys: {list(self.AO_widgets.keys())}")
-        # self.logger.debug(f"AM_widgets keys: {list(self.AM_widgets.keys())}")
-
-
-        # # --- Build property dicts ---
-        # AO_prop = {}
-        # for dev in self.child_output_devices:
-        #     p = dev._properties
-        #     lo, hi = p["limits"]
-        #     AO_prop[dev.parent_port] = {
-        #         "base_unit": p["units"], "min": lo, "max": hi,
-        #         "step": p["step_size"], "decimals": p["decimals"],
-        #     }
-
-        # AM_prop = {}
-        # for dev in self.child_monitor_devices:
-        #     p = dev._properties
-        #     lo, hi = p["limits"]
-        #     AM_prop[dev.parent_port] = {
-        #         "base_unit": p["units"], "min": lo, "max": hi,
-        #         "step": p["step_size"], "decimals": p["decimals"],
-        #     }
-
-        # self.logger.debug(f"AO_prop keys: {sorted(AO_prop.keys())}")
-        # self.logger.debug(f"AM_prop keys: {sorted(AM_prop.keys())}")
-
-
-        # # ===================== PHASE 1 =====================
-        # # Register all backends once, then build both palettes
-        # all_props = {}
-        # all_props.update(AO_prop)
-        # all_props.update(AM_prop)
-        # self.create_analog_outputs(all_props)
-        # self._dump_backend_ids("after first register")
-
-
-        # # AO widgets (interactive)
-        # self.AO_widgets = self.create_analog_widgets(AO_prop)
-        # self.ao_toolpalette_widget = self.auto_place_widgets(("Analog Outputs", self.AO_widgets))
-
-        # # AM widgets (first pass: full analog widgets, then disabled)
-        # self.AM_widgets = self.create_analog_widgets(AM_prop)
-        # self.logger.debug(f"AM_widgets first defined with {len(self.AM_widgets)} channels")
-
-        # self.am_toolpalette_widget = self.auto_place_widgets(("Analog Monitors", self.AM_widgets))
-        # for w in self.AM_widgets.values():
-        #     w.setEnabled(False)
-        # self._dump_widget_keys("after phase-1 palettes")
-
-
-        # # ===================== PHASE 2 =====================
-        # # Refresh registration (needed on your build), then rebuild AM as subset/read-only
-        # all_props = {}
-        # all_props.update(AO_prop)
-        # all_props.update(AM_prop)
-        # self.create_analog_outputs(all_props)
-        # self._dump_backend_ids("after second register")
-
-
-        # # Rebuild AO palette (keep this because your working code has it and it proved stable)
-        # self.AO_widgets = self.create_analog_widgets(AO_prop)
-        # self.ao_toolpalette_widget = self.auto_place_widgets(("Analog Outputs", self.AO_widgets))
-
-        # # Replace AM palette with subset widgets (read-only)
-        # self.logger.debug("about to create AM subset widgets")
-        # _, self.AM_widgets, _ = self.create_subset_widgets(AM_prop)
-        # self._dump_widget_keys("after AM subset build")
-
-        # self.am_toolpalette_widget = self.auto_place_widgets(("Analog Monitors", self.AM_widgets))
-        # for w in self.AM_widgets.values():
-        #     w.setEnabled(False)
-
-
-        # # --- Remote Output (AO) + Monitor (AM) backends ---
-        # AO_prop = {}
-        # for analog_out_device in self.child_output_devices:
-        #     child_properties = analog_out_device._properties
-        #     min_val, max_val = child_properties["limits"]
-        #     AO_prop[analog_out_device.parent_port] = {
-        #         'base_unit': child_properties["units"],
-        #         'min': min_val,
-        #         'max': max_val,
-        #         'step': child_properties["step_size"],
-        #         'decimals': child_properties["decimals"],
-        #     }
-
-        # AM_prop = {}
-        # for analog_monitor_device in self.child_monitor_devices:
-        #     child_properties = analog_monitor_device._properties
-        #     min_val, max_val = child_properties["limits"]
-        #     AM_prop[analog_monitor_device.parent_port] = {
-        #         'base_unit': child_properties["units"],
-        #         'min': min_val,
-        #         'max': max_val,
-        #         'step': child_properties["step_size"],
-        #         'decimals': child_properties["decimals"],
-        #     }
-        
-        
-
-        # # # Combine all properties and create analog outputs
-        # all_props = {}
-        # all_props.update(AO_prop)
-        # all_props.update(AM_prop)
-
-        # # Phase 1 — register once, build AO and provisional AM
-        # self.create_analog_outputs(all_props)
-
-        # self.AO_widgets = self.create_analog_widgets(AO_prop)
-        # self.ao_toolpalette_widget = self.auto_place_widgets(("Analog Outputs", self.AO_widgets))
-
-        # self.AM_widgets_phase1 = self.create_analog_widgets(AM_prop)
-        # self.am_toolpalette_widget = self.auto_place_widgets(("Analog Monitors", self.AM_widgets_phase1))
-        # for w in self.AM_widgets_phase1.values():
-        #     w.setEnabled(False)
-
-        # # Phase 2 — refresh registry, rebuild AM as subset (read-only)
-        # self.create_analog_outputs(all_props)  # keep this refresh; it's doing work on your build
-
-        # _, self.AM_widgets, _ = self.create_subset_widgets(AM_prop)
-        # self.am_toolpalette_widget = self.auto_place_widgets(("Analog Monitors", self.AM_widgets))
-        # for w in self.AM_widgets.values():
-        #     w.setEnabled(False)
-
-
-        # # Create analog output widgets and place them
-        # self.AO_widgets = self.create_analog_widgets(AO_prop)
-        # self.ao_toolpalette_widget = self.auto_place_widgets(
-        #     ("Analog Outputs", self.AO_widgets)
-        # )
-
-        # # Create analog monitor widgets and place them
-        # self.AM_widgets = self.create_analog_widgets(AM_prop)
-        # self.am_toolpalette_widget = self.auto_place_widgets(
-        #     ("Analog Monitors", self.AM_widgets)
-        # )
-
-        # # Disable all analog monitor widgets
-        # for w in self.AM_widgets.values():
-        #     w.setEnabled(False)
-
-        # # Combine all properties and create analog outputs
-        # all_props = {}
-        # all_props.update(AO_prop)
-        # all_props.update(AM_prop)
-        # self.create_analog_outputs(all_props)
-
-        # # Create analog output widgets and place them
-        # self.AO_widgets = self.create_analog_widgets(AO_prop)
-        # self.ao_toolpalette_widget = self.auto_place_widgets(
-        #     ("Analog Outputs", self.AO_widgets)
-        # )
-
-        # # Build only the MONITOR displays without re-registering
-        # _, self.AM_widgets, _ = self.create_subset_widgets(AM_prop)
-        # self.am_toolpalette_widget = self.auto_place_widgets(
-        #     ("Analog Monitors", self.AM_widgets)
-        # )
-
-        # # Disable all analog monitor widgets
-        # for w in self.AM_widgets.values():
-        #     w.setEnabled(False)
-
-
-        # all_props = {}
-        # all_props.update(AO_prop)
-        # all_props.update(AM_prop)
-        # self.create_analog_outputs(all_props)
-
-        # logger.debug(f"AO_prop keys: {list(AO_prop.keys())}")
-        # logger.debug(f"AM_prop keys: {list(AM_prop.keys())}")
-        # logger.debug(f"_AO keys after first create_analog_outputs: {list(self._AO.keys())}")
-
-        # self.AO_widgets = self.create_analog_widgets(AO_prop)
-        # self.ao_toolpalette_widget = self.auto_place_widgets(
-        #     ("Analog Outputs", self.AO_widgets)
-        # )
-        # logger.debug(f"AO_widgets keys: {list(self.AO_widgets.keys())}")
-
-
-        # self.AM_widgets = self.create_analog_widgets(AM_prop)
-        # self.am_toolpalette_widget = self.auto_place_widgets(
-        #     ("Analog Monitors", self.AM_widgets)
-        # )
-        # logger.debug(f"AM_widgets keys (first build): {list(self.AM_widgets.keys())}")
-
-        # for w in self.AM_widgets.values():
-        #     w.setEnabled(False)
-
-        # all_props = {}
-        # all_props.update(AO_prop)
-        # all_props.update(AM_prop)
-        # self.create_analog_outputs(all_props)
-        
-        # self.AO_widgets = self.create_analog_widgets(AO_prop)
-        # self.ao_toolpalette_widget = self.auto_place_widgets(
-        #     ("Analog Outputs", self.AO_widgets)
-        # )
-
-        # # Build only the MONITOR displays without re‐registering
-        # _, self.AM_widgets, _ = self.create_subset_widgets(AM_prop)
-        # self.am_toolpalette_widget = self.auto_place_widgets(
-        #     ("Analog Monitors", self.AM_widgets)
-        # )
-        # for w in self.AM_widgets.values():
-        #     w.setEnabled(False)
-        
-        # # --- Remote Output (AO) + Monitor (AM) backends ---
-        # AO_prop = {}
-        # for analog_out_device in self.child_output_devices:
-        #     child_properties = analog_out_device._properties
-        #     min_val, max_val = child_properties["limits"]
-        #     AO_prop[analog_out_device.parent_port] = {
-        #         'base_unit': child_properties["units"],
-        #         'min': min_val,
-        #         'max': max_val,
-        #         'step': child_properties["step_size"],
-        #         'decimals': child_properties["decimals"],
-        #     }
-
-        # AM_prop = {}
-        # for analog_monitor_device in self.child_monitor_devices:
-        #     child_properties = analog_monitor_device._properties
-        #     min_val, max_val = child_properties["limits"]
-        #     AM_prop[analog_monitor_device.parent_port] = {
-        #         'base_unit': child_properties["units"],
-        #         'min': min_val,
-        #         'max': max_val,
-        #         'step': child_properties["step_size"],
-        #         'decimals': child_properties["decimals"],
-        #     }
-        # self.logger.debug(f"AO_prop keys: {sorted(AO_prop)}")
-        # self.logger.debug(f"AM_prop keys: {sorted(AM_prop)}")
-
-        # # Register a single backend set covering AO+AM connections
-        # all_props = {}
-        # all_props.update(AO_prop)
-        # all_props.update(AM_prop)
-        # self.create_analog_outputs(all_props)
-        # self.logger.debug(f"_AO keys after first register: {sorted(getattr(self, '_AO', {}).keys())}")
-
-
-        # # AO widgets (interactive)
-        # self.AO_widgets = self.create_analog_widgets(AO_prop)
-        # self.ao_toolpalette_widget = self.auto_place_widgets(("Analog Outputs", self.AO_widgets))
-
-        # # AM widgets (read-only) from the same backends
-        # _, self.AM_widgets, _ = self.create_subset_widgets(AM_prop)
-        # self.am_toolpalette_widget = self.auto_place_widgets(("Analog Monitors", self.AM_widgets))
-        # for w in self.AM_widgets.values():
-        #     w.setEnabled(False)
-
-
-
-        # Connectivity buttons
-        self.reconnect_reqrep_button = QtWidgets.QPushButton("Click Here to Reconnect\nREQ-REP socket")
+        # ── Reconnect buttons ──
+        self.reconnect_reqrep_button = QtWidgets.QPushButton(
+            "Click Here to Reconnect\nREQ-REP socket"
+        )
         self.reconnect_reqrep_button.setStyleSheet("background-color: #ffcccc;")
         self.reconnect_reqrep_button.clicked.connect(self.reconnect_reqrep)
         self.reconnect_reqrep_button.hide()
 
-        self.reconnect_pubsub_button = QtWidgets.QPushButton("Click Here to Reconnect\nPUB-SUB socket")
+        self.reconnect_pubsub_button = QtWidgets.QPushButton(
+            "Click Here to Reconnect\nPUB-SUB socket"
+        )
         self.reconnect_pubsub_button.setStyleSheet("background-color: #ffcccc;")
         self.reconnect_pubsub_button.clicked.connect(self.reconnect_pubsub)
         self.reconnect_pubsub_button.hide()
 
-        # Set up the layout
+        # ── Layout ──
         self.main_gui_layout = self.get_tab_layout()
 
-        # Placeholder widgets to hold either the toolpalette or the button
-        # Use the dynamic class to adjust the size of the placeholder widget based
-        # on the size of the toolpalette/button
         self.ao_placeholder = DynamicStackedWidget()
         self.am_placeholder = DynamicStackedWidget()
-        
+
         self.ao_placeholder.addWidget(self.ao_toolpalette_widget)
         self.ao_placeholder.addWidget(self.reconnect_reqrep_button)
         self.am_placeholder.addWidget(self.am_toolpalette_widget)
         self.am_placeholder.addWidget(self.reconnect_pubsub_button)
-        self.main_gui_layout.insertWidget(0, self.ao_placeholder)
-        self.main_gui_layout.insertWidget(1, self.am_placeholder)   
 
-        # Enable Comms Checkbox
+        self.main_gui_layout.insertWidget(0, self.ao_placeholder)
+        self.main_gui_layout.insertWidget(1, self.am_placeholder)
+
+        # EnableComms checkbox
         self.comms_check_box = QtWidgets.QCheckBox("Disable Input")
         self.main_gui_layout.addWidget(self.comms_check_box)
         self.comms_check_box.toggled.connect(self.on_checkbox_toggled)
 
-        # Hide the UI until after trying to establish connection
+        # Hide everything until connection is established
         self.ao_placeholder.hide()
         self.am_placeholder.hide()
         self.comms_check_box.hide()
-        
-        # Connection Failed Button
-        # TODO: define the failed button layout in the QT designer application and store in .ui file
+
+        # Connection-failed button
         self.failed_button = FailureButton()
         self.failed_button.connect_clicked(lambda: self.connect_to_remote())
         self.main_gui_layout.addWidget(self.failed_button)
         self.failed_button.hide()
 
+    # ── Worker setup ─────────────────────────────────────────────────
+
     def initialise_workers(self):
-        # Create the worker
         self.create_worker(
             "main_worker",
             "user_devices.RemoteControl.blacs_workers.RemoteControlWorker",
@@ -507,201 +211,333 @@ class RemoteControlTab(DeviceTab):
                 "port": self.reqrep_port,
                 "child_output_connections": self.child_output_connections,
                 "child_monitor_connections": self.child_monitor_connections,
-            }
+            },
         )
         self.primary_worker = "main_worker"
 
+        # Subscriber thread handles — used to avoid duplicate threads
+        self._heartbeat_thread = None
+        self._subscriber_thread = None
+        self._pubsub_stop_event = threading.Event()
+        self._pubsub_context = zmq.Context()
+
         if self.mock:
             self.reqrep_connected = True
-            self.manual_remote_polling()
+            self._fetch_initial_values()
+            self._start_polling()
         else:
             self.connect_to_remote()
-    
-    # DEPRECATE
-    def manual_remote_polling(self, enable_comms_state=False):    
-        # Start up the remote value polling
-        self.statemachine_timeout_add(500, self.status_monitor)
-        self.statemachine_timeout_add(5000, self.check_remote_values) 
 
-        if enable_comms_state:
-            self.statemachine_timeout_remove(self.check_remote_values_allowed)  
-            self.statemachine_timeout_add(5000, self.check_remote_values)  
-        else:
-            self.statemachine_timeout_remove(self.check_remote_values) 
-            # start up the remote value check which gracefully updates the FPV 
-            self.statemachine_timeout_add(500, self.check_remote_values_allowed)  
+    # ── Connection ───────────────────────────────────────────────────
 
-    # DEPRECATE
-    @define_state(
-        MODE_MANUAL|MODE_BUFFERED|MODE_TRANSITION_TO_BUFFERED|MODE_TRANSITION_TO_MANUAL,True,
-    )
-    def status_monitor(self):
-        response = yield (
-            self.queue_work(self.primary_worker, "check_status")
-        )
-        for connection, value in response.items():
-            self._AO[connection].set_value(float(value), program=False, update_gui=True)
-        return response
-    
-    @define_state(MODE_MANUAL, True)
-    def on_checkbox_toggled(self, state):
-        with qtlock:
-            for widget in self.AO_widgets.values():
-                widget.setEnabled(not state)
-
-        self.statemachine_timeout_remove(self.check_remote_values)  
-        if state:
-            # If checkbox toggled (no comms) we allow/expect remote values to change.
-            # Check them more frequently
-            self.statemachine_timeout_add(500, self.check_remote_values, True)  
-        else:
-            # If checkbox toggled (comms we expect no mistmatch
-            # Check them less frequently
-            self.statemachine_timeout_add(5000, self.check_remote_values, False)
-
-        kwargs = {'enable_comms': not state}
-        yield(self.queue_work(self.primary_worker, 'update_settings', **kwargs))
-    
-    def reconnect_reqrep(self):
-        self.connect_to_reqrep()
-        self.update_gui_status()
-    
-    def reconnect_pubsub(self):
-        self.connect_to_pubsub()
-        self.update_gui_status()
-        
     def connect_to_remote(self):
         self.connect_to_reqrep()
+        self._deferred_pubsub_connect()
+
+    @define_state(MODE_MANUAL, True)
+    def _deferred_pubsub_connect(self):
+        """Start PubSub threads only after the state machine mainloop is running."""
         self.connect_to_pubsub()
 
     @define_state(MODE_MANUAL, True)
     def connect_to_reqrep(self):
-        self.reqrep_connected = yield(self.queue_work(self.primary_worker, 'connect_to_remote'))
-        self.update_gui_status()
+        self.reqrep_connected = yield (
+            self.queue_work(self.primary_worker, 'connect_to_remote')
+        )
+        inmain(self._update_gui_status)
+        if self.reqrep_connected:
+            # Fetch initial values as a separate state machine event
+            # so this generator only has one yield.
+            self._fetch_initial_values()
+
+    @define_state(MODE_MANUAL, True)
+    def _fetch_initial_values(self):
+        """Pull current setpoints from the server so the front panel
+        reflects actual values instead of starting at 0."""
+        remote_values = yield (
+            self.queue_work(self.primary_worker, 'check_remote_values')
+        )
+        if remote_values:
+            self.logger.info(f"Fetched initial setpoints: {remote_values}")
+            inmain(self._update_ao_widgets, remote_values)
+        else:
+            self.logger.warning("Failed to fetch initial setpoints from remote server")
+        self._mark_initial_fetch_done()
+
+    @define_state(MODE_MANUAL, True)
+    def _mark_initial_fetch_done(self):
+        """Allow program_manual to send values now that we have real setpoints."""
+        yield (self.queue_work(self.primary_worker, 'mark_initial_fetch_done'))
+
+    def reconnect_reqrep(self):
+        self.connect_to_reqrep()
+
+    def reconnect_pubsub(self):
+        self.connect_to_pubsub()
 
     def connect_to_pubsub(self):
+        """Start (or restart) the heartbeat subscriber thread."""
+        # Signal any existing threads to stop
+        self._pubsub_stop_event.set()
+        time.sleep(0.05)  # give them a moment
+        self._pubsub_stop_event.clear()
         self.pubsub_connected = False
-        self.heartbeat_thread = threading.Thread(target=self.heartbeat_subscriber)
-        self.heartbeat_thread.daemon = True
-        self.heartbeat_thread.start()
 
-    def heartbeat_subscriber(self):
-        context = zmq.Context()
-        socket = context.socket(zmq.SUB)
-        socket.connect(f"tcp://{self.host}:{self.pubsub_port}")
-        socket.setsockopt_string(zmq.SUBSCRIBE, "heartbeat")
+        self._heartbeat_thread = threading.Thread(
+            target=self._heartbeat_subscriber_loop, daemon=True
+        )
+        self._heartbeat_thread.start()
 
-        poller = zmq.Poller()
-        poller.register(socket, zmq.POLLIN)
+    # ── Polling setup ────────────────────────────────────────────────
 
-        while True:
+    def _start_polling(self):
+        """Begin periodic remote-value checks (called after connection)."""
+        self.statemachine_timeout_add(5000, self.check_remote_values)
+
+    # ── Periodic remote-value check (runs in BLACS state machine) ────
+
+    @define_state(
+        MODE_MANUAL | MODE_BUFFERED | MODE_TRANSITION_TO_BUFFERED | MODE_TRANSITION_TO_MANUAL,
+        True,
+    )
+    def check_remote_values(self):
+        """
+        Periodically poll OUTPUT setpoints from the remote server via REQ-REP.
+        Updates the front-panel widgets to reflect any changes made on the
+        remote GUI side.
+        """
+        remote_values = yield (
+            self.queue_work(self.primary_worker, 'check_remote_values')
+        )
+        if remote_values:
+            inmain(self._update_ao_widgets, remote_values)
+
+    def _update_ao_widgets(self, remote_values):
+        """Update AO front-panel widgets. Runs on GUI thread via inmain()."""
+        for connection, value in remote_values.items():
+            if connection in self.AO_widgets:
+                self._AO[connection].set_value(
+                    float(value), program=False, update_gui=True
+                )
+
+    @define_state(
+        MODE_MANUAL | MODE_BUFFERED | MODE_TRANSITION_TO_BUFFERED | MODE_TRANSITION_TO_MANUAL,
+        True,
+    )
+    def status_monitor(self):
+        """Poll MONITOR values via REQ-REP (legacy — kept for compatibility)."""
+        response = yield (
+            self.queue_work(self.primary_worker, "check_status")
+        )
+        if response:
+            inmain(self._update_monitor_widgets, response)
+
+    def _update_monitor_widgets(self, response):
+        """Update monitor front-panel widgets. Runs on GUI thread via inmain()."""
+        for connection, value in response.items():
+            if connection in self.AM_widgets:
+                self._AO[connection].set_value(
+                    float(value), program=False, update_gui=True
+                )
+
+    # ── Checkbox toggle ──────────────────────────────────────────────
+
+    @define_state(MODE_MANUAL, True)
+    def on_checkbox_toggled(self, state):
+        inmain(self._set_ao_widgets_enabled, not state)
+
+        # Adjust polling rate: faster when comms disabled (remote may change freely)
+        self.statemachine_timeout_remove(self.check_remote_values)
+        if state:
+            self.statemachine_timeout_add(500, self.check_remote_values)
+        else:
+            self.statemachine_timeout_add(5000, self.check_remote_values)
+
+        yield (
+            self.queue_work(self.primary_worker, 'update_settings', enable_comms=not state)
+        )
+
+    def _set_ao_widgets_enabled(self, enabled):
+        """Enable/disable AO widgets. Runs on GUI thread via inmain()."""
+        for widget in self.AO_widgets.values():
+            widget.setEnabled(enabled)
+
+    # ── PUB-SUB: heartbeat subscriber (background thread) ───────────
+
+    def _heartbeat_subscriber_loop(self):
+        """
+        Runs in a daemon thread.  Subscribes to "heartbeat" topic.
+        On first heartbeat -> sets pubsub_connected, starts data subscriber.
+        On missed heartbeat -> sets pubsub_connected=False, retries after backoff.
+
+        The outer while loop ensures automatic reconnection if the server
+        goes down and comes back.
+        """
+        stop = self._pubsub_stop_event
+
+        while not stop.is_set():
+            sock = self._pubsub_context.socket(zmq.SUB)
+            sock.setsockopt(zmq.LINGER, 0)
+            sock.connect(f"tcp://{self.host}:{self.pubsub_port}")
+            sock.setsockopt_string(zmq.SUBSCRIBE, "heartbeat")
+
+            poller = zmq.Poller()
+            poller.register(sock, zmq.POLLIN)
+
             try:
-                socks = dict(poller.poll(2000))  # 5000 ms timeout
-                if socket in socks and socks[socket] == zmq.POLLIN:
-                    message = socket.recv_string(zmq.NOBLOCK)
-                    if message == "heartbeat":
-                        if not self.pubsub_connected:
+                while not stop.is_set():
+                    socks = dict(poller.poll(5000))  # 5 s timeout
+                    if sock in socks:
+                        msg = sock.recv_string(zmq.NOBLOCK)
+                        if msg == "heartbeat" and not self.pubsub_connected:
                             self.pubsub_connected = True
-                            inmain(self.update_gui_status)
-                            self.logger.debug("Pub-sub connection established")
-                            self.start_subscriber()
-                else:
-                    if self.pubsub_connected:
-                        self.pubsub_connected = False
-                        inmain(self.update_gui_status)
-                        self.logger.error("Heartbeat timeout, pub-sub connection lost")
-                    break
+                            self._pubsub_bridge.pubsub_status_changed.emit(True)
+                            self.logger.debug("PUB-SUB heartbeat detected — connected")
+                            self._start_subscriber()
+                    else:
+                        # Missed heartbeat
+                        if self.pubsub_connected:
+                            self.pubsub_connected = False
+                            self._pubsub_bridge.pubsub_status_changed.emit(False)
+                            self.logger.warning("PUB-SUB heartbeat timeout — disconnected")
+                        break  # break inner loop -> outer loop retries
             except zmq.ZMQError as e:
-                self.logger.error(f"ZMQ E rror in heartbeat subscriber: {e}")
-                self.pubsub_connected = False
-                inmain(self.update_gui_status)
-                break
-            
-            time.sleep(1)
+                self.logger.error(f"Heartbeat subscriber ZMQ error: {e}")
+                if self.pubsub_connected:
+                    self.pubsub_connected = False
+                    self._pubsub_bridge.pubsub_status_changed.emit(False)
+            finally:
+                try:
+                    sock.close()
+                except Exception:
+                    pass
 
-    def start_subscriber(self):
-        if not hasattr(self, 'subscriber_thread') or not self.subscriber_thread.is_alive():
-            self.subscriber_thread = threading.Thread(target=self.subscriber_loop)
-            self.subscriber_thread.daemon = True
-            self.subscriber_thread.start()
+            # Back off before retrying (unless told to stop)
+            if not stop.is_set():
+                stop.wait(2.0)
 
-    def subscriber_loop(self):
-        context = zmq.Context()
+    # ── PUB-SUB: data subscriber (background thread) ────────────────
+
+    def _start_subscriber(self):
+        """Launch the data subscriber thread if not already running."""
+        if self._subscriber_thread is not None and self._subscriber_thread.is_alive():
+            return
+        self._subscriber_thread = threading.Thread(
+            target=self._subscriber_loop, daemon=True
+        )
+        self._subscriber_thread.start()
+
+    def _subscriber_loop(self):
+        """
+        Subscribe to monitor connection topics and forward values to
+        the GUI via the signal bridge (thread-safe).
+        """
+        stop = self._pubsub_stop_event
         subscribers = {}
         poller = zmq.Poller()
 
         try:
             for connection in self.child_monitor_connections:
-                subscriber = context.socket(zmq.SUB)
-                subscriber.connect(f"tcp://{self.host}:{self.pubsub_port}")
-                subscriber.setsockopt_string(zmq.SUBSCRIBE, connection)
-                subscribers[connection] = subscriber
-                poller.register(subscriber, zmq.POLLIN)
+                sub = self._pubsub_context.socket(zmq.SUB)
+                sub.setsockopt(zmq.LINGER, 0)
+                sub.connect(f"tcp://{self.host}:{self.pubsub_port}")
+                sub.setsockopt_string(zmq.SUBSCRIBE, connection)
+                subscribers[connection] = sub
+                poller.register(sub, zmq.POLLIN)
 
-            while self.pubsub_connected:
-                try:
-                    socks = dict(poller.poll(timeout=100))
-                    for subscriber in socks:
-                        message = subscriber.recv_string()
-                        connection, value = message.split(" ", 1)
-                        # self.update_gui_with_message(connection, value)    this is not thread safe
-                        inmain(self.update_gui_with_message, connection, value)  #this is thread safe
+            while self.pubsub_connected and not stop.is_set():
+                socks = dict(poller.poll(timeout=500))
+                for sub_sock in socks:
+                    try:
+                        message = sub_sock.recv_string(zmq.NOBLOCK)
+                        parts = message.split(" ", 1)
+                        if len(parts) == 2:
+                            conn, val = parts
+                            self._pubsub_bridge.monitor_value_received.emit(conn, val)
+                    except zmq.ZMQError:
+                        pass
 
-                except zmq.ZMQError as e:
-                    self.logger.error(f"ZMQ error in subscriber loop: {e}")
-
+        except Exception as e:
+            self.logger.error(f"Subscriber loop error: {e}")
         finally:
-            for subscriber in subscribers.values():
-                subscriber.close()
-            inmain(self.update_gui_status)
-            context.term()
+            for sub in subscribers.values():
+                try:
+                    sub.close()
+                except Exception:
+                    pass
 
-    # def update_gui_with_message(self, connection, value):
-    #     if connection in self._monitor_backends:
-    #         mon = self._monitor_backends[connection]
-    #         # Update the monitor backend *and* its widget:
-    #         mon.set_value(float(value), program=False, update_gui=True)
+    # ── Signal slots (run on GUI thread) ─────────────────────────────
 
-    # def update_gui_with_message(self, connection, value):
-    #     if connection in self.AM_widgets:
-    #         self._AO[connection].set_value(float(value), program=False)
+    def _on_pubsub_status_changed(self, connected):
+        """Called on the GUI thread when PUB-SUB connectivity changes."""
+        self.pubsub_connected = connected
+        self._update_gui_status()
 
+    def _on_monitor_value_received(self, connection, value_str):
+        """Called on the GUI thread when a PUB-SUB monitor value arrives."""
+        if connection in self.AM_widgets:
+            try:
+                self._AO[connection].set_value(
+                    float(value_str), program=False, update_gui=True
+                )
+            except (ValueError, KeyError) as e:
+                self.logger.debug(f"Monitor update error for {connection}: {e}")
 
-    def update_gui_with_message(self, connection, value):
-        if hasattr(self, "_monitor_backends") and connection in self._monitor_backends:
-            self._monitor_backends[connection].set_value(float(value), program=False, update_gui=True)
+    # ── GUI status management ────────────────────────────────────────
 
+    def _update_gui_status(self):
+        """Show/hide widgets based on connectivity state.
+        Must be called on the GUI thread (via inmain or Qt signal slot)."""
+        reqrep = self.reqrep_connected
+        pubsub = self.pubsub_connected
 
-    def update_gui_status(self):
-        with qtlock:
-            if not (self.reqrep_connected or self.pubsub_connected):
-                # No connection
-                self.failed_button.show()
+        if not reqrep and not pubsub:
+            # Fully disconnected
+            self.failed_button.show()
+            self.ao_placeholder.hide()
+            self.am_placeholder.hide()
+            self.comms_check_box.hide()
+            return
 
-                self.ao_placeholder.hide()
-                self.am_placeholder.hide()
-                self.comms_check_box.hide()
-            else:
-                if self.reqrep_connected and self.pubsub_connected: # Fully connected
-                    # Check if remote setpoints differ from front panel values every 5 seconds
-                    self._can_check_remote_values = True
-                    self.statemachine_timeout_add(5000, self.check_remote_values) 
-                    
-                    self.ao_placeholder.setCurrentWidget(self.ao_toolpalette_widget)
-                    self.am_placeholder.setCurrentWidget(self.am_toolpalette_widget)
-                    self.comms_check_box.show()
-                elif self.reqrep_connected:
-                    # Check if remote setpoints differ from front panel values every 5 seconds
-                    self._can_check_remote_values = True
-                    self.statemachine_timeout_add(5000, self.check_remote_values) 
-                    
-                    self.ao_placeholder.setCurrentWidget(self.ao_toolpalette_widget)
-                    self.am_placeholder.setCurrentWidget(self.reconnect_pubsub_button)
-                    self.comms_check_box.show()
-                elif self.pubsub_connected:
-                    self.ao_placeholder.setCurrentWidget(self.reconnect_reqrep_button)
-                    self.am_placeholder.setCurrentWidget(self.am_toolpalette_widget)
-                    self.comms_check_box.hide()       
-                self.failed_button.hide()
-                self.ao_placeholder.show()
-                self.am_placeholder.show()
+        # At least one connection — hide failure button, show placeholders
+        self.failed_button.hide()
+        self.ao_placeholder.show()
+        self.am_placeholder.show()
+
+        if reqrep and pubsub:
+            # Fully connected
+            self.ao_placeholder.setCurrentWidget(self.ao_toolpalette_widget)
+            self.am_placeholder.setCurrentWidget(self.am_toolpalette_widget)
+            self.comms_check_box.show()
+            self._start_polling()
+
+        elif reqrep:
+            # REQ-REP only
+            self.ao_placeholder.setCurrentWidget(self.ao_toolpalette_widget)
+            self.am_placeholder.setCurrentWidget(self.reconnect_pubsub_button)
+            self.comms_check_box.show()
+            self._start_polling()
+
+        elif pubsub:
+            # PUB-SUB only
+            self.ao_placeholder.setCurrentWidget(self.reconnect_reqrep_button)
+            self.am_placeholder.setCurrentWidget(self.am_toolpalette_widget)
+            self.comms_check_box.hide()
+
+    def close_tab(self, finalise=True):
+        """Stop PUB-SUB daemon threads before Qt objects are destroyed."""
+        self._pubsub_stop_event.set()
+        self.pubsub_connected = False
+
+        THREAD_JOIN_TIMEOUT = 2.0
+        if self._heartbeat_thread is not None and self._heartbeat_thread.is_alive():
+            self._heartbeat_thread.join(timeout=THREAD_JOIN_TIMEOUT)
+        if self._subscriber_thread is not None and self._subscriber_thread.is_alive():
+            self._subscriber_thread.join(timeout=THREAD_JOIN_TIMEOUT)
+
+        try:
+            self._pubsub_context.term()
+        except Exception:
+            pass
+
+        return super().close_tab(finalise=finalise)

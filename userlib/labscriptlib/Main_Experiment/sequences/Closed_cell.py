@@ -10,7 +10,7 @@ from user_devices.RemoteControl.labscript_devices import RemoteControl, RemoteAn
 # === Initialize pseudoclock ===
 pb = PrawnBlaster(
     name='pb',
-    com_port='COM7',
+    com_port='COM4',
     num_pseudoclocks=2
 )
 
@@ -83,10 +83,11 @@ RemoteAnalogMonitor(
 )
 
 # Define digital output line on PXIe-6535
+DigitalOut('LIF_shutter', ni_6535, 'port0/line0')
 DigitalOut('YAG1_line', ni_6535, 'port0/line1') 
 DigitalOut('YAG2_line', ni_6535, 'port0/line2') 
 DigitalOut('ENH_line', ni_6535, 'port0/line3') 
-DigitalOut('dummy_line', ni_6535, 'port0/line4')    #for even number
+# DigitalOut('dummy_line', ni_6535, 'port0/line4')    #for even number
 
 
 NI_SCOPE(
@@ -115,14 +116,14 @@ t = 0
 add_time_marker(t, "Start", verbose=True)
 
 
-# ##### Trigger the scope ####
-# t_trigger = 0.5e-3      #0.5ms
-# ############################
+##### Trigger the scope ####
+t_trigger = 0.5e-3      #0.5ms
+############################
 
 # Ensure at least 4 samples for DO buffer
 start()
 # TiSa_1_Setpoint.constant(FREQ_RAMP)  # Set desired frequency here
-Vexlum_Setpoint.constant(FREQ_RAMP)    # Set desired frequency here
+# Vexlum_Setpoint.constant(FREQ_RAMP)    # Set desired frequency here
 
 # #YAG triggering
 # YAG1_line.go_low(0)
@@ -139,7 +140,6 @@ if DOUBLE_YAG:
     digital_pulse(YAG1_line, tYAG + YAG_DELAY, 0.5e-3)  
 else:
     digital_pulse(YAG1_line, tYAG, 0.5e-3)
-
 
 digital_pulse(ENH_line, ENH_START, ENH_DURATION)  # ENH pulse
 

@@ -519,3 +519,14 @@ class NI_SCOPEWorker(Worker):
         print('[NI_SCOPE] abort_transition_to_buffered()')
         return self.abort()
 
+    def shutdown(self):
+        print('[NI_SCOPE] shutdown()')
+        try:
+            self.scope.abort()
+        except Exception as e:
+            print(f'[NI_SCOPE] abort() during shutdown (ignored): {e}')
+        try:
+            self.scope.close()
+        except Exception as e:
+            print(f'[NI_SCOPE] close() during shutdown (ignored): {e}')
+

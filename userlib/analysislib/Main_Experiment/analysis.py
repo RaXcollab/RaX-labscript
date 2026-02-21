@@ -92,8 +92,8 @@ if 'Absorption' in trace_data:
     #collect useful indices. Could have also done times.searchsorted()
     trigger_index = np.searchsorted(times,2/1000) # HARDCODED!!
     beforeYAG_index = np.searchsorted(times,1.95/1000) # HARDCODED!! hardcoded values are on the absorption data timeframe.
-    after_abs_index = np.searchsorted(times,10/1000) # HARDCODED!!
-    end_index = np.searchsorted(times,15/1000) # HARDCODED!!
+    after_abs_index = np.searchsorted(times,30/1000) # HARDCODED!!
+    end_index = np.searchsorted(times,5/1000) # HARDCODED!!
 
     # ---- Process Absorption ----
     fit_time = np.concatenate((times[:beforeYAG_index], times[after_abs_index:end_index]))
@@ -125,7 +125,7 @@ if 'Absorption' in trace_data:
                 color='yellow', alpha=0.3, label='ENH window')
 
     # Plot formatting
-    # ax1.set_xlim([0, 15])
+    ax1.set_xlim([0, 20])
     # ax1.set_ylim([-0.05, 0.05])
     ax1.set_xlabel('Time [ms]', fontsize=12)
     ax1.set_ylabel('Offset Value', fontsize=12)
@@ -137,14 +137,14 @@ if 'Absorption' in trace_data:
 ax3 = fig.add_subplot(gs[1, 0])
 if 'Absorption3' in trace_data:
     analog_data_3 = trace_data['Absorption3']
-    times_3 = analog_data_3[0].flatten()
+    times_3 = analog_data_3[0].flatten()-2e-3
     values_3 = analog_data_3[1].flatten()
     ax3.plot(times_3 * 1000, values_3, 'g')
     ax3.axvline(x=tYAG * 1000, color='r', linestyle='--', label='YAG1')
     # ax3.axvline(x=(tYAG + YAG_delay) * 1000, color='r', linestyle='--', label='YAG2')
     # ax3.axvspan((tYAG + ENH_START) * 1000, (tYAG + ENH_START + ENH_DURATION) * 1000,
     #             color='yellow', alpha=0.3, label='ENH window')
-    ax3.set_xlim([0, 80])
+    ax3.set_xlim([0, 20])
     # ax3.set_ylim([-0.3, 0.3])
     ax3.set_xlabel('Time [ms]', fontsize=12)
     ax3.set_ylabel('Value', fontsize=12)
@@ -165,21 +165,21 @@ if 'Absorption3' in trace_data:
 # # ---------------------------------------
 
 
-# # --- Third subplot for PMT (NI-5922) ---
-# ax2 = fig.add_subplot(gs[1, 1])   # span both rows vertically
-# voltages = run.get_trace('NI_SCOPE', raw_data = True)
-# times_SCOPE=np.arange(len(voltages[0]))/1_000_000 #HARD CODED!!! REPLACE WITH SAVE/IMPORT!! -- Shungo
-# times_SCOPE=times_SCOPE*1000 #s to ms
-# ax2.plot(times_SCOPE, voltages[0],label='Ch0',alpha=0.5)
-# # ax2.plot(times_SCOPE, voltages[1],label='Ch1',alpha=0.5)
-# ax2.set_xlim([0, 20])
-# # ax2.set_ylim([-0.07, 0.01])
-# ax2.axvline(x=tYAG*1000, color='r', linestyle='--', label='YAG')
-# ax2.set_title('NI-5922 Readout', fontsize=16)
-# ax2.set_xlabel('Time [ms]', fontsize=16)
-# ax2.set_ylabel('Voltage [V]', fontsize=16)
-# ax2.legend()
-# # ---------------------------------------
+# --- Third subplot for PMT (NI-5922) ---
+ax2 = fig.add_subplot(gs[1, 1])   # span both rows vertically
+voltages = run.get_trace('NI_SCOPE', raw_data = True)
+times_SCOPE=np.arange(len(voltages[0]))/1_000_000 #HARD CODED!!! REPLACE WITH SAVE/IMPORT!! -- Shungo
+times_SCOPE=times_SCOPE*1000 #s to ms
+ax2.plot(times_SCOPE, voltages[0],label='Ch0',alpha=0.5)
+# ax2.plot(times_SCOPE, voltages[1],label='Ch1',alpha=0.5)
+ax2.set_xlim([0, 20])
+ax2.set_ylim([-0.1, 0.01])
+ax2.axvline(x=tYAG*1000, color='r', linestyle='--', label='YAG')
+ax2.set_title('NI-5922 Readout', fontsize=16)
+ax2.set_xlabel('Time [ms]', fontsize=16)
+ax2.set_ylabel('Voltage [V]', fontsize=16)
+ax2.legend()
+# ---------------------------------------
 
 
 
