@@ -148,17 +148,9 @@ Use this template exactly (do not modify the CSS):
 - Skip sections that have no content — do not leave empty headings
 - Metadata MUST include date, commit hash (or "pending"), and context
 
-**Storage location:**
-
-| Changes in... | Note goes in... |
-|---|---|
-| `userlib/analysislib/` | `userlib/analysislib/` |
-| `userlib/user_devices/{Device}/` | That device folder |
-| `.claude/agents/`, `CLAUDE.md`, infrastructure | `userlib/user_devices/` |
-| Sub-repo (`blacs/`, `labscript-devices/`) | Sub-repo root |
-| Cross-cutting | `userlib/` root or most impacted area |
-
-Filename convention: `{Topic}_Notes.html` (PascalCase, e.g., `Analysis_Cleanup_Notes.html`)
+**Storage:** All lab notes go in `notes/` at the repo root.
+**Filename convention:** `YYYY-MM-DD_Topic.html` (e.g., `2026-02-21_BigSkyHub_Integration.html`)
+**Front-facing guide:** `docs/Using_Claude_Code.html` — update when the agent system changes.
 
 ### Deliverable 3: Context Updates (When Warranted)
 

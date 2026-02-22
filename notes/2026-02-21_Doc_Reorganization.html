@@ -1,0 +1,157 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<style>
+  body { font-family: Calibri, Segoe UI, sans-serif; font-size: 11pt; color: #333; max-width: 900px; margin: 20px auto; }
+  h1 { font-size: 20pt; border-bottom: 2px solid #0078d4; padding-bottom: 6px; color: #0078d4; }
+  h2 { font-size: 14pt; color: #0078d4; margin-top: 24px; }
+  h3 { font-size: 12pt; color: #444; }
+  table { border-collapse: collapse; width: 100%; margin: 10px 0; }
+  th, td { border: 1px solid #ccc; padding: 6px 10px; text-align: left; vertical-align: top; }
+  th { background: #f0f0f0; font-weight: bold; }
+  code { font-family: Consolas, monospace; font-size: 10pt; background: #f4f4f4; padding: 1px 4px; border-radius: 3px; }
+  pre { background: #f4f4f4; border: 1px solid #ddd; border-radius: 4px; padding: 10px; font-family: Consolas, monospace; font-size: 10pt; overflow-x: auto; white-space: pre; }
+  .badge { display: inline-block; padding: 2px 8px; border-radius: 10px; color: white; font-size: 9pt; font-weight: bold; }
+  .green { background: #4CAF50; }
+  .orange { background: #F57C00; }
+  .yellow { background: #FFC107; color: #333; }
+  .blue { background: #0078d4; }
+  .purple { background: #9C27B0; }
+  .red { background: #f44336; }
+  .meta { color: #888; font-size: 10pt; }
+  ol, ul { margin: 6px 0; padding-left: 24px; }
+  li { margin: 3px 0; }
+  strong { color: #222; }
+  .callout { background: #e8f4fd; border-left: 4px solid #0078d4; padding: 8px 12px; margin: 10px 0; }
+  .warn { background: #fff3cd; border-left: 4px solid #ffc107; padding: 8px 12px; margin: 10px 0; }
+</style>
+</head>
+<body>
+
+<h1>Documentation Reorganization &amp; Unified User Guide</h1>
+<p class="meta">
+  <strong>Date:</strong> 2026-02-21 &nbsp;&bull;&nbsp;
+  <strong>Commit:</strong> <code>pending</code> &nbsp;&bull;&nbsp;
+  <strong>Context:</strong> Consolidate scattered lab notes into <code>notes/</code>, merge "Using Claude Code" + Agent System Guide into unified <code>docs/Using_Claude_Code.html</code>
+</p>
+
+<h2>What Changed</h2>
+<p>
+Lab notes were scattered across 4 directories. The front-facing "Using Claude Code" OneNote guide was outdated (only 2 agents, pre-split). The Agent System Guide HTML was created during the agent split but buried in <code>userlib/user_devices/</code>. This session centralized all notes into <code>notes/</code> with date prefixes, merged the two guides into a single unified document at <code>docs/Using_Claude_Code.html</code>, and fixed stale agent references.
+</p>
+
+<h2>Files Changed</h2>
+<table>
+  <tr><th>File</th><th>Change</th><th>Why</th></tr>
+  <tr>
+    <td><code>docs/Using_Claude_Code.html</code></td>
+    <td><strong>NEW</strong> &mdash; Unified front-facing guide merging OneNote content + Agent System Guide. 14 sections, table-first layout, all 6 agents with updated colors.</td>
+    <td>Single canonical reference for new users, replaces two outdated/scattered docs</td>
+  </tr>
+  <tr>
+    <td><code>notes/2026-02-21_*.html</code> (6 files)</td>
+    <td><strong>MOVED</strong> from <code>userlib/analysislib/</code>, <code>userlib/user_devices/</code>, <code>userlib/user_devices/BigSkyHub/</code>, <code>userlib/user_devices/RasteringDevice/</code></td>
+    <td>Centralize all session notes with consistent date-prefixed naming</td>
+  </tr>
+  <tr>
+    <td><code>userlib/user_devices/Agent_System_Guide.html</code></td>
+    <td><strong>DELETED</strong></td>
+    <td>Content fully merged into unified guide</td>
+  </tr>
+  <tr>
+    <td><code>CLAUDE.md</code></td>
+    <td>Updated Session Documentation section: storage convention now points to <code>notes/</code>, front-facing guide at <code>docs/</code></td>
+    <td>Keep CLAUDE.md references current</td>
+  </tr>
+  <tr>
+    <td><code>.claude/agents/session-notes.md</code></td>
+    <td>Replaced storage table + filename convention with simplified <code>notes/</code> rule</td>
+    <td>Future notes go to one place</td>
+  </tr>
+  <tr>
+    <td><code>.claude/agents/device-builder.md</code></td>
+    <td>Changed <code>color: orange</code> to <code>color: "#0078D4"</code> (blue)</td>
+    <td>Was identical to amo-expert; now all 6 agents have distinct colors</td>
+  </tr>
+  <tr>
+    <td><code>userlib/user_devices/New_GUI_Agent_Prompt.md</code></td>
+    <td>Fixed stale reference: <code>labscript-amo-expert</code> &rarr; <code>blacs-expert</code> + <code>device-builder</code></td>
+    <td>Agent split changed who handles architecture vs scaffolding questions</td>
+  </tr>
+</table>
+
+<h2>Key Decisions</h2>
+
+<h3>Centralized notes/ folder vs per-area storage</h3>
+<div class="callout">
+The old convention ("store notes near the code they describe") led to notes scattered across 4+ directories. Date-prefixed names in a single folder are easier to find and browse. The topic name provides enough context without needing directory proximity.
+</div>
+
+<h3>Unified guide vs two separate docs</h3>
+<p>
+The "Using Claude Code" OneNote guide (practical how-to) and Agent System Guide (detailed agent reference) had overlapping sections and diverging information (2 agents vs 6, old colors vs new). Merging eliminates the divergence risk and gives new users one document to read. The unified guide uses tables-first layout: the 6-agent table IS the overview, no redundant prose paragraph before it.
+</p>
+
+<h3>Agent color fix</h3>
+<p>
+<span class="badge blue">device-builder</span> was changed from orange to blue. Previously it was identical to <span class="badge orange">amo-expert</span>, making badges indistinguishable. Final palette: blue, orange, red, yellow, green, purple &mdash; all distinct.
+</p>
+
+<h2>Before / After</h2>
+<table>
+  <tr><th>Aspect</th><th>Before</th><th>After</th></tr>
+  <tr>
+    <td>Note locations</td>
+    <td>4 directories, no naming convention</td>
+    <td><code>notes/YYYY-MM-DD_Topic.html</code></td>
+  </tr>
+  <tr>
+    <td>Front-facing guide</td>
+    <td>OneNote doc (stale, 2 agents) + Agent_System_Guide.html (buried, 6 agents)</td>
+    <td><code>docs/Using_Claude_Code.html</code> (one doc, current)</td>
+  </tr>
+  <tr>
+    <td>Agent colors</td>
+    <td>device-builder = amo-expert = orange</td>
+    <td>6 distinct colors</td>
+  </tr>
+  <tr>
+    <td>New_GUI_Agent_Prompt.md</td>
+    <td>References <code>labscript-amo-expert</code> for all BLACS questions</td>
+    <td>References <code>blacs-expert</code> (architecture) + <code>device-builder</code> (scaffolding)</td>
+  </tr>
+</table>
+
+<h2>Session Introspection</h2>
+<table>
+  <tr><th>Observation</th><th>Category</th><th>Recommended Action</th></tr>
+  <tr>
+    <td>User had to reject ExitPlanMode twice to add requirements (editorial style, wrap-up deliverables)</td>
+    <td>Friction</td>
+    <td>Before calling ExitPlanMode, proactively ask: "Anything else before I finalize?" This avoids the reject-edit-resubmit cycle.</td>
+  </tr>
+  <tr>
+    <td>session-notes was not launched at session start (this session continued from a compacted context)</td>
+    <td>Friction</td>
+    <td>For continued sessions, the orchestration rule should still apply. Add note to CLAUDE.md: "For resumed/continued sessions, re-launch session-notes if not already running."</td>
+  </tr>
+  <tr>
+    <td>The unified guide was written in one pass without needing revision</td>
+    <td>Positive</td>
+    <td>The table-first, sections-from-plan approach worked well. The plan's detailed structure outline made implementation straightforward.</td>
+  </tr>
+  <tr>
+    <td>Stale reference in New_GUI_Agent_Prompt.md was caught by user, not by assistant</td>
+    <td>Friction</td>
+    <td>When splitting/renaming agents, add a step to grep for old agent names across all .md files. Could be a checklist item in session-notes wrap-up.</td>
+  </tr>
+  <tr>
+    <td>Color fix (device-builder orange &rarr; blue) was straightforward once planned</td>
+    <td>Positive</td>
+    <td>The user's request to see the plan before editing was valuable &mdash; it caught that diagnostics badges in the System Guide were inconsistent (gray vs yellow).</td>
+  </tr>
+</table>
+
+</body>
+</html>

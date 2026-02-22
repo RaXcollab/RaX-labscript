@@ -100,8 +100,8 @@ For analysis-specific questions, use the `lyse-analysis` agent. It knows the ful
 
 The `session-notes` agent tracks decisions and produces structured documentation. See Agent Orchestration below for when to invoke it.
 
-**Lab note storage:** device changes → device folder, analysis → analysislib/, cross-cutting → most impacted area.
-Existing lab notes: `Analysis_Cleanup_Notes.html`, `BLACS_Integration_Notes.html`, `BigSkyHub_Integration_Notes.html`, `Agent_Configuration_Notes.html`.
+**Lab notes** are stored in `notes/` with date prefixes: `YYYY-MM-DD_Topic.html`.
+**Front-facing user guide:** `docs/Using_Claude_Code.html` — update when the agent system changes.
 
 ### Agent Orchestration
 

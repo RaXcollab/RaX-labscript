@@ -18,4 +18,4 @@ This program is integrated into the BLACS experiment control system (labscript-s
 - `{connection_2}` — {description}
 - `{connection_1}_monitor` / `{connection_2}_monitor` — read-only monitors
 
-**If modifying the ZMQ protocol** (connection names, message format, PUB-SUB topics), the BLACS device must also be updated. For BLACS architecture questions (state machines, Qt thread safety, device base classes), defer to the `labscript-amo-expert` agent in the labscript-suite workspace (`C:\Users\radmo\labscript-suite\.claude\agents\`).
+**If modifying the ZMQ protocol** (connection names, message format, PUB-SUB topics), the BLACS device must also be updated. For BLACS architecture questions (state machines, Qt thread safety), defer to the `blacs-expert` agent. For device class scaffolding (workers, tabs, register_classes), defer to the `device-builder` agent. Both live in `C:\Users\radmo\labscript-suite\.claude\agents\`.
