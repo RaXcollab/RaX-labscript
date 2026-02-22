@@ -76,6 +76,7 @@ For the full protocol spec, see `userlib/user_devices/BLACS_COMMUNICATION_CONTRA
 |------|-------------------|--------------|-------------|-------------|----------------------|
 | Laser Lock | `RemoteControl` | LabVIEW (not in git) | 3796 | 3797 | `LaserLockGUI` |
 | Rastering GUI | `RasteringDevice` | `C:\Users\radmo\Desktop\GUIs\rastering` | 55535 | 55536 | `RasteringGUI` |
+| BigSky YAG Hub | `BigSkyHub` | `C:\Users\radmo\Desktop\GUIs\BigSkyControl` | 55540 | 55541 | `BigSkyLasers` |
 
 When adding a new external GUI, add it to this table.
 
@@ -87,11 +88,11 @@ When adding a new external GUI, add it to this table.
 2. **Check the external GUI folder for `.claude/agents/`** — if a local agent exists, use it for domain-specific questions about the GUI's internals. Use `labscript-amo-expert` for BLACS-side architecture. Point the external agent to `BLACS_COMMUNICATION_CONTRACT.md` so it understands the protocol.
 3. **External GUI side:** Add ZMQ server handling `HELLO`, `PROGRAM_VALUE`, `CHECK_VALUE`. Optionally add PUB-SUB with heartbeat. See the contract doc for the full spec.
 4. **Create device class (if subclassing):** 5 files in `userlib/user_devices/{DeviceName}/`: `__init__.py`, `labscript_devices.py`, `register_classes.py`, `blacs_tabs.py`, `blacs_workers.py`.
-5. **Connection table entry:** Import, instantiate with host/ports, add `RemoteAnalogOut` + `RemoteAnalogMonitor` children.
+5. **Connection table entry:** Import, instantiate with host/ports. Either add `RemoteAnalogOut` + `RemoteAnalogMonitor` children manually (like RasteringDevice) or auto-create them in the device's `__init__` (like BigSkyHub, preferred for fixed channel sets).
 6. **Test:** Start external GUI first, then BLACS. Verify REQ-REP (spinbox sync), PUB-SUB (heartbeat + monitors), and buffered mode.
 7. **Update this file:** Add the new GUI to the External GUI Registry table above.
 
-**Worked examples:** `RemoteControl` (generic, laser lock) | `RasteringDevice` (subclassed, raster stepping + status indicators)
+**Worked examples:** `RemoteControl` (generic, laser lock) | `RasteringDevice` (subclassed, raster stepping + status indicators) | `BigSkyHub` (subclassed, safe command ordering + auto-created children)
 
 ### Analysis Utilities
 
@@ -122,7 +123,7 @@ Invoke with: "start taking notes" (early) or "wrap up this session" (end). The a
 | Sub-repo (`blacs/`, `labscript-devices/`) | Sub-repo root |
 | Cross-cutting | `userlib/` root or most impacted area |
 
-Existing lab notes: `Analysis_Cleanup_Notes.html`, `BLACS_Integration_Notes.html`, `Agent_Configuration_Notes.html`.
+Existing lab notes: `Analysis_Cleanup_Notes.html`, `BLACS_Integration_Notes.html`, `BigSkyHub_Integration_Notes.html`, `Agent_Configuration_Notes.html`.
 
 ### State Machine Event Ordering
 

@@ -6,6 +6,7 @@ from labscript_devices.NI_DAQmx.models.NI_PXIe_6535 import NI_PXIe_6535
 from user_devices.NI_SCOPE.labscript_devices import NI_SCOPE
 from user_devices.RemoteControl.labscript_devices import RemoteControl, RemoteAnalogOut, RemoteAnalogMonitor
 from user_devices.RasteringDevice.labscript_devices import RasteringDevice
+from user_devices.BigSkyHub.labscript_devices import BigSkyHub
 
 
 # === Initialize pseudoclock ===
@@ -128,6 +129,10 @@ RemoteAnalogMonitor(
     limits=(0, 25.0),
     decimals=4,
 )
+
+# === BigSky YAG Laser Communication === #
+BigSkyHub(name='BigSkyLasers')
+# All 28 channels (9 outputs + 5 monitors × 2 lasers) auto-created
 
 # Define digital output line on PXIe-6535
 DigitalOut('LIF_shutter', ni_6535, 'port0/line0')
