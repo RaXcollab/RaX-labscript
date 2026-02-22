@@ -36,6 +36,7 @@ BLACS is the **client** (ZMQ REQ socket). The external GUI is the **server** (ZM
 
 - On timeout: BLACS resets the REQ socket and retries on the next cycle. The server should not hang indefinitely.
 - On error response: BLACS logs the error. During buffered shots, errors abort the shot.
+- **Servers MUST return `{"status": "ERROR", "message": "..."}` for rejected commands.** Do not swallow failures by always returning SUCCESS. If a command is rejected (e.g., mode change while laser is active), return ERROR so BLACS can detect the failure. Silent SUCCESS on rejected commands causes state desync between BLACS and the remote device.
 
 ## ZMQ PUB-SUB Protocol (Asynchronous)
 

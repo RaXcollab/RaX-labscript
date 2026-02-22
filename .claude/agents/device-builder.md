@@ -67,11 +67,23 @@ Must re-initialize PUB-SUB thread handles since `super().initialise_workers()` i
 ### Worker Override
 Override `transition_to_buffered` for custom shot programming logic. All other methods (`init`, `program_manual`, `check_remote_values`, `post_experiment`, `shutdown`) work as-is from the base class.
 
+### Custom Tab Widgets (Non-Spinbox Controls)
+
+If you're building a tab with toggle buttons, checkboxes, or combo boxes instead of the default analog spinboxes, be aware of three BLACS base class behaviors:
+
+1. **`program_manual` sends ALL values** — clicking one toggle sends PROGRAM_VALUE for every channel. For devices with ordering constraints (e.g., mode changes require standby), override `program_manual` with `_last_sent_values` delta tracking. See BigSkyHub pattern.
+
+2. **`check_remote_values` races with user input** — the 5s poll can revert a toggle the user just clicked. Add a `_recently_changed` cooldown (10s) in `_update_ao_widgets` to suppress poll updates for recently-changed channels.
+
+3. **Hardware interlocks need mirroring** — if the external GUI disables controls based on device state (e.g., mode combos disabled while laser is active), the BLACS tab must mirror this. Track state from monitors and disable widgets accordingly.
+
+Full patterns with code templates: see "BLACS Device Patterns" section in `CLAUDE.md`.
+
 ## Completed Integrations (Use as Reference)
 
 - `userlib/user_devices/RemoteControl/` — Generic. Laser lock GUI. Pure REQ-REP + PUB-SUB.
 - `userlib/user_devices/RasteringDevice/` — Subclassed. Adds `move_to_next` in worker, status indicators in tab, manual children.
-- `userlib/user_devices/BigSkyHub/` — Subclassed. Auto-created children, safe command ordering in `transition_to_buffered` via `COMMAND_ORDER` dict.
+- `userlib/user_devices/BigSkyHub/` — Subclassed. Auto-created children, safe command ordering in `transition_to_buffered`, custom tab with toggle buttons/combo boxes/monitor indicators, `_last_sent_values` delta tracking, `_recently_changed` cooldown, mode combo interlocking.
 
 ## External GUI Registry
 
