@@ -23,6 +23,9 @@ COMMAND_ORDER = {
 # Regex to split "YAG_1_voltage" → ("YAG_1", "voltage")
 _PREFIX_RE = re.compile(r'^(.+?_\d+)_(.+)$')
 
+# Fire-and-forget command suffixes — no readable state to poll via CHECK_VALUE
+_COMMAND_SUFFIXES = {'warmup', 'start_lasing', 'stop'}
+
 
 class BigSkyWorker(RemoteControlWorker):
     """RemoteControlWorker subclass that enforces safe command ordering.
@@ -32,6 +35,97 @@ class BigSkyWorker(RemoteControlWorker):
     HDF5-programmed channels by laser prefix and sends them in the order
     defined by ``COMMAND_ORDER``.
     """
+
+    def check_remote_values(self):
+        """Override to skip fire-and-forget command channels and handle unregistered lasers.
+
+        Skips command channels (warmup, start_lasing, stop) which have no
+        readable state.  Also gracefully skips connections for lasers not yet
+        launched in the BigSky GUI (unknown connection errors).
+        """
+        if not self.remote_comms.connected:
+            return None
+
+        remote_values = {}
+        for connection in self.child_output_connections:
+            m = _PREFIX_RE.match(connection)
+            if m and m.group(2) in _COMMAND_SUFFIXES:
+                continue
+            response = self.remote_comms.check_remote_value(connection)
+            if response is None:
+                self.logger.warning(f"check_remote_values: timeout for {connection}")
+                return None
+            if response.get("status") != "SUCCESS":
+                msg = response.get("message", "")
+                if "unknown connection" in msg:
+                    self.logger.debug(
+                        f"check_remote_values: skipping {connection} (not registered in GUI)"
+                    )
+                    continue
+                # Other errors: raise as usual
+                self._check_response(response, f"check_remote_values({connection})")
+            remote_values[connection] = float(response["value"])
+        return remote_values
+
+    def check_all_remote_values(self):
+        """Override to skip command channels and handle unregistered lasers.
+
+        Used for pre/post-shot monitor snapshots.  Iterates outputs + monitors.
+        """
+        if not self.remote_comms.connected:
+            return {}
+
+        remote_values = {}
+        for connection in self.child_connections:
+            m = _PREFIX_RE.match(connection)
+            if m and m.group(2) in _COMMAND_SUFFIXES:
+                continue
+            response = self.remote_comms.check_remote_value(connection)
+            if response is None:
+                self.logger.warning(f"check_all_remote_values: timeout for {connection}")
+                continue
+            if response.get("status") != "SUCCESS":
+                msg = response.get("message", "")
+                if "unknown connection" in msg:
+                    self.logger.debug(
+                        f"check_all_remote_values: skipping {connection} (not registered in GUI)"
+                    )
+                    continue
+                self._check_response(response, f"check_all({connection})")
+            remote_values[connection] = float(response["value"])
+        return remote_values
+
+    def program_manual(self, front_panel_values):
+        """Override to skip command channels and handle unregistered lasers.
+
+        Command channels (warmup, start_lasing, stop) should never be sent
+        from manual front-panel interaction — they are buffered-mode only.
+        """
+        if not self.remote_comms.connected:
+            return {}
+        if not self._initial_fetch_done:
+            return {}
+
+        for connection in self.child_output_connections:
+            m = _PREFIX_RE.match(connection)
+            if m and m.group(2) in _COMMAND_SUFFIXES:
+                continue
+            value = front_panel_values[connection]
+            response = self.remote_comms.program_value(
+                connection, value, wait_for_lock=False
+            )
+            if response is None:
+                self.logger.warning(f"program_manual: timeout for {connection}")
+                continue
+            if response.get("status") != "SUCCESS":
+                msg = response.get("message", "")
+                if "unknown connection" in msg:
+                    self.logger.debug(
+                        f"program_manual: skipping {connection} (not registered in GUI)"
+                    )
+                    continue
+                self._check_response(response, f"program_manual({connection}={value})")
+        return {}
 
     def transition_to_buffered(self, device_name, h5_filepath, front_panel_values, fresh):
         if not self.enable_comms:
