@@ -89,7 +89,7 @@ For the full protocol spec: `userlib/user_devices/BLACS_COMMUNICATION_CONTRACT.m
 
 - **BLACS**: Executes shots, manages device tabs. Each device has a tab (GUI) and worker (hardware communication).
 - **runmanager**: Queues shots, manages globals, parameter scans, generates HDF5 shot files.
-- **lyse**: Post-shot analysis. Processes HDF5 files with user-defined routines.
+- **lyse**: Post-shot analysis. Processes HDF5 files with user-defined routines. For analysis-specific questions (writing/optimizing lyse scripts, using filtering/NI_SCOPE/Abs_data utilities, analysis notebooks), defer to the **`lyse-analysis`** agent.
 - **labscript**: DSL for writing experiment sequences.
 
 Shot lifecycle: labscript script → runmanager compilation → HDF5 shot file → BLACS execution (`program_manual` → `transition_to_buffered` → `transition_to_manual` → `post_experiment`) → lyse analysis.

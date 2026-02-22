@@ -19,7 +19,8 @@ The parent repo's `.gitignore` excludes the backend folders (`blacs/`, `labscrip
 userlib/
   user_devices/          ← Custom BLACS device classes (RemoteControl, NI_SCOPE, NuvuCamera, edge_counter)
   labscriptlib/          ← Experiment sequences, connection tables, globals
-  analysislib/           ← Lyse analysis scripts
+  analysislib/           ← Lyse analysis scripts + utility libraries
+    Main_Experiment/     ← Active analysis: analysis.py (single-shot), filtering.py, NI_SCOPE.py, Abs_data.py
 logs/
   BLACS.log              ← Main BLACS log
   BLACS_faulthandler.log ← C-level crash traces (segfaults)
@@ -91,6 +92,16 @@ When adding a new external GUI, add it to this table.
 7. **Update this file:** Add the new GUI to the External GUI Registry table above.
 
 **Worked examples:** `RemoteControl` (generic, laser lock) | `RasteringDevice` (subclassed, raster stepping + status indicators)
+
+### Analysis Utilities
+
+The analysis utility library in `userlib/analysislib/Main_Experiment/` provides reusable functions for lyse scripts and Jupyter notebooks:
+
+- **`filtering.py`**: `process_trace()` (adaptive drift correction with slope check), `smooth()`, `butter_lowpass_filter()`
+- **`NI_SCOPE.py`**: `plot_ni_scope_channels()`, `load_ni_scope_sequences()`, `ensure_time_ms()`
+- **`Abs_data.py`**: `load_sequence()` (threaded batch loader), `extract_metadata()`
+
+For analysis-specific questions, use the `lyse-analysis` agent. It knows the full utility API and the two analysis contexts: real-time lyse scripts (performance-critical) and offline Jupyter notebooks (thoroughness).
 
 ### State Machine Event Ordering
 
