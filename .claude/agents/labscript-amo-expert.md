@@ -28,6 +28,9 @@ This workspace has read access to external GUI codebases. See the **External GUI
 Known external agents:
 - **`ablation-tech`** in `C:\Users\radmo\Desktop\GUIs\rastering\.claude\agents\` — rastering GUI motor control, calibration, raster patterns
 
+Known workspace agents:
+- **`session-notes`** — active note-taking during sessions + wrap-up documentation (commit messages, HTML lab notes, context updates). Launch proactively at the start of significant sessions and resume at milestones.
+
 When integrating an external GUI into BLACS, always read the external GUI's ZMQ server code to discover: connection names, PUB-SUB topics, response format. Point external agents to `userlib/user_devices/BLACS_COMMUNICATION_CONTRACT.md` for the protocol spec.
 
 ## Critical BLACS Knowledge

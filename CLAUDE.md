@@ -103,6 +103,27 @@ The analysis utility library in `userlib/analysislib/Main_Experiment/` provides 
 
 For analysis-specific questions, use the `lyse-analysis` agent. It knows the full utility API and the two analysis contexts: real-time lyse scripts (performance-critical) and offline Jupyter notebooks (thoroughness).
 
+### Session Documentation
+
+The `session-notes` agent produces structured documentation during and after work sessions. It operates in two modes:
+
+1. **Active note-taking** — launched early in a session, resumed at milestones to log decisions, bugs, patterns, and changes into `.claude/session-scratch.md` (transient, not committed)
+2. **Wrap-up** — compiles scratch notes + git diffs into three deliverables: commit message, HTML lab note (for OneNote), and CLAUDE.md/agent prompt updates
+
+Invoke with: "start taking notes" (early) or "wrap up this session" (end). The agent drafts all artifacts and asks for confirmation before writing.
+
+**Lab note storage convention:**
+
+| Changes in... | Note goes in... |
+|---|---|
+| `userlib/analysislib/` | `userlib/analysislib/` |
+| `userlib/user_devices/{Device}/` | That device folder |
+| `.claude/agents/`, `CLAUDE.md` | `userlib/user_devices/` |
+| Sub-repo (`blacs/`, `labscript-devices/`) | Sub-repo root |
+| Cross-cutting | `userlib/` root or most impacted area |
+
+Existing lab notes: `Analysis_Cleanup_Notes.html`, `BLACS_Integration_Notes.html`, `Agent_Configuration_Notes.html`.
+
 ### State Machine Event Ordering
 
 Events queued by `@define_state` methods execute in FIFO order in the mainloop thread. The base class `DeviceTab.__init__` runs: `initialise_GUI()` → `restore_save_data()` → `initialise_workers()` → `program_device()`. Events queued during `initialise_workers` (like `connect_to_reqrep`) execute before `program_device`.

@@ -1,0 +1,133 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<style>
+  body { font-family: Calibri, Segoe UI, sans-serif; font-size: 11pt; color: #333; max-width: 900px; margin: 20px auto; }
+  h1 { font-size: 20pt; border-bottom: 2px solid #0078d4; padding-bottom: 6px; color: #0078d4; }
+  h2 { font-size: 14pt; color: #0078d4; margin-top: 24px; }
+  h3 { font-size: 12pt; color: #444; }
+  table { border-collapse: collapse; width: 100%; margin: 10px 0; }
+  th, td { border: 1px solid #ccc; padding: 6px 10px; text-align: left; vertical-align: top; }
+  th { background: #f0f0f0; font-weight: bold; }
+  code { font-family: Consolas, monospace; font-size: 10pt; background: #f4f4f4; padding: 1px 4px; border-radius: 3px; }
+  pre { background: #f4f4f4; border: 1px solid #ddd; border-radius: 4px; padding: 10px; font-family: Consolas, monospace; font-size: 10pt; overflow-x: auto; white-space: pre; }
+  .badge { display: inline-block; padding: 2px 8px; border-radius: 10px; color: white; font-size: 9pt; font-weight: bold; }
+  .green { background: #4CAF50; }
+  .orange { background: #F57C00; }
+  .yellow { background: #FFC107; color: #333; }
+  .blue { background: #0078d4; }
+  .purple { background: #9C27B0; }
+  .gray { background: #9E9E9E; }
+  .red { background: #f44336; }
+  .meta { color: #888; font-size: 10pt; }
+  ol, ul { margin: 6px 0; padding-left: 24px; }
+  li { margin: 3px 0; }
+  strong { color: #222; }
+  .callout { background: #e8f4fd; border-left: 4px solid #0078d4; padding: 8px 12px; margin: 10px 0; }
+  .warn { background: #fff3cd; border-left: 4px solid #ffc107; padding: 8px 12px; margin: 10px 0; }
+</style>
+</head>
+<body>
+
+<h1>Session Notes Meta Agent</h1>
+<p class="meta">
+  <strong>Date:</strong> 2026-02-21 &nbsp;&bull;&nbsp;
+  <strong>Commit:</strong> <code>d5b6541</code> &nbsp;&bull;&nbsp;
+  <strong>Context:</strong> Adding a documentation agent that actively scribes during sessions and produces structured deliverables
+</p>
+
+<h2>What Changed</h2>
+<p>We created a new <span class="badge purple">session-notes</span> agent that operates in two modes: active note-taking during a work session (logging decisions, bugs, patterns into a scratch file) and wrap-up at the end (compiling scratch notes + git diffs into commit messages, HTML lab notes, and CLAUDE.md updates). This addresses the recurring manual overhead of producing three separate documentation artifacts that all derive from the same "what changed and why" analysis.</p>
+
+<h2>Files Changed</h2>
+<table>
+  <tr><th>File</th><th>Change</th><th>Why</th></tr>
+  <tr>
+    <td><code>.claude/agents/session-notes.md</code></td>
+    <td><strong>NEW</strong> &mdash; full agent prompt with two-mode operation, HTML template, scratch file format, pattern recognition guidance</td>
+    <td>Automate the three documentation deliverables into a single agent invocation</td>
+  </tr>
+  <tr>
+    <td><code>CLAUDE.md</code></td>
+    <td>Added "Session Documentation" section after "Analysis Utilities"</td>
+    <td>Document the agent's existence, invocation patterns, and lab note storage conventions so all agents and users know about it</td>
+  </tr>
+  <tr>
+    <td><code>.claude/agents/labscript-amo-expert.md</code></td>
+    <td>Added <code>session-notes</code> to "Known workspace agents" list</td>
+    <td>The orchestrator agent needs to know to proactively launch note-taking at session start</td>
+  </tr>
+</table>
+
+<h2>Key Decisions</h2>
+
+<h3>1. Active Scribe vs. Post-Hoc Summarizer</h3>
+<p>The original design was a post-hoc agent that runs at the end of a session and reconstructs what happened from git diffs. We upgraded to a two-mode design where the agent actively takes notes during the session. The rationale: the richest documentation comes from capturing decisions <em>as they happen</em>, not reconstructing them from diffs after the fact. Git diffs show <em>what</em> changed but not <em>why</em>.</p>
+
+<h3>2. Scratch File as Memory</h3>
+<p>The agent maintains <code>.claude/session-scratch.md</code> as a transient running log. Each entry is timestamped and categorized (DECISION, BUG, PATTERN, CHANGE, TODO, CONTEXT). This file bridges the gap between ephemeral conversation context and persistent deliverables. It is deleted after wrap-up and never committed.</p>
+
+<h3>3. Pattern Recognition</h3>
+<p>One of the most valuable features: as scratch entries accumulate, the agent looks for recurring themes (e.g., "third Qt thread safety issue this month", "this import pattern keeps appearing"). These become a "Patterns Observed" section in the lab note. Humans tend to miss patterns across long sessions.</p>
+
+<div class="callout">
+<strong>Resume-based workflow:</strong> The agent is launched once via <code>Task</code> and then <em>resumed</em> at milestones using <code>Task(resume=agentId)</code>. This preserves its full context across the session without re-explaining everything each time.
+</div>
+
+<h2>How to Use</h2>
+<ol>
+  <li><strong>Start of session:</strong> Say "start taking notes" &mdash; the agent creates the scratch file</li>
+  <li><strong>During session:</strong> The main assistant resumes the agent at milestones with tagged observations</li>
+  <li><strong>End of session:</strong> Say "wrap up this session" &mdash; the agent compiles everything into:
+    <ul>
+      <li>Commit message (per repo, following existing conventions)</li>
+      <li>HTML lab note (stored contextually near the changed code)</li>
+      <li>CLAUDE.md / agent prompt updates (only when structural changes warrant it)</li>
+    </ul>
+  </li>
+  <li>Review drafts, confirm, and the agent writes the files</li>
+</ol>
+
+<h2>Updated Agent Summary</h2>
+<table>
+  <tr><th>Agent</th><th>Location</th><th>Role</th></tr>
+  <tr>
+    <td><span class="badge orange">labscript-amo-expert</span></td>
+    <td><code>labscript-suite/.claude/agents/</code></td>
+    <td>BLACS architecture, device development, integration planning</td>
+  </tr>
+  <tr>
+    <td><span class="badge yellow">labscript-diagnostics</span></td>
+    <td><code>labscript-suite/.claude/agents/</code></td>
+    <td>Log analysis, error triage, debugging</td>
+  </tr>
+  <tr>
+    <td><span class="badge green">lyse-analysis</span></td>
+    <td><code>labscript-suite/.claude/agents/</code></td>
+    <td>Lyse scripts (performance), analysis notebooks (thoroughness), utility APIs</td>
+  </tr>
+  <tr>
+    <td><span class="badge purple">session-notes</span></td>
+    <td><code>labscript-suite/.claude/agents/</code></td>
+    <td>Active note-taking, commit messages, HTML lab notes, context updates</td>
+  </tr>
+  <tr>
+    <td><span class="badge blue">ablation-tech</span></td>
+    <td><code>rastering/.claude/agents/</code></td>
+    <td>Rastering GUI internals: motors, calibration, patterns, ZMQ server</td>
+  </tr>
+</table>
+
+<h2>Lab Note Storage Convention</h2>
+<table>
+  <tr><th>Changes in...</th><th>Note goes in...</th></tr>
+  <tr><td><code>userlib/analysislib/</code></td><td><code>userlib/analysislib/</code></td></tr>
+  <tr><td><code>userlib/user_devices/{Device}/</code></td><td>That device folder</td></tr>
+  <tr><td><code>.claude/agents/</code>, <code>CLAUDE.md</code></td><td><code>userlib/user_devices/</code></td></tr>
+  <tr><td>Sub-repo (<code>blacs/</code>, <code>labscript-devices/</code>)</td><td>Sub-repo root</td></tr>
+  <tr><td>Cross-cutting</td><td><code>userlib/</code> root or most impacted area</td></tr>
+</table>
+
+</body>
+</html>
