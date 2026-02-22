@@ -1,3 +1,5 @@
+# BACKUP ONLY — not loaded by BLACS. See connection_table.py for the active version.
+
 # from labscript import *
 # from labscriptlib.Main_Experiment.subsequences.subsequences import digital_pulse
 # from labscript_devices.PrawnBlaster.labscript_devices import PrawnBlaster

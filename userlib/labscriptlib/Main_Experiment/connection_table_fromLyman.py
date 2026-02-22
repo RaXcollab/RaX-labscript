@@ -1,3 +1,5 @@
+# BACKUP ONLY — not loaded by BLACS. See connection_table.py for the active version.
+
 from labscript import start, stop, add_time_marker, AnalogOut, DigitalOut, AnalogIn
 # from labscript_devices.PrawnBlaster import PrawnBlaster
 from labscript_devices.PrawnBlaster.labscript_devices import PrawnBlaster #08/18/2025 Shungo

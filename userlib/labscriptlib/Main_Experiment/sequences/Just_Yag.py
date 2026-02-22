@@ -1,3 +1,5 @@
+# LEGACY (lyman29 era) — uses old hardware (COM12, NI_6363). Not compatible with current connection table.
+
 ##### Unknown import, can probably delete ##################
 # from multiprocessing import connection
 
