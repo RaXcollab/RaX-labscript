@@ -131,8 +131,8 @@ RemoteAnalogMonitor(
 )
 
 # === BigSky YAG Laser Communication === #
-BigSkyHub(name='BigSkyLasers')
-# All 28 channels (9 outputs + 5 monitors × 2 lasers) auto-created
+BigSkyHub(name='BigSkyLasers',num_lasers=1, laser_prefix="YAG", host="127.0.0.1")
+# All channels auto-created
 
 # Define digital output line on PXIe-6535
 DigitalOut('LIF_shutter', ni_6535, 'port0/line0')

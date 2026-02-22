@@ -36,6 +36,13 @@ class BigSkyWorker(RemoteControlWorker):
     defined by ``COMMAND_ORDER``.
     """
 
+    def init(self):
+        super().init()
+        # Track last-sent values so program_manual only sends changes.
+        # Prevents re-sending lamps=1 when only lamp_mode changed, which
+        # would cause the mode change to be rejected (requires standby).
+        self._last_sent_values = {}
+
     def check_remote_values(self):
         """Override to skip fire-and-forget command channels and handle unregistered lasers.
 
@@ -65,6 +72,8 @@ class BigSkyWorker(RemoteControlWorker):
                 # Other errors: raise as usual
                 self._check_response(response, f"check_remote_values({connection})")
             remote_values[connection] = float(response["value"])
+        # Seed last-sent tracking so program_manual knows the remote state
+        self._last_sent_values.update(remote_values)
         return remote_values
 
     def check_all_remote_values(self):
@@ -96,10 +105,12 @@ class BigSkyWorker(RemoteControlWorker):
         return remote_values
 
     def program_manual(self, front_panel_values):
-        """Override to skip command channels and handle unregistered lasers.
+        """Override to skip command channels, handle unregistered lasers,
+        and only send values that actually changed.
 
-        Command channels (warmup, start_lasing, stop) should never be sent
-        from manual front-panel interaction — they are buffered-mode only.
+        Sending only changed values prevents re-activating the laser when
+        the user only changed lamp_mode or qswitch_mode (mode changes
+        require the laser to be in standby).
         """
         if not self.remote_comms.connected:
             return {}
@@ -111,6 +122,9 @@ class BigSkyWorker(RemoteControlWorker):
             if m and m.group(2) in _COMMAND_SUFFIXES:
                 continue
             value = front_panel_values[connection]
+            # Only send if value actually changed from last known state
+            if self._last_sent_values.get(connection) == value:
+                continue
             response = self.remote_comms.program_value(
                 connection, value, wait_for_lock=False
             )
@@ -125,6 +139,7 @@ class BigSkyWorker(RemoteControlWorker):
                     )
                     continue
                 self._check_response(response, f"program_manual({connection}={value})")
+            self._last_sent_values[connection] = value
         return {}
 
     def transition_to_buffered(self, device_name, h5_filepath, front_panel_values, fresh):

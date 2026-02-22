@@ -36,7 +36,7 @@ class BigSkyHub(RemoteControl):
         ("qswitch_monitor",     "",   (0, 1),    0, 1),
     ]
 
-    def __init__(self, name, num_lasers=2, laser_prefix="YAG",
+    def __init__(self, name, num_lasers=1, laser_prefix="YAG",
                  host="127.0.0.1", reqrep_port=55540, pubsub_port=55541,
                  mock=False, **kwargs):
         super().__init__(
