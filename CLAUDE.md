@@ -116,17 +116,26 @@ Invoke agents proactively based on task type. Don't wait for the user to ask.
 
 | Task type | Agents to invoke | When |
 |---|---|---|
-| Any non-trivial workflow | `session-notes` (background) | At session start, always |
-| New device integration | + `device-builder` (planning + implementation) | During plan/design/build |
-| BLACS crash / thread issue | + `blacs-expert` → `labscript-diagnostics` | Immediately |
-| Experiment sequence design | + `amo-expert` | When writing sequences or connection tables |
-| Analysis work | + `lyse-analysis` | When touching analysislib/ |
+| New device integration | `device-builder` (planning + implementation) | During plan/design/build |
+| BLACS crash / thread issue | `blacs-expert` → `labscript-diagnostics` | Immediately |
+| Experiment sequence design | `amo-expert` | When writing sequences or connection tables |
+| Analysis work | `lyse-analysis` | When touching analysislib/ |
 
-**session-notes is mandatory for ALL workflows.** Launch in background at session start. Resume at milestones. Wrap up at session end.
+**session-notes:** At session start, ask the user if they want session-notes tracking (use AskUserQuestion, short yes/no). If yes, launch in background and resume at milestones. If no, skip — but still offer wrap-up deliverables at session end.
 
 **Plan mode integration:** Use specialized agents (`device-builder`, `blacs-expert`, `amo-expert`) as your Explore/Plan agents for domain-matching tasks. Don't default to generic Explore/Plan when a specialized agent exists.
 
-**Wrap-up deliverables (via session-notes):** commit message, HTML lab note, CLAUDE.md/agent updates, session introspection.
+**Small fixes (single-file, ~10 lines, obvious approach):** Don't use full multi-phase plan mode. Instead, state the fix in a few sentences, then ask the user for permission to proceed. One cycle, not three.
+
+**Full plan mode:** Multi-file changes, architectural decisions, unclear requirements, or anything the user explicitly requests planning for.
+
+**Wrap-up deliverables:** Every plan must end with a Deliverables section (after Verification). This ensures they are planned upfront, not forgotten. Execute deliverables only after the user confirms verification passed.
+
+Standard deliverables:
+1. Commit(s) — to correct repo(s)
+2. HTML lab note — `notes/YYYY-MM-DD_Topic.html`
+3. CLAUDE.md updates — if conventions/registry changed
+4. Session introspection — what went well, what to improve, lessons
 
 ### State Machine Event Ordering
 

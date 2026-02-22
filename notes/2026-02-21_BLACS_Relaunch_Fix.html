@@ -1,0 +1,108 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<style>
+  body { font-family: Calibri, Segoe UI, sans-serif; font-size: 11pt; color: #333; max-width: 900px; margin: 20px auto; }
+  h1 { font-size: 20pt; border-bottom: 2px solid #0078d4; padding-bottom: 6px; color: #0078d4; }
+  h2 { font-size: 14pt; color: #0078d4; margin-top: 24px; }
+  h3 { font-size: 12pt; color: #444; }
+  table { border-collapse: collapse; width: 100%; margin: 10px 0; }
+  th, td { border: 1px solid #ccc; padding: 6px 10px; text-align: left; vertical-align: top; }
+  th { background: #f0f0f0; font-weight: bold; }
+  code { font-family: Consolas, monospace; font-size: 10pt; background: #f4f4f4; padding: 1px 4px; border-radius: 3px; }
+  pre { background: #f4f4f4; border: 1px solid #ddd; border-radius: 4px; padding: 10px; font-family: Consolas, monospace; font-size: 10pt; overflow-x: auto; white-space: pre; }
+  .badge { display: inline-block; padding: 2px 8px; border-radius: 10px; color: white; font-size: 9pt; font-weight: bold; }
+  .green { background: #4CAF50; }
+  .orange { background: #F57C00; }
+  .yellow { background: #FFC107; color: #333; }
+  .blue { background: #0078d4; }
+  .purple { background: #9C27B0; }
+  .gray { background: #9E9E9E; }
+  .red { background: #f44336; }
+  .meta { color: #888; font-size: 10pt; }
+  ol, ul { margin: 6px 0; padding-left: 24px; }
+  li { margin: 3px 0; }
+  strong { color: #222; }
+  .callout { background: #e8f4fd; border-left: 4px solid #0078d4; padding: 8px 12px; margin: 10px 0; }
+  .warn { background: #fff3cd; border-left: 4px solid #ffc107; padding: 8px 12px; margin: 10px 0; }
+</style>
+</head>
+<body>
+
+<h1>Fix: BLACS Relaunch Crash After Connection Table Recompile</h1>
+<p class="meta">
+  <strong>Date:</strong> 2026-02-21 &nbsp;&bull;&nbsp;
+  <strong>Repo:</strong> labscript-utils &nbsp;&bull;&nbsp;
+  <strong>Commit:</strong> <code>c2c767c</code>
+</p>
+
+<h2>Problem</h2>
+<p>
+After recompiling the connection table and clicking "Restart", BLACS sometimes
+failed to relaunch with this error:
+</p>
+<pre>pywintypes.error: (87, 'SetConsoleMode', 'The parameter is incorrect.')</pre>
+<p>
+The crash was intermittent &mdash; it depended on timing between the parent process
+exiting and the child process starting up.
+</p>
+
+<h2>Root Cause</h2>
+<p>
+BLACS relaunches itself via <code>subprocess.Popen([sys.executable] + sys.argv)</code>
+in <code>blacs/__main__.py:124</code> with no console creation flags. The child process
+inherits the parent's console handle. When the parent exits, that handle becomes stale.
+</p>
+<p>
+At import time, <code>labscript_utils/__init__.py</code> calls
+<code>zprocess.disable_quick_edit()</code>, which:
+</p>
+<ol>
+  <li>Calls <code>GetConsoleMode()</code> &mdash; succeeds (wrapped in try/except in zprocess)</li>
+  <li>Computes a new mode with quick-edit disabled</li>
+  <li>Calls <code>SetConsoleMode(new_mode)</code> &mdash; <span class="badge red">FAILS</span> (no try/except in zprocess)</li>
+</ol>
+<p>
+The gap is in the <code>zprocess</code> library: it protects <code>GetConsoleMode()</code>
+but not <code>SetConsoleMode()</code>.
+</p>
+
+<h2>Fix</h2>
+<p>
+Wrapped the <code>zprocess.disable_quick_edit()</code> call in
+<code>labscript_utils/__init__.py</code> with a try/except:
+</p>
+<pre>try:
+    zprocess.disable_quick_edit()
+except Exception:
+    # Console handle may be stale after BLACS relaunch via subprocess.Popen().
+    # Not critical for GUI apps - safe to ignore.
+    pass</pre>
+
+<h2>Why This Approach</h2>
+<div class="callout">
+  <strong>Workaround over root cause fix:</strong> An alternative was to change the
+  <code>Popen</code> call to use <code>CREATE_NEW_CONSOLE</code> or
+  <code>CREATE_NO_WINDOW</code> flags. However, changing process creation flags could
+  affect logging and console output visibility. Since <code>disable_quick_edit</code> is
+  non-essential for a Qt GUI app, the try/except is the safer and simpler fix.
+</div>
+
+<h2>Files Changed</h2>
+<table>
+  <tr><th>File</th><th>Change</th></tr>
+  <tr>
+    <td><code>labscript-utils/labscript_utils/__init__.py</code></td>
+    <td>Wrapped <code>disable_quick_edit()</code> in try/except (lines 97&ndash;105)</td>
+  </tr>
+</table>
+
+<h2>Verification</h2>
+<p>
+Tested by recompiling the connection table and restarting BLACS from PowerShell.
+BLACS now relaunches successfully.
+</p>
+
+</body>
+</html>
