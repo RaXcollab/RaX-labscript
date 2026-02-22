@@ -1,0 +1,209 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<style>
+  body { font-family: Calibri, Segoe UI, sans-serif; font-size: 11pt; color: #333; max-width: 900px; margin: 20px auto; }
+  h1 { font-size: 20pt; border-bottom: 2px solid #0078d4; padding-bottom: 6px; color: #0078d4; }
+  h2 { font-size: 14pt; color: #0078d4; margin-top: 24px; }
+  h3 { font-size: 12pt; color: #444; }
+  table { border-collapse: collapse; width: 100%; margin: 10px 0; }
+  th, td { border: 1px solid #ccc; padding: 6px 10px; text-align: left; vertical-align: top; }
+  th { background: #f0f0f0; font-weight: bold; }
+  code { font-family: Consolas, monospace; font-size: 10pt; background: #f4f4f4; padding: 1px 4px; border-radius: 3px; }
+  pre { background: #f4f4f4; border: 1px solid #ddd; border-radius: 4px; padding: 10px; font-family: Consolas, monospace; font-size: 10pt; overflow-x: auto; white-space: pre; }
+  .badge { display: inline-block; padding: 2px 8px; border-radius: 10px; color: white; font-size: 9pt; font-weight: bold; }
+  .green { background: #4CAF50; }
+  .orange { background: #F57C00; }
+  .yellow { background: #FFC107; color: #333; }
+  .blue { background: #0078d4; }
+  .purple { background: #9C27B0; }
+  .gray { background: #9E9E9E; }
+  .red { background: #f44336; }
+  .meta { color: #888; font-size: 10pt; }
+  ol, ul { margin: 6px 0; padding-left: 24px; }
+  li { margin: 3px 0; }
+  strong { color: #222; }
+  .callout { background: #e8f4fd; border-left: 4px solid #0078d4; padding: 8px 12px; margin: 10px 0; }
+  .warn { background: #fff3cd; border-left: 4px solid #ffc107; padding: 8px 12px; margin: 10px 0; }
+</style>
+</head>
+<body>
+
+<h1>Agent System Guide</h1>
+<p class="meta">
+  <strong>Date:</strong> 2026-02-21 &nbsp;&bull;&nbsp;
+  <strong>Version:</strong> 1.0 &nbsp;&bull;&nbsp;
+  <strong>Context:</strong> Canonical reference for the 6-agent system in the RaX Labscript suite workspace
+</p>
+
+<h2>Overview</h2>
+<p>
+The workspace uses 6 specialized agents stored in <code>.claude/agents/</code>. Each agent has a focused domain and defers to other agents for out-of-scope questions. The main assistant uses the Agent Orchestration table in <code>CLAUDE.md</code> to select which agents to invoke for a given task.
+</p>
+
+<h2>The 6 Agents</h2>
+<table>
+  <tr><th>Agent</th><th>File</th><th>Domain</th><th>Invoke When</th></tr>
+  <tr>
+    <td><span class="badge purple">session-notes</span></td>
+    <td><code>session-notes.md</code></td>
+    <td>Active note-taking during sessions, wrap-up documentation (commit messages, HTML lab notes, context updates, introspection)</td>
+    <td>Every non-trivial session (mandatory)</td>
+  </tr>
+  <tr>
+    <td><span class="badge orange">device-builder</span></td>
+    <td><code>device-builder.md</code></td>
+    <td>Scaffolding new BLACS device classes: 5-file RemoteControl pattern, worker/tab overrides, auto-child creation, connection table entries</td>
+    <td>Creating or modifying device classes in <code>userlib/user_devices/</code></td>
+  </tr>
+  <tr>
+    <td><span class="badge red">blacs-expert</span></td>
+    <td><code>blacs-expert.md</code></td>
+    <td>BLACS internals: Qt thread safety (<code>inmain</code> vs <code>qtlock</code>), state machine event ordering, PUB-SUB threading, <code>_initial_fetch_done</code> guard</td>
+    <td>BLACS crashes, segfaults, access violations, event ordering bugs</td>
+  </tr>
+  <tr>
+    <td><span class="badge orange">amo-expert</span></td>
+    <td><code>labscript-amo-expert.md</code></td>
+    <td>Experiment sequences (labscript DSL), connection table architecture, NI PXIe hardware, runmanager scans, shot lifecycle</td>
+    <td>Writing sequences, configuring hardware, designing experiments</td>
+  </tr>
+  <tr>
+    <td><span class="badge gray">labscript-diagnostics</span></td>
+    <td><code>labscript-diagnostics.md</code></td>
+    <td>Log analysis (<code>BLACS.log</code>, <code>BLACS_faulthandler.log</code>), error classification, common error patterns</td>
+    <td>Runtime errors, log interpretation, crash diagnosis</td>
+  </tr>
+  <tr>
+    <td><span class="badge green">lyse-analysis</span></td>
+    <td><code>lyse-analysis.md</code></td>
+    <td>Post-shot analysis scripts, utility libraries (<code>filtering.py</code>, <code>NI_SCOPE.py</code>, <code>Abs_data.py</code>), lyse single-shot vs. multi-shot, Jupyter notebooks</td>
+    <td>Writing or modifying analysis code in <code>userlib/analysislib/</code></td>
+  </tr>
+</table>
+
+<h2>Orchestration Rules</h2>
+
+<div class="callout">
+The main assistant selects agents based on the task type. These rules are codified in the Agent Orchestration section of <code>CLAUDE.md</code>.
+</div>
+
+<table>
+  <tr><th>Task Type</th><th>Agents</th><th>When</th></tr>
+  <tr>
+    <td>Any non-trivial workflow</td>
+    <td><span class="badge purple">session-notes</span> (background)</td>
+    <td>At session start, always</td>
+  </tr>
+  <tr>
+    <td>New device integration</td>
+    <td>+ <span class="badge orange">device-builder</span></td>
+    <td>During planning and implementation</td>
+  </tr>
+  <tr>
+    <td>BLACS crash / thread issue</td>
+    <td>+ <span class="badge red">blacs-expert</span> then <span class="badge gray">labscript-diagnostics</span></td>
+    <td>Immediately</td>
+  </tr>
+  <tr>
+    <td>Experiment sequence design</td>
+    <td>+ <span class="badge orange">amo-expert</span></td>
+    <td>When writing sequences or connection tables</td>
+  </tr>
+  <tr>
+    <td>Analysis work</td>
+    <td>+ <span class="badge green">lyse-analysis</span></td>
+    <td>When touching <code>analysislib/</code></td>
+  </tr>
+</table>
+
+<h3>Plan Mode</h3>
+<p>
+When operating in plan mode, the assistant should use specialized agents (<span class="badge orange">device-builder</span>, <span class="badge red">blacs-expert</span>, <span class="badge orange">amo-expert</span>) as its Explore/Plan agents for domain-matching tasks, rather than defaulting to generic exploration.
+</p>
+
+<h2>The Deferral Pattern</h2>
+<p>
+Each agent has a "Defers To" section listing other agents it hands off to for out-of-scope questions. This prevents agents from attempting work outside their domain and creates a directed graph of expertise.
+</p>
+
+<pre>
+amo-expert ──────┬──► device-builder ──► blacs-expert
+                 │                           ▲
+lyse-analysis ───┤                           │
+                 │                           │
+diagnostics ─────┴───────────────────────────┘
+
+session-notes ◄── all agents (documentation)
+</pre>
+
+<p>Examples:</p>
+<ul>
+  <li><span class="badge orange">amo-expert</span> defers to <span class="badge orange">device-builder</span> for creating new device classes</li>
+  <li><span class="badge orange">device-builder</span> defers to <span class="badge red">blacs-expert</span> for Qt thread safety questions</li>
+  <li><span class="badge gray">labscript-diagnostics</span> defers to <span class="badge red">blacs-expert</span> for architecture questions</li>
+  <li><span class="badge green">lyse-analysis</span> defers to <span class="badge orange">amo-expert</span> for experiment design context</li>
+  <li>All agents note that <span class="badge purple">session-notes</span> should already be running</li>
+</ul>
+
+<h2>Session Notes Workflow</h2>
+
+<div class="callout">
+<strong>session-notes is mandatory for all non-trivial workflows.</strong> The assistant launches it in the background at session start.
+</div>
+
+<h3>Two Modes</h3>
+<ol>
+  <li><strong>Active note-taking</strong> &mdash; Resumed at milestones to log decisions, bugs, patterns, and structural changes into <code>.claude/session-scratch.md</code> (transient, not committed). If file writes are unavailable (e.g., plan mode), notes accumulate in agent memory instead.</li>
+  <li><strong>Wrap-up</strong> &mdash; Compiles scratch notes + git diffs into 4 deliverables:
+    <ul>
+      <li><strong>Commit message</strong> &mdash; Follows repo conventions (imperative title, file-level bullets with what + why)</li>
+      <li><strong>HTML lab note</strong> &mdash; Structured document for OneNote with decisions, bugs, patterns, file change tables</li>
+      <li><strong>Context updates</strong> &mdash; Proposed edits to <code>CLAUDE.md</code> or agent prompts (when warranted)</li>
+      <li><strong>Session introspection</strong> &mdash; What went well, friction points, recommended actions</li>
+    </ul>
+  </li>
+</ol>
+
+<h3>Lab Note Storage Convention</h3>
+<table>
+  <tr><th>Changes In</th><th>Note Goes In</th></tr>
+  <tr><td><code>userlib/analysislib/</code></td><td><code>userlib/analysislib/</code></td></tr>
+  <tr><td><code>userlib/user_devices/{Device}/</code></td><td>That device folder</td></tr>
+  <tr><td><code>.claude/agents/</code>, <code>CLAUDE.md</code>, infrastructure</td><td><code>userlib/user_devices/</code></td></tr>
+  <tr><td>Sub-repo (<code>blacs/</code>, <code>labscript-devices/</code>)</td><td>Sub-repo root</td></tr>
+  <tr><td>Cross-cutting</td><td><code>userlib/</code> root or most impacted area</td></tr>
+</table>
+
+<h2>Where Things Live</h2>
+<table>
+  <tr><th>What</th><th>Path</th></tr>
+  <tr><td>Agent prompts (6 files)</td><td><code>.claude/agents/*.md</code></td></tr>
+  <tr><td>Orchestration rules</td><td><code>CLAUDE.md</code> &rarr; Agent Orchestration section</td></tr>
+  <tr><td>Permissions (allowed tools)</td><td><code>.claude/settings.json</code></td></tr>
+  <tr><td>Scratch notes (transient)</td><td><code>.claude/session-scratch.md</code> (not committed)</td></tr>
+  <tr><td>HTML lab notes</td><td>See storage convention above</td></tr>
+  <tr><td>ZMQ protocol spec</td><td><code>userlib/user_devices/BLACS_COMMUNICATION_CONTRACT.md</code></td></tr>
+</table>
+
+<h2>External Agents</h2>
+<p>
+Some external GUI codebases have their own agents in their <code>.claude/agents/</code> folders. These are used by the main assistant when working on integration tasks that span both the Labscript workspace and the GUI codebase.
+</p>
+<table>
+  <tr><th>Agent</th><th>Location</th><th>Domain</th></tr>
+  <tr>
+    <td><code>ablation-tech</code></td>
+    <td><code>C:\Users\radmo\Desktop\GUIs\rastering\.claude\agents\</code></td>
+    <td>Rastering GUI motor control, calibration, raster patterns</td>
+  </tr>
+  <tr>
+    <td><code>bigsky-yag-laser-controller</code></td>
+    <td><code>C:\Users\radmo\Desktop\GUIs\BigSkyControl\.claude\agents\</code></td>
+    <td>Big Sky YAG laser GUI, serial protocol, safety interlocks</td>
+  </tr>
+</table>
+
+</body>
+</html>

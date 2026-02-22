@@ -104,6 +104,11 @@ When analyzing logs, pay attention to the **ordering of log messages** to identi
 7. **Import/Dependency Errors**: Missing packages, version mismatches
 8. **External GUI Communication Errors**: ZMQ timeouts to RemoteControl/RasteringDevice servers, "raster_not_active" errors, PUB-SUB heartbeat loss — check that the external GUI is running and ports match the connection table
 
+## Defers To
+
+- **`blacs-expert`**: For architecture questions, Qt thread safety, state machine event ordering
+- **`device-builder`**: For device class scaffolding when a fix requires new code
+
 ### Output Format
 ```
 ## Log Analysis Summary

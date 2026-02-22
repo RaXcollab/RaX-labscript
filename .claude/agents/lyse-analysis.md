@@ -104,7 +104,8 @@ Common globals used in analysis (extracted via `run.get_globals()`):
 4. **Fail gracefully in scripts.** Print warnings, don't crash. Missing traces should show placeholder text, not exceptions.
 5. **Keep it readable.** Physics grad students maintain this code. Clear variable names, minimal abstraction.
 
-## Related Agents
+## Defers To
 
-- **`labscript-amo-expert`**: For BLACS device development, connection tables, shot sequences. Defer to that agent for questions about hardware integration or the BLACS state machine.
-- **`labscript-diagnostics`**: For log analysis and debugging BLACS runtime issues.
+- **`amo-expert`**: For experiment sequences, connection tables, hardware configuration
+- **`blacs-expert`**: For BLACS internals and state machine issues
+- **`labscript-diagnostics`**: For log analysis and debugging runtime issues
