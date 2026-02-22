@@ -26,9 +26,18 @@ def butter_lowpass(lowcut, fs, order=5):
     sos = butter(order, low, analog=False, btype='lowpass', output='sos')
     return sos
 
-def process_trace(time_ms, signal, tYAG, beforeYAG_time=1.95, after_abs_time=10.0, end_time=15.0, filter_on=True):
+def process_trace(time_ms, signal, tYAG_ms,
+                  margin_ms=0.05, tail_ms=1.0,
+                  slope_warn_threshold=0.01, filter_on=True):
     """
     Remove linear drift and baseline offset from a trace.
+
+    Fitting regions are determined automatically:
+      - Before region: time_ms < tYAG_ms - margin_ms
+      - After region:  time_ms > time_ms[-1] - tail_ms
+
+    A slope check on the after-region residuals warns if the signal
+    has not fully decayed (i.e., the late-time background is not flat).
 
     Parameters
     ----------
@@ -36,58 +45,62 @@ def process_trace(time_ms, signal, tYAG, beforeYAG_time=1.95, after_abs_time=10.
         Time axis in ms.
     signal : 1D array
         Raw voltage trace (single shot).
-    tYAG : float
+    tYAG_ms : float
         YAG trigger time in ms.
-    beforeYAG_time : float
-        Upper bound of pre-YAG region for fitting (ms).
-    after_abs_time : float
-        Start of post-absorption region for fitting (ms).
-    end_time : float
-        End of post-absorption region for fitting (ms).
+    margin_ms : float
+        Buffer before tYAG for the pre-YAG fitting region (ms).
+    tail_ms : float
+        Duration of the late-time tail used for fitting (ms).
+    slope_warn_threshold : float
+        If the slope of the after-region residuals (V/ms) exceeds this,
+        print a warning that the signal may not have decayed.
     filter_on : bool
-        If True → remove linear drift + baseline.
-        If False → return original signal.
+        If True -> remove linear drift + baseline.
+        If False -> return original signal.
 
     Returns
     -------
     corrected_signal : 1D array
     """
-
     if not filter_on:
         return signal.copy()
 
-    # Convert times to indices
-    trigger_index = np.searchsorted(time_ms, tYAG)
-    before_idx = np.searchsorted(time_ms, beforeYAG_time)
-    after_idx = np.searchsorted(time_ms, after_abs_time)
-    end_idx = np.searchsorted(time_ms, end_time)
+    # Determine fitting regions automatically
+    before_mask = time_ms < (tYAG_ms - margin_ms)
+    after_mask = time_ms > (time_ms[-1] - tail_ms)
 
-    # Build fitting region (pre-YAG + late-time region)
-    fit_time = np.concatenate((time_ms[:before_idx],
-                               time_ms[after_idx:end_idx]))
-    fit_data = np.concatenate((signal[:before_idx],
-                               signal[after_idx:end_idx]))
+    fit_time = np.concatenate((time_ms[before_mask], time_ms[after_mask]))
+    fit_data = np.concatenate((signal[before_mask], signal[after_mask]))
 
     if len(fit_time) < 5:
-        # Not enough points to fit safely
         return signal.copy()
 
-    # Initial guess
+    # Linear drift fit
     slope_guess = (fit_data[-1] - fit_data[0]) / (fit_time[-1] - fit_time[0])
     intercept_guess = np.mean(fit_data)
 
-    popt, _ = curve_fit(line_func,
-                        fit_time,
-                        fit_data,
+    popt, _ = curve_fit(line_func, fit_time, fit_data,
                         p0=[slope_guess, intercept_guess])
-
     slope, intercept = popt
 
     # Remove linear trend
     flat_data = signal - line_func(time_ms, slope, intercept)
 
-    # Remove DC offset (pre-trigger region)
-    offset = np.mean(flat_data[:trigger_index])
+    # Remove DC offset (pre-trigger baseline)
+    trigger_index = np.searchsorted(time_ms, tYAG_ms)
+    if trigger_index > 0:
+        offset = np.mean(flat_data[:trigger_index])
+    else:
+        offset = 0.0
     corrected_signal = flat_data - offset
+
+    # Slope check on the after-region residuals
+    after_residuals = corrected_signal[after_mask]
+    after_times = time_ms[after_mask]
+    if len(after_times) >= 2:
+        after_slope = (after_residuals[-1] - after_residuals[0]) / (after_times[-1] - after_times[0])
+        if abs(after_slope) > slope_warn_threshold:
+            print(f"  [process_trace] Warning: late-time slope = {after_slope:.4f} V/ms "
+                  f"(threshold {slope_warn_threshold}). Signal may not have fully decayed.")
 
     return corrected_signal
