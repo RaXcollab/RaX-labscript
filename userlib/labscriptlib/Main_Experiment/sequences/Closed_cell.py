@@ -5,6 +5,8 @@ from labscript_devices.NI_DAQmx.models.NI_PXIe_6361 import NI_PXIe_6361
 from labscript_devices.NI_DAQmx.models.NI_PXIe_6535 import NI_PXIe_6535
 from user_devices.NI_SCOPE.labscript_devices import NI_SCOPE
 from user_devices.RemoteControl.labscript_devices import RemoteControl, RemoteAnalogOut, RemoteAnalogMonitor
+from user_devices.RasteringDevice.labscript_devices import RasteringDevice
+from user_devices.BigSkyHub.labscript_devices import BigSkyHub
 
 
 # === Initialize pseudoclock ===
@@ -81,6 +83,57 @@ RemoteAnalogMonitor(
     units="THz",
     decimals=9
 )
+
+# === Rastering GUI Communication === #
+RasteringDevice(
+    name='RasteringGUI',
+    host="127.0.0.1",
+    reqrep_port=55535,
+    pubsub_port=55536,
+    mock=False,
+)
+
+RemoteAnalogOut(
+    name='Raster_X',
+    parent_device=RasteringGUI,
+    connection="laser_raster_x_coord",
+    units="mm",
+    limits=(0, 25.0),
+    decimals=4,
+    step_size=0.001,
+)
+
+RemoteAnalogOut(
+    name='Raster_Y',
+    parent_device=RasteringGUI,
+    connection="laser_raster_y_coord",
+    units="mm",
+    limits=(0, 25.0),
+    decimals=4,
+    step_size=0.001,
+)
+
+RemoteAnalogMonitor(
+    name='Raster_X_Monitor',
+    parent_device=RasteringGUI,
+    connection="laser_raster_x_coord_monitor",
+    units="mm",
+    limits=(0, 25.0),
+    decimals=4,
+)
+
+RemoteAnalogMonitor(
+    name='Raster_Y_Monitor',
+    parent_device=RasteringGUI,
+    connection="laser_raster_y_coord_monitor",
+    units="mm",
+    limits=(0, 25.0),
+    decimals=4,
+)
+
+# === BigSky YAG Laser Communication === #
+BigSkyHub(name='BigSkyLasers')
+# All 28 channels (9 outputs + 5 monitors × 2 lasers) auto-created
 
 # Define digital output line on PXIe-6535
 DigitalOut('LIF_shutter', ni_6535, 'port0/line0')

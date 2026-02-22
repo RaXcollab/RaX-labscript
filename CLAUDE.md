@@ -13,13 +13,20 @@ This is a **multi-repo workspace**. The parent directory (`labscript-suite/`) is
 
 The parent repo's `.gitignore` excludes the backend folders (`blacs/`, `labscript-devices/`, `labscript-utils/`, `app_saved_configs/`, `labconfig/`, `logs/`). **Commit to each repo separately.** Do not push without asking.
 
+### This PC: Main_Experiment
+
+This machine runs the `Main_Experiment` apparatus. Only `userlib/labscriptlib/Main_Experiment/` is relevant — ignore `lyman29/` and other labscriptlib folders.
+
+**Connection table convention:** BLACS loads only the file named `connection_table.py`. Other connection table files (e.g. `connection_table_closed_cell.py`) are storage/backups and are not active. Sequence files must duplicate the active connection table header exactly — keep them in sync when devices are added or removed.
+
 ### Key Paths
 
 ```
 userlib/
   user_devices/          ← Custom BLACS device classes (RemoteControl, NI_SCOPE, NuvuCamera, edge_counter)
-  labscriptlib/          ← Experiment sequences, connection tables, globals
-  analysislib/           ← Lyse analysis scripts + utility libraries
+  labscriptlib/
+    Main_Experiment/     ← THIS PC's sequences, connection tables, globals (ignore other folders)
+  analysislib/
     Main_Experiment/     ← Active analysis: analysis.py (single-shot), filtering.py, NI_SCOPE.py, Abs_data.py
 logs/
   BLACS.log              ← Main BLACS log

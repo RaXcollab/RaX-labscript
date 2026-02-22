@@ -9,7 +9,9 @@
       "Read(//c/Users/radmo/miniconda/envs/labscript/Lib/site-packages/blacs/**)",
       "Bash(grep:*)",
       "Bash(source:*)",
-      "Bash(conda activate:*)"
+      "Bash(conda activate:*)",
+      "Read(//c/Users/radmo/miniconda/**)",
+      "Bash(git add:*)"
     ],
     "additionalDirectories": [
       "C:\\Users\\radmo\\Desktop\\GUIs\\rastering"

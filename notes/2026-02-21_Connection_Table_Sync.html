@@ -1,0 +1,130 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<style>
+  body { font-family: Calibri, Segoe UI, sans-serif; font-size: 11pt; color: #333; max-width: 900px; margin: 20px auto; }
+  h1 { font-size: 20pt; border-bottom: 2px solid #0078d4; padding-bottom: 6px; color: #0078d4; }
+  h2 { font-size: 14pt; color: #0078d4; margin-top: 24px; }
+  h3 { font-size: 12pt; color: #444; }
+  table { border-collapse: collapse; width: 100%; margin: 10px 0; }
+  th, td { border: 1px solid #ccc; padding: 6px 10px; text-align: left; vertical-align: top; }
+  th { background: #f0f0f0; font-weight: bold; }
+  code { font-family: Consolas, monospace; font-size: 10pt; background: #f4f4f4; padding: 1px 4px; border-radius: 3px; }
+  pre { background: #f4f4f4; border: 1px solid #ddd; border-radius: 4px; padding: 10px; font-family: Consolas, monospace; font-size: 10pt; overflow-x: auto; white-space: pre; }
+  .badge { display: inline-block; padding: 2px 8px; border-radius: 10px; color: white; font-size: 9pt; font-weight: bold; }
+  .green { background: #4CAF50; }
+  .orange { background: #F57C00; }
+  .yellow { background: #FFC107; color: #333; }
+  .blue { background: #0078d4; }
+  .purple { background: #9C27B0; }
+  .gray { background: #9E9E9E; }
+  .red { background: #f44336; }
+  .meta { color: #888; font-size: 10pt; }
+  ol, ul { margin: 6px 0; padding-left: 24px; }
+  li { margin: 3px 0; }
+  strong { color: #222; }
+  .callout { background: #e8f4fd; border-left: 4px solid #0078d4; padding: 8px 12px; margin: 10px 0; }
+  .warn { background: #fff3cd; border-left: 4px solid #ffc107; padding: 8px 12px; margin: 10px 0; }
+</style>
+</head>
+<body>
+
+<h1>Connection Table Sync + Machine Context</h1>
+<p class="meta">
+  <strong>Date:</strong> 2026-02-21 &nbsp;&bull;&nbsp;
+  <strong>Context:</strong> Audited Closed_cell.py against connection_table.py; synced missing devices; documented machine identity conventions
+</p>
+
+<h2>What Changed</h2>
+<p>
+The <code>Closed_cell.py</code> sequence was missing two device blocks
+(<span class="badge blue">RasteringDevice</span> and
+<span class="badge blue">BigSkyHub</span>) that exist in the active
+<code>connection_table.py</code>. Both blocks were copied verbatim to bring the
+sequence header into full sync. CLAUDE.md was updated with machine identity
+context and the connection table duplication convention.
+</p>
+
+<h2>Files Changed</h2>
+<table>
+  <tr><th>File</th><th>Change</th><th>Why</th></tr>
+  <tr>
+    <td><code>userlib/labscriptlib/Main_Experiment/sequences/Closed_cell.py</code></td>
+    <td>Added imports for <code>RasteringDevice</code>, <code>BigSkyHub</code>; added full RasteringDevice block (device + 4 channels) and BigSkyHub block (device + 28 auto-created channels)</td>
+    <td>Sequence header was out of sync with the active connection table. Missing devices would prevent future use of raster coords or BigSky channels from this sequence.</td>
+  </tr>
+  <tr>
+    <td><code>CLAUDE.md</code></td>
+    <td>Added "This PC: Main_Experiment" subsection; updated Key Paths tree to scope <code>labscriptlib/</code> to <code>Main_Experiment/</code></td>
+    <td>Prevents wasted time exploring irrelevant labscriptlib folders (lyman29, etc.); codifies that only <code>connection_table.py</code> is live.</td>
+  </tr>
+</table>
+
+<h2>Key Decisions</h2>
+<div class="callout">
+<strong>Verbatim copy, not refactor.</strong> The RasteringDevice and BigSkyHub blocks were
+copied exactly from <code>connection_table.py</code> rather than attempting to
+DRY up the duplication. This is intentional: labscript sequences must carry
+their own complete connection table header because they are compiled independently.
+The duplication is a labscript architectural constraint, not a code smell.
+</div>
+
+<h2>Patterns Observed</h2>
+<div class="warn">
+<strong>Connection table drift is a recurring risk.</strong> Every time a device is added to
+<code>connection_table.py</code>, ALL active sequence files must be updated to match.
+There is no automated check for this. The backup files
+(<code>connection_table_closed_cell.py</code>, <code>connection_table_fromLyman.py</code>,
+<code>connection_table_photon_counting.py</code>) are all significantly stale and should not
+be relied on.
+</div>
+<p>
+The <code>connection_table_closed_cell.py</code> backup still references COM7
+(should be COM4), lacks all ZMQ devices, and has <code>dummy_line</code> uncommented.
+It is a pre-ZMQ-integration snapshot.
+</p>
+
+<h2>Before / After</h2>
+<table>
+  <tr><th>Aspect</th><th>Before</th><th>After</th></tr>
+  <tr>
+    <td>Closed_cell.py imports</td>
+    <td><code>RemoteControl, RemoteAnalogOut, RemoteAnalogMonitor</code></td>
+    <td>+ <code>RasteringDevice</code>, <code>BigSkyHub</code></td>
+  </tr>
+  <tr>
+    <td>Closed_cell.py device blocks</td>
+    <td>LaserLockGUI only (4 channels)</td>
+    <td>+ RasteringGUI (4 channels) + BigSkyLasers (28 auto-created channels)</td>
+  </tr>
+  <tr>
+    <td>Closed_cell.py line count</td>
+    <td>~159 lines</td>
+    <td>~212 lines</td>
+  </tr>
+  <tr>
+    <td>CLAUDE.md machine context</td>
+    <td>None</td>
+    <td>"This PC: Main_Experiment" section with connection table convention</td>
+  </tr>
+</table>
+
+<h2>Future Work</h2>
+<ul>
+  <li><strong>Audit other sequence files</strong> for the same connection table drift
+      (any sequence in <code>labscriptlib/Main_Experiment/sequences/</code> that
+      has an inline connection table header).</li>
+  <li><strong>Consider a shared header pattern</strong> if more sequences are added.
+      A single <code>connection_header.py</code> that sequences import could
+      eliminate the duplication, though this requires testing with labscript's
+      compilation model.</li>
+  <li><strong>Archive or delete stale backup files</strong>:
+      <code>connection_table_closed_cell.py</code>,
+      <code>connection_table_fromLyman.py</code>,
+      <code>connection_table_photon_counting.py</code> are all significantly
+      out of date.</li>
+</ul>
+
+</body>
+</html>
