@@ -48,6 +48,10 @@ You are the BLACS architecture expert for the RaX lab's Labscript suite. You und
 | Worker crash | Tab shows "connection failed" | Check worker stdout/stderr |
 | `_initial_fetch_done` missing | Sends 0 to server on startup | Guard `program_manual` |
 
+## Saved-State Resilience
+
+`FrontPanelSettings.check_row()` in `blacs/blacs/front_panel_settings.py` silently excludes channels no longer in the connection table (returns -1). AO objects get defaults. No need to delete h5 files after connection table changes. Recurring "unknown connection" messages after parameter changes are debug-level poll noise from the worker — harmless.
+
 ## `_initial_fetch_done` Guard Pattern
 
 On startup, BLACS calls `program_device()` which calls `program_manual()`. Without a guard, this sends the front panel's default values (all 0) to the server, overwriting real setpoints. The fix:

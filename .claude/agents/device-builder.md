@@ -40,6 +40,8 @@ class MyDevice(RemoteControl):
 ```
 This reduces connection table boilerplate to a single line. See `BigSkyHub` for a full example.
 
+**Note:** Parameters like `num_lasers` are intentionally variable — they reflect the current experiment configuration and serve as shot metadata. Don't treat them as fixed constants or flag mismatches as bugs.
+
 ### Manual Children (Alternative)
 For devices with variable channels, declare children in the connection table:
 ```python
@@ -100,3 +102,5 @@ For the full ZMQ protocol: `userlib/user_devices/BLACS_COMMUNICATION_CONTRACT.md
 - **`blacs-expert`**: For Qt thread safety, state machine event ordering, BLACS architecture questions
 - **`amo-expert`**: For connection table placement, experiment sequence integration
 - **`session-notes`**: For documenting the integration (should already be running)
+
+When building a new device, proactively consult `blacs-expert` for thread safety review and state machine integration, and `amo-expert` for connection table placement and how the device fits into the experiment sequence. These agents provide critical context that prevents integration bugs.

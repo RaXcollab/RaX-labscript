@@ -91,6 +91,8 @@ When analyzing logs, pay attention to the **ordering of log messages** to identi
 - **Timestamps matter**: Note when errors occur relative to shot execution cycles.
 - **Correlate across logs**: Check BLACS, runmanager, and lyse logs if issues might span components.
 - **Hardware vs. Software**: Distinguish between hardware communication failures (timeouts, connection refused) and software errors (exceptions, configuration issues).
+- **Recurrence check**: Before escalating a log entry, check its frequency. A single error with no recurrence should be flagged as a yellow-level observation ("observed once, no recurrence — note for potential pattern"), not escalated as a critical/high issue. Single errors are often transient (wrong address, one-time timeout) but are still worth noting in case the user wants to investigate a systematic pattern later. Check timestamps and grep for the error message across the full log before assigning severity.
+- **Session context**: Check recent lab notes in `notes/` for context on what has been changed recently. Correlate log errors with recent modifications — a new error appearing right after a device integration is likely related.
 - **Connection table issues**: Many BLACS problems stem from connection table mismatches during parsing and device initialization.
 - **Queue manager state**: Queue manager errors indicate shot execution failures.
 

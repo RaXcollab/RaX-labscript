@@ -129,7 +129,43 @@ Invoke agents proactively based on task type. Don't wait for the user to ask.
 | Experiment sequence design | `amo-expert` | When writing sequences or connection tables |
 | Analysis work | `lyse-analysis` | When touching analysislib/ |
 
-**session-notes:** At session start, ask the user if they want session-notes tracking (use AskUserQuestion, short yes/no). If yes, launch in background and resume at milestones. If no, skip — but still offer wrap-up deliverables at session end.
+**File-to-agent routing:** When searching or auditing files, validate findings through the domain agent that owns that path. Generic Explore agents lack physics-lab context and produce false positives.
+
+| Path pattern | Route to | Why |
+|---|---|---|
+| `labscriptlib/` (sequences, connection tables, globals) | `amo-expert` | RunManager globals, device config semantics |
+| `analysislib/` (analysis scripts, notebooks) | `lyse-analysis` | API stability, utility library conventions |
+| `user_devices/` (BLACS device classes) | `device-builder` (confers with `blacs-expert` + `amo-expert`) | Thread safety, state machine, ZMQ protocol, connection table fit |
+| `blacs/` (BLACS runtime, base classes) | `blacs-expert` | State machine, Qt threading, base class behavior |
+| `labscript-devices/` (official device drivers) | `blacs-expert` | Device driver internals, NI_DAQmx patterns |
+| `labscript-utils/` (shared utilities) | `blacs-expert` | Utility internals, h5_lock, properties |
+| `logs/` (BLACS.log, faulthandler) | `labscript-diagnostics` | Log parsing, recurrence analysis |
+| `notes/` (lab notes, session history) | `labscript-diagnostics` | Correlate errors with recent changes |
+| External GUI codebases | Local agent in `.claude/agents/` of the GUI directory | GUI internals, motor control, ZMQ server |
+
+**External GUI agent discovery:** Check for `.claude/agents/` inside the GUI's codebase directory (e.g., `C:\Users\radmo\Desktop\GUIs\rastering\.claude\agents\ablation-tech.md`). The External GUI Registry above lists each GUI's codebase path.
+
+### Do NOT Flag These
+
+These are normal in this codebase — not bugs, not code smell, not cleanup opportunities:
+
+- **RunManager globals** (`tYAG`, `tstart`, `DOUBLE_YAG`, etc.) appearing "undefined" in sequence files — they are injected at compile time
+- **`__pycache__/` and `.ipynb_checkpoints/` directories** — auto-managed by Python and Jupyter
+- **Single-occurrence log errors** without recurrence — flag as yellow observation, not critical (check frequency before escalating)
+- **Connection table parameters that differ from hardware maximums** — they reflect the current experiment, not hardware limits (e.g., `num_lasers=1` when 2 are wired)
+- **Inline function definitions in old Jupyter notebooks** — frozen analysis snapshots, not code duplication
+
+### Agent Workflow (plan agent use upfront, not as afterthoughts)
+
+During the planning phase, walk through the full agent pipeline from start to finish:
+
+1. **Plan phase:** Identify which domain agents to consult (routing table above), include `session-notes` for tracking, and include `wrap-up` for deliverables — all in the plan itself.
+2. **Implementation phase:** Execute with domain agents. `session-notes` runs in background.
+3. **Deliverables phase:** `wrap-up` agent runs its fixed pipeline (diffs → commits → lab note → introspection → context updates).
+
+The Deliverables section of every plan must specify which agents produce which artifacts, so nothing is forgotten.
+
+**session-notes:** At session start, ask the user if they want session-notes tracking (use AskUserQuestion, short yes/no). If yes, launch in background and resume at milestones. `session-notes` handles note-taking only — wrap-up deliverables are owned by the `wrap-up` agent.
 
 **Plan mode integration:** Use specialized agents (`device-builder`, `blacs-expert`, `amo-expert`) as your Explore/Plan agents for domain-matching tasks. Don't default to generic Explore/Plan when a specialized agent exists.
 
@@ -137,13 +173,11 @@ Invoke agents proactively based on task type. Don't wait for the user to ask.
 
 **Full plan mode:** Multi-file changes, architectural decisions, unclear requirements, or anything the user explicitly requests planning for.
 
-**Wrap-up deliverables:** Every plan must end with a Deliverables section (after Verification). This ensures they are planned upfront, not forgotten. Execute deliverables only after the user confirms verification passed.
-
-Standard deliverables:
+**Standard deliverables checklist** (owned by `wrap-up` agent):
 1. Commit(s) — to correct repo(s)
 2. HTML lab note — `notes/YYYY-MM-DD_Topic.html`
-3. CLAUDE.md updates — if conventions/registry changed
-4. Session introspection — what went well, what to improve, lessons
+3. Session introspection — what went well, what to improve, lessons
+4. CLAUDE.md / agent prompt updates — if conventions changed
 
 ### BLACS Saved-State Resilience
 
