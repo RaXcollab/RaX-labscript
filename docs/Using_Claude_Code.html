@@ -33,7 +33,7 @@
 <h1>Using Claude Code with Labscript</h1>
 <p class="meta">
   <strong>Last updated:</strong> 2026-02-23 &nbsp;&bull;&nbsp;
-  <strong>Version:</strong> 3.0 &nbsp;&bull;&nbsp;
+  <strong>Version:</strong> 3.1 &nbsp;&bull;&nbsp;
   <strong>Canonical reference for the RaX lab Claude Code setup</strong>
 </p>
 
@@ -131,6 +131,11 @@ Open a terminal in the <code>labscript-suite</code> folder and run <code>claude<
     <td>+ <span class="badge green">lyse-analysis</span></td>
     <td>When touching <code>analysislib/</code></td>
   </tr>
+  <tr>
+    <td>Codebase audit / code review</td>
+    <td>Domain agents per routing table</td>
+    <td><strong>Never</strong> generic Explore for audits &mdash; use domain agents that know the conventions</td>
+  </tr>
 </table>
 
 <h2>Domain-Aware Routing</h2>
@@ -155,6 +160,8 @@ When Claude searches or audits files, it validates findings through the agent th
   <li>Single-occurrence log errors without recurrence — triaged as yellow, not critical</li>
   <li>Connection table parameters differing from hardware maximums (e.g., <code>num_lasers=1</code>)</li>
   <li>Inline function definitions in old Jupyter notebooks — frozen analysis snapshots</li>
+  <li>NaN rows in NI_SCOPE h5 datasets — unsaved channels are NaN-filled intentionally (selective saving)</li>
+  <li>Deprecated kwargs in analysis utilities — backward-compat aliases, not dead code</li>
 </ul>
 
 <h2>Deferral Pattern</h2>

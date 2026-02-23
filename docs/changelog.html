@@ -35,6 +35,20 @@
   Each entry links to the lab note with full details.
 </p>
 
+<h2>v3.1 &mdash; 2026-02-23</h2>
+<p><strong>Codebase audit fixes + introspection-driven context hardening</strong></p>
+<ul>
+  <li><strong>NI_SCOPE data pipeline:</strong> Worker now writes <code>sample_rate</code>, <code>t0</code>, <code>channels_saved</code> as h5 dataset attrs. New <code>channels_to_save</code> parameter enables selective channel saving with NaN-padding for backward compat.</li>
+  <li><strong>Analysis hardening:</strong> <code>_resolve_fs_hz()</code> fallback chain in NI_SCOPE.py (attrs &rarr; CT properties &rarr; user param &rarr; 1 MHz). Deprecated kwarg aliases in filtering.py. Exception logging + shape-drop warnings in Abs_data.py.</li>
+  <li><strong>New orchestration row:</strong> "Codebase audit / code review" &rarr; domain agents. <strong>Never</strong> use generic Explore for audits.</li>
+  <li><strong>Routing enforcement rule:</strong> check file-to-agent routing table before every agent launch (plan mode Phase 1 and 2).</li>
+  <li><strong>Python env preamble:</strong> bold warning that every Python command must be preceded by conda activation.</li>
+  <li><strong>"Do NOT Flag These" expanded:</strong> NaN rows in NI_SCOPE datasets, deprecated kwargs in analysis utilities.</li>
+  <li><strong>NI_SCOPE Data Conventions section</strong> added to CLAUDE.md &mdash; h5 layout, attrs, selective saving, NaN-padding pattern.</li>
+  <li><strong>User guide updated</strong> to v3.1</li>
+</ul>
+<p class="meta">Lab note: <code>notes/2026-02-23_Codebase_Audit.html</code></p>
+
 <h2>v3.0 &mdash; 2026-02-23</h2>
 <p><strong>Agent orchestration upgrade: domain-aware routing, wrap-up agent, anti-patterns</strong></p>
 <ul>
