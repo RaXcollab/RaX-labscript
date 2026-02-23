@@ -156,8 +156,8 @@ class RasteringTab(RemoteControlTab):
             conn = out_dev.parent_port
             mon_conn = f"{conn}_monitor"
 
-            # Extract axis label: "laser_raster_x_coord" → "X"
-            axis = conn.rsplit('_', 1)[-1].upper() if '_' in conn else conn
+            # Extract axis label: "Raster_X" → "X"
+            axis = out_dev.name.split('_')[-1]
 
             row = QtWidgets.QHBoxLayout()
             row.setSpacing(8)
