@@ -1,0 +1,148 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<style>
+  body { font-family: Calibri, Segoe UI, sans-serif; font-size: 11pt; color: #333; max-width: 900px; margin: 20px auto; }
+  h1 { font-size: 20pt; border-bottom: 2px solid #0078d4; padding-bottom: 6px; color: #0078d4; }
+  h2 { font-size: 14pt; color: #0078d4; margin-top: 24px; }
+  h3 { font-size: 12pt; color: #444; }
+  table { border-collapse: collapse; width: 100%; margin: 10px 0; }
+  th, td { border: 1px solid #ccc; padding: 6px 10px; text-align: left; vertical-align: top; }
+  th { background: #f0f0f0; font-weight: bold; }
+  code { font-family: Consolas, monospace; font-size: 10pt; background: #f4f4f4; padding: 1px 4px; border-radius: 3px; }
+  pre { background: #f4f4f4; border: 1px solid #ddd; border-radius: 4px; padding: 10px; font-family: Consolas, monospace; font-size: 10pt; overflow-x: auto; white-space: pre; }
+  .badge { display: inline-block; padding: 2px 8px; border-radius: 10px; color: white; font-size: 9pt; font-weight: bold; }
+  .green { background: #4CAF50; }
+  .orange { background: #F57C00; }
+  .yellow { background: #FFC107; color: #333; }
+  .blue { background: #0078d4; }
+  .purple { background: #9C27B0; }
+  .gray { background: #9E9E9E; }
+  .red { background: #f44336; }
+  .meta { color: #888; font-size: 10pt; }
+  ol, ul { margin: 6px 0; padding-left: 24px; }
+  li { margin: 3px 0; }
+  strong { color: #222; }
+  .callout { background: #e8f4fd; border-left: 4px solid #0078d4; padding: 8px 12px; margin: 10px 0; }
+  .warn { background: #fff3cd; border-left: 4px solid #ffc107; padding: 8px 12px; margin: 10px 0; }
+</style>
+</head>
+<body>
+
+<h1>Agent Orchestration Upgrade: Domain-Aware Routing</h1>
+<p class="meta">
+  <strong>Date:</strong> 2026-02-23 &nbsp;&bull;&nbsp;
+  <strong>Commits:</strong> <code>5631bad</code>, <code>9d1821e</code> &nbsp;&bull;&nbsp;
+  <strong>Context:</strong> Introspection from the pre-scan codebase audit (see <code>2026-02-23_Pre-scan_audit.html</code>) revealed systemic false positives from generic agents. This upgrade adds domain-aware routing to prevent them.
+</p>
+
+<h2>What Changed</h2>
+<p>
+The pre-scan audit produced 7 user corrections, 5 of which shared one root cause: generic Explore agents applying software engineering heuristics to experimental physics code (flagging RunManager globals as "undefined", treating <code>num_lasers=1</code> as a bug, recommending <code>__pycache__</code> cleanup, etc.). This upgrade adds a file-to-agent routing table to CLAUDE.md, an explicit anti-pattern list, and splits the deliverables workflow into a dedicated <code>wrap-up</code> agent with a mandatory checklist.
+</p>
+
+<div class="callout">
+<strong>Core principle:</strong> When a broad search or audit touches domain-specific files, findings must be validated by the corresponding domain agent before being reported to the user. Generic agents lack physics-lab context.
+</div>
+
+<h2>Files Changed</h2>
+<table>
+  <tr><th>File</th><th>Change</th><th>Why</th></tr>
+  <tr>
+    <td><code>CLAUDE.md</code></td>
+    <td>Added file-to-agent routing table (9 path patterns), "Do NOT Flag These" list, "Agent Workflow" section, deliverables checklist</td>
+    <td>Central orchestration hub needs routing rules so generic agents don't produce false positives</td>
+  </tr>
+  <tr>
+    <td><code>.claude/agents/wrap-up.md</code></td>
+    <td><strong>NEW</strong> &mdash; full deliverables pipeline agent</td>
+    <td>User had to repeatedly remind about introspection, lab notes, and context updates. Dedicated agent with mandatory 6-step pipeline ensures nothing is forgotten.</td>
+  </tr>
+  <tr>
+    <td><code>.claude/agents/session-notes.md</code></td>
+    <td>Narrowed to note-taking only (Mode 1). Removed Mode 2 (wrap-up). Added generalization reflex.</td>
+    <td>Note-taking and wrap-up are fundamentally different tasks. Splitting them lets each be focused.</td>
+  </tr>
+  <tr>
+    <td><code>.claude/agents/labscript-diagnostics.md</code></td>
+    <td>Added recurrence check rule and session context (correlate with <code>notes/</code>)</td>
+    <td>Audit escalated a single PrawnBlaster COM port error as systemic risk. Single events need yellow triage, not red.</td>
+  </tr>
+  <tr>
+    <td><code>.claude/agents/blacs-expert.md</code></td>
+    <td>Added saved-state resilience knowledge</td>
+    <td>Audit incorrectly recommended deleting BLACS h5 files. Agent now knows <code>FrontPanelSettings.check_row()</code> handles stale channels gracefully.</td>
+  </tr>
+  <tr>
+    <td><code>.claude/agents/device-builder.md</code></td>
+    <td>Added variable config note, proactive collaboration with <code>blacs-expert</code> + <code>amo-expert</code></td>
+    <td>Audit treated <code>num_lasers=1</code> as a bug. Device-builder now knows config params are intentionally variable. Also instructed to consult other agents proactively.</td>
+  </tr>
+  <tr>
+    <td><code>.claude/agents/labscript-amo-expert.md</code></td>
+    <td>Added RunManager globals semantics, <code>DOUBLE_YAG</code>, connection table evolution, <code>num_lasers</code></td>
+    <td>Audit flagged <code>tYAG</code> as "undefined". Agent now explicitly documents globals injection.</td>
+  </tr>
+  <tr>
+    <td><code>.claude/agents/lyse-analysis.md</code></td>
+    <td>Added API stability rule for all utility modules, notebook import conventions</td>
+    <td>Audit recommended refactoring old notebooks. Rule now: new notebooks import, old notebooks are frozen snapshots.</td>
+  </tr>
+</table>
+
+<h2>Key Decisions</h2>
+
+<h3>1. Route <code>user_devices/</code> to device-builder (single entry point)</h3>
+<p>Rather than routing to "blacs-expert or device-builder", we route to device-builder which is instructed to confer with blacs-expert and amo-expert. One entry point per path, collaboration happens inside.</p>
+
+<h3>2. Single log errors are yellow, not red</h3>
+<p>The diagnostics agent now triages single-occurrence errors as yellow observations ("note for potential pattern") rather than critical issues. They're still logged so users can investigate patterns later.</p>
+
+<h3>3. Plan agent use upfront, not reactively</h3>
+<p>Previously: "at session end, launch wrap-up." Now: during the planning phase, the orchestrator walks through the full agent pipeline (domain agents + session-notes + wrap-up) and includes them all in the plan itself. Deliverables are never an afterthought.</p>
+
+<h3>4. session-notes / wrap-up split</h3>
+<p><code>session-notes</code> is lightweight background note-taking (scratch file, pattern spotting). <code>wrap-up</code> owns the heavy deliverables pipeline (diffs &rarr; commits &rarr; lab note &rarr; introspection &rarr; context updates). Different tasks, different agents.</p>
+
+<h2>Routing Table</h2>
+<table>
+  <tr><th>Path</th><th>Agent</th></tr>
+  <tr><td><code>labscriptlib/</code></td><td><code>amo-expert</code></td></tr>
+  <tr><td><code>analysislib/</code></td><td><code>lyse-analysis</code></td></tr>
+  <tr><td><code>user_devices/</code></td><td><code>device-builder</code> (confers with <code>blacs-expert</code> + <code>amo-expert</code>)</td></tr>
+  <tr><td><code>blacs/</code></td><td><code>blacs-expert</code></td></tr>
+  <tr><td><code>labscript-devices/</code></td><td><code>blacs-expert</code></td></tr>
+  <tr><td><code>labscript-utils/</code></td><td><code>blacs-expert</code></td></tr>
+  <tr><td><code>logs/</code></td><td><code>labscript-diagnostics</code></td></tr>
+  <tr><td><code>notes/</code></td><td><code>labscript-diagnostics</code></td></tr>
+  <tr><td>External GUI codebases</td><td>Local agent in <code>.claude/agents/</code> of the GUI directory</td></tr>
+</table>
+
+<h2>Anti-Pattern List ("Do NOT Flag These")</h2>
+<ul>
+  <li>RunManager globals (<code>tYAG</code>, <code>tstart</code>, etc.) appearing "undefined" in sequences</li>
+  <li><code>__pycache__/</code> and <code>.ipynb_checkpoints/</code> directories</li>
+  <li>Single-occurrence log errors without recurrence</li>
+  <li>Connection table parameters differing from hardware maximums</li>
+  <li>Inline function definitions in old Jupyter notebooks</li>
+</ul>
+
+<h2>Patterns Observed</h2>
+<div class="warn">
+<strong>Root cause pattern:</strong> 5/7 audit corrections = generic SW engineering heuristics applied to experimental physics code. Domain agents have the right context; generic agents do not. The routing table is the structural fix.
+</div>
+
+<div class="warn">
+<strong>Deliverables friction:</strong> User had to remind about introspection and lab notes multiple times across sessions. The wrap-up agent with its mandatory checklist is the structural fix.
+</div>
+
+<h2>Future Work</h2>
+<ul>
+  <li>The <code>wrap-up</code> agent file exists (<code>.claude/agents/wrap-up.md</code>) but is not yet registered as a system-level subagent type. Until registered, the main orchestrator must execute the wrap-up pipeline manually following the agent's checklist.</li>
+  <li>Monitor whether the routing table is actually followed in the next few sessions. If generic agents still produce false positives, consider making routing enforcement stronger.</li>
+  <li>The <code>docs/Using_Claude_Code.html</code> user guide may eventually need updating to document the new <code>wrap-up</code> agent, but since these are internal orchestration changes, it's not urgent.</li>
+</ul>
+
+</body>
+</html>
