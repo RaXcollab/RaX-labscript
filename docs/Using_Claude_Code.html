@@ -18,6 +18,7 @@
   .yellow { background: #FFC107; color: #333; }
   .blue { background: #0078d4; }
   .purple { background: #9C27B0; }
+  .gray { background: #9E9E9E; }
   .red { background: #f44336; }
   .meta { color: #888; font-size: 10pt; }
   ol, ul { margin: 6px 0; padding-left: 24px; }
@@ -31,8 +32,8 @@
 
 <h1>Using Claude Code with Labscript</h1>
 <p class="meta">
-  <strong>Last updated:</strong> 2026-02-21 &nbsp;&bull;&nbsp;
-  <strong>Version:</strong> 2.0 &nbsp;&bull;&nbsp;
+  <strong>Last updated:</strong> 2026-02-23 &nbsp;&bull;&nbsp;
+  <strong>Version:</strong> 3.0 &nbsp;&bull;&nbsp;
   <strong>Canonical reference for the RaX lab Claude Code setup</strong>
 </p>
 
@@ -58,14 +59,19 @@ Open a terminal in the <code>labscript-suite</code> folder and run <code>claude<
 </ul>
 <p>You do not need to re-explain the repo layout or conventions at the start of each session. If Claude seems confused about the project structure, just say "read CLAUDE.md."</p>
 
-<h2>The 6 Agents</h2>
+<h2>The 7 Agents</h2>
 <p>Agents are specialized subprocesses stored in <code>.claude/agents/</code>. Claude launches them automatically based on the task type.</p>
 <table>
   <tr><th>Agent</th><th>Domain</th><th>Invoke When</th></tr>
   <tr>
     <td><span class="badge purple">session-notes</span></td>
-    <td>Active note-taking, wrap-up documentation (commit messages, HTML lab notes, context updates, introspection)</td>
-    <td>Every non-trivial session (mandatory)</td>
+    <td>Background note-taking: decisions, patterns, bugs during a session</td>
+    <td>Every non-trivial session (runs in background)</td>
+  </tr>
+  <tr>
+    <td><span class="badge gray">wrap-up</span></td>
+    <td>End-of-session deliverables: commits, HTML lab notes, session introspection, CLAUDE.md updates</td>
+    <td>After implementation is complete (mandatory for non-trivial sessions)</td>
   </tr>
   <tr>
     <td><span class="badge blue">device-builder</span></td>
@@ -96,14 +102,14 @@ Open a terminal in the <code>labscript-suite</code> folder and run <code>claude<
 
 <h2>Orchestration</h2>
 <div class="callout">
-<strong>session-notes is mandatory for all non-trivial workflows.</strong> Claude launches it in the background at session start.
+<strong>Three-phase workflow:</strong> (1) <span class="badge purple">session-notes</span> launches at session start for background note-taking. (2) Domain agents do the work. (3) <span class="badge gray">wrap-up</span> runs at the end for deliverables. All three are planned upfront, not as afterthoughts.
 </div>
 <table>
   <tr><th>Task Type</th><th>Agents</th><th>When</th></tr>
   <tr>
     <td>Any non-trivial workflow</td>
-    <td><span class="badge purple">session-notes</span> (background)</td>
-    <td>At session start, always</td>
+    <td><span class="badge purple">session-notes</span> (background) + <span class="badge gray">wrap-up</span> (at end)</td>
+    <td>Session start / session end</td>
   </tr>
   <tr>
     <td>New device integration</td>
@@ -127,6 +133,30 @@ Open a terminal in the <code>labscript-suite</code> folder and run <code>claude<
   </tr>
 </table>
 
+<h2>Domain-Aware Routing</h2>
+<p>
+When Claude searches or audits files, it validates findings through the agent that owns that path. This prevents false positives from generic software engineering heuristics being applied to experimental physics code.
+</p>
+<table>
+  <tr><th>Path</th><th>Routes to</th></tr>
+  <tr><td><code>labscriptlib/</code> (sequences, connection tables)</td><td><span class="badge orange">amo-expert</span></td></tr>
+  <tr><td><code>analysislib/</code> (analysis scripts, notebooks)</td><td><span class="badge green">lyse-analysis</span></td></tr>
+  <tr><td><code>user_devices/</code> (custom BLACS devices)</td><td><span class="badge blue">device-builder</span> (confers with <span class="badge red">blacs-expert</span> + <span class="badge orange">amo-expert</span>)</td></tr>
+  <tr><td><code>blacs/</code>, <code>labscript-devices/</code>, <code>labscript-utils/</code></td><td><span class="badge red">blacs-expert</span></td></tr>
+  <tr><td><code>logs/</code>, <code>notes/</code></td><td><span class="badge yellow">labscript-diagnostics</span></td></tr>
+  <tr><td>External GUI codebases</td><td>Local agent in GUI's <code>.claude/agents/</code></td></tr>
+</table>
+
+<h3>Things Claude Intentionally Ignores</h3>
+<p>These are normal in our codebase and are <strong>not</strong> bugs or code smell:</p>
+<ul>
+  <li>RunManager globals (<code>tYAG</code>, <code>tstart</code>, <code>DOUBLE_YAG</code>, etc.) appearing "undefined" in sequences — injected at compile time</li>
+  <li><code>__pycache__/</code> and <code>.ipynb_checkpoints/</code> directories</li>
+  <li>Single-occurrence log errors without recurrence — triaged as yellow, not critical</li>
+  <li>Connection table parameters differing from hardware maximums (e.g., <code>num_lasers=1</code>)</li>
+  <li>Inline function definitions in old Jupyter notebooks — frozen analysis snapshots</li>
+</ul>
+
 <h2>Deferral Pattern</h2>
 <p>Each agent defers out-of-scope questions to the right specialist:</p>
 <pre>
@@ -136,7 +166,8 @@ lyse-analysis ───┤                           │
                  │                           │
 diagnostics ─────┴───────────────────────────┘
 
-session-notes ◄── all agents (documentation)
+session-notes ◄── all agents (note-taking)
+wrap-up       ◄── orchestrator  (deliverables)
 </pre>
 
 <h2>Example Prompts</h2>
@@ -188,7 +219,7 @@ session-notes ◄── all agents (documentation)
 <table>
   <tr><th>What</th><th>Path</th></tr>
   <tr><td>Project instructions (read every session)</td><td><code>CLAUDE.md</code></td></tr>
-  <tr><td>Agent prompts (6 files)</td><td><code>.claude/agents/*.md</code></td></tr>
+  <tr><td>Agent prompts (7 files)</td><td><code>.claude/agents/*.md</code></td></tr>
   <tr><td>Permission settings</td><td><code>.claude/settings.json</code></td></tr>
   <tr><td>Scratch notes (transient, not committed)</td><td><code>.claude/session-scratch.md</code></td></tr>
   <tr><td>Session lab notes</td><td><code>notes/YYYY-MM-DD_Topic.html</code></td></tr>
@@ -231,7 +262,7 @@ session-notes ◄── all agents (documentation)
   <li><strong>Connection table entry:</strong> import, instantiate, add children.</li>
   <li><strong>Test:</strong> start GUI first, then BLACS. Verify REQ-REP + PUB-SUB + buffered mode. Use <span class="badge yellow">diagnostics</span> if errors appear.</li>
   <li><strong>Update registry:</strong> add to External GUI Registry in <code>CLAUDE.md</code>.</li>
-  <li><strong>Wrap up:</strong> resume <span class="badge purple">session-notes</span> for commit message, HTML lab note, context updates, and introspection.</li>
+  <li><strong>Wrap up:</strong> launch <span class="badge gray">wrap-up</span> for commit message, HTML lab note, context updates, and introspection.</li>
 </ol>
 
 <h2>External GUI Registry</h2>
@@ -278,7 +309,7 @@ session-notes ◄── all agents (documentation)
 
 <h2>Lab Notes</h2>
 <p>
-Session lab notes are stored in <code>notes/</code> at the repo root, named <code>YYYY-MM-DD_Topic.html</code>. They are generated by the <span class="badge purple">session-notes</span> agent at the end of each session and pasted into OneNote.
+Session lab notes are stored in <code>notes/</code> at the repo root, named <code>YYYY-MM-DD_Topic.html</code>. They are generated by the <span class="badge gray">wrap-up</span> agent at the end of each session and pasted into OneNote.
 </p>
 
 </body>

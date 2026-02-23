@@ -1,0 +1,123 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<style>
+  body { font-family: Calibri, Segoe UI, sans-serif; font-size: 11pt; color: #333; max-width: 900px; margin: 20px auto; }
+  h1 { font-size: 20pt; border-bottom: 2px solid #0078d4; padding-bottom: 6px; color: #0078d4; }
+  h2 { font-size: 14pt; color: #0078d4; margin-top: 24px; }
+  h3 { font-size: 12pt; color: #444; }
+  table { border-collapse: collapse; width: 100%; margin: 10px 0; }
+  th, td { border: 1px solid #ccc; padding: 6px 10px; text-align: left; vertical-align: top; }
+  th { background: #f0f0f0; font-weight: bold; }
+  code { font-family: Consolas, monospace; font-size: 10pt; background: #f4f4f4; padding: 1px 4px; border-radius: 3px; }
+  pre { background: #f4f4f4; border: 1px solid #ddd; border-radius: 4px; padding: 10px; font-family: Consolas, monospace; font-size: 10pt; overflow-x: auto; white-space: pre; }
+  .badge { display: inline-block; padding: 2px 8px; border-radius: 10px; color: white; font-size: 9pt; font-weight: bold; }
+  .green { background: #4CAF50; }
+  .orange { background: #F57C00; }
+  .yellow { background: #FFC107; color: #333; }
+  .blue { background: #0078d4; }
+  .purple { background: #9C27B0; }
+  .gray { background: #9E9E9E; }
+  .red { background: #f44336; }
+  .meta { color: #888; font-size: 10pt; }
+  ol, ul { margin: 6px 0; padding-left: 24px; }
+  li { margin: 3px 0; }
+  strong { color: #222; }
+  .callout { background: #e8f4fd; border-left: 4px solid #0078d4; padding: 8px 12px; margin: 10px 0; }
+</style>
+</head>
+<body>
+
+<h1>Changelog &mdash; Claude Code Agent System</h1>
+<p class="meta">
+  Tracks changes to the agent system, orchestration rules, and the user guide (<code>docs/Using_Claude_Code.html</code>).<br>
+  Each entry links to the lab note with full details.
+</p>
+
+<h2>v3.0 &mdash; 2026-02-23</h2>
+<p><strong>Agent orchestration upgrade: domain-aware routing, wrap-up agent, anti-patterns</strong></p>
+<ul>
+  <li><strong>New agent:</strong> <span class="badge gray">wrap-up</span> &mdash; dedicated end-of-session deliverables pipeline (commits, lab notes, introspection, CLAUDE.md updates). Split from <span class="badge purple">session-notes</span>.</li>
+  <li><strong>session-notes narrowed</strong> to background note-taking only (decisions, patterns, bugs). No longer owns wrap-up deliverables.</li>
+  <li><strong>Domain-aware routing table</strong> added to CLAUDE.md &mdash; files route to the agent that owns that path, preventing false positives from generic agents.</li>
+  <li><strong>"Do NOT Flag These" anti-pattern list</strong> &mdash; RunManager globals, <code>__pycache__</code>, single-occurrence log errors, variable config params, old notebook inline functions.</li>
+  <li><strong>Three-phase workflow</strong> &mdash; session-notes (start) &rarr; domain agents (work) &rarr; wrap-up (end). All planned upfront.</li>
+  <li><strong>Agent count:</strong> 6 &rarr; 7</li>
+  <li><strong>User guide updated</strong> to v3.0</li>
+</ul>
+<p class="meta">Lab notes: <code>notes/2026-02-23_Agent_orchestration_upgrade.html</code>, <code>notes/2026-02-23_Pre-scan_audit.html</code></p>
+
+<h2>v2.2 &mdash; 2026-02-23</h2>
+<p><strong>Pre-scan codebase audit</strong></p>
+<ul>
+  <li>Full workspace audit of 7 devices, all sequences, analysis pipeline, Rastering GUI, logs, agent prompts.</li>
+  <li>Fixed <code>edge_counter/__init__.py</code> filename (had a space, breaking the package).</li>
+  <li>Fixed Rastering GUI: missing ZMQ reply for unrecognized <code>PROGRAM_VALUE</code> connections, <code>CHECK_VALUE</code> returning SUCCESS for unknowns, unguarded PUB socket <code>send_string()</code>.</li>
+  <li>Archived stale BLACS saved-state files.</li>
+  <li>Cleared 12 areas as clean (Qt thread safety, worker paths, ZMQ compliance, delta tracking, analysis pipeline, etc.).</li>
+  <li>Identified 5/7 user corrections as generic-agent false positives &rarr; motivated v3.0 routing upgrade.</li>
+</ul>
+<p class="meta">Lab note: <code>notes/2026-02-23_Pre-scan_audit.html</code></p>
+
+<h2>v2.1 &mdash; 2026-02-22&ndash;23</h2>
+<p><strong>Tab redesigns &amp; BLACS device patterns</strong></p>
+<ul>
+  <li><strong>BigSky tab redesign:</strong> toggle buttons, combo boxes, safe command ordering, <code>_last_sent_values</code> delta tracking, <code>_recently_changed</code> poll race protection.</li>
+  <li><strong>LaserLock &amp; Rastering tab redesigns:</strong> custom <code>initialise_GUI</code> patterns, status indicators via PUB-SUB, toggle buttons for binary controls.</li>
+  <li><strong>BLACS Device Patterns section</strong> added to CLAUDE.md &mdash; <code>_last_sent_values</code>, <code>_recently_changed</code> cooldown, custom widget patterns.</li>
+  <li><strong>Orchestration refinement:</strong> opt-in session-notes (AskUserQuestion), plan mode guidance, deliverables checklist.</li>
+</ul>
+<p class="meta">Lab notes: <code>notes/2026-02-22_BigSky_tab_redesign.html</code>, <code>notes/2026-02-23_LaserLock_Rastering_tab_redesign.html</code></p>
+
+<h2>v2.0 &mdash; 2026-02-21</h2>
+<p><strong>Unified HTML user guide created</strong></p>
+<ul>
+  <li><strong>Merged</strong> the OneNote "Using Claude Code" guide (v1.x) + <code>Agent_System_Guide.html</code> into single <code>docs/Using_Claude_Code.html</code>.</li>
+  <li>All 6 agents documented with distinct badge colors.</li>
+  <li>14 sections: agents table, orchestration, deferral pattern, example prompts, tips, config &amp; files, BLACS communication contract, integration checklist, external GUI registry, external agents, lab notes.</li>
+  <li>Centralized all lab notes into <code>notes/</code> with <code>YYYY-MM-DD_Topic.html</code> convention.</li>
+  <li>Deleted scattered <code>Agent_System_Guide.html</code>.</li>
+  <li>Fixed device-builder badge color: orange &rarr; blue (was identical to amo-expert).</li>
+</ul>
+<p class="meta">Lab note: <code>notes/2026-02-21_Doc_Reorganization.html</code></p>
+
+<h2>v1.2 &mdash; 2026-02-21</h2>
+<p><strong>Cross-repo awareness &amp; communication contract</strong></p>
+<ul>
+  <li><strong>New file:</strong> <code>BLACS_COMMUNICATION_CONTRACT.md</code> &mdash; ZMQ protocol spec (REQ-REP + PUB-SUB), connection naming, BLACS lifecycle.</li>
+  <li><strong>External GUI Registry</strong> added to CLAUDE.md (Laser Lock, Rastering GUI).</li>
+  <li><strong>7-step integration workflow</strong> checklist added to CLAUDE.md.</li>
+  <li><strong>Cross-repo agent awareness:</strong> <span class="badge orange">amo-expert</span> checks external GUI folders for local agents; <code>ablation-tech</code> agent given BLACS integration context.</li>
+  <li><strong>Planning behavior rules</strong> added to amo-expert: propose defaults, batch decisions, front-load key choices.</li>
+</ul>
+<p class="meta">Lab note: <code>notes/2026-02-21_Agent_Configuration.html</code></p>
+
+<h2>v1.1 &mdash; 2026-02-21</h2>
+<p><strong>Agent split: 4 &rarr; 6 agents</strong></p>
+<ul>
+  <li><strong>Split <span class="badge orange">labscript-amo-expert</span></strong> (152-line monolith) into 3 focused agents:
+    <ul>
+      <li><span class="badge blue">device-builder</span> &mdash; BLACS device scaffolding, RemoteControl pattern</li>
+      <li><span class="badge red">blacs-expert</span> &mdash; Qt thread safety, state machine, PUB-SUB threading</li>
+      <li><span class="badge orange">amo-expert</span> &mdash; experiment sequences, connection tables, NI hardware, runmanager</li>
+    </ul>
+  </li>
+  <li><strong>Orchestration dispatch table</strong> added to CLAUDE.md &mdash; maps task types to agents.</li>
+  <li><strong>Deferral pattern</strong> established: all agents have "Defers To" sections creating a directed graph.</li>
+  <li><strong>session-notes made mandatory</strong> for all non-trivial workflows.</li>
+  <li><strong>Agent count:</strong> 4 &rarr; 6</li>
+</ul>
+<p class="meta">Lab note: <code>notes/2026-02-21_Agent_Workflow_Update.html</code></p>
+
+<h2>v1.0 &mdash; 2026-02-21</h2>
+<p><strong>Initial agent system</strong></p>
+<ul>
+  <li><strong>4 agents:</strong> <span class="badge orange">labscript-amo-expert</span> (monolith &mdash; devices + sequences + BLACS + NI), <span class="badge yellow">labscript-diagnostics</span>, <span class="badge green">lyse-analysis</span>, <span class="badge purple">session-notes</span>.</li>
+  <li>User guide was a OneNote document (not version-controlled).</li>
+  <li><code>CLAUDE.md</code> with basic repo structure, conventions, and key paths.</li>
+</ul>
+<p class="meta">Lab notes: <code>notes/2026-02-21_Session_Notes_Agent.html</code>, <code>notes/2026-02-21_Rastering_BLACS_Integration.html</code>, <code>notes/2026-02-21_BigSkyHub_Integration.html</code></p>
+
+</body>
+</html>
