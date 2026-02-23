@@ -49,7 +49,8 @@ def _time_from_attrs(attrs: Dict[str, Any], n: int) -> Tuple[np.ndarray, str]:
     return t * 1000.0, "Time (ms)"   # convert to ms
 
 def _single_dataset(ds: h5py.Dataset) -> Optional[Tuple[np.ndarray, np.ndarray, np.ndarray, str]]:
-    """Return (t, ch0, ch1, xlabel) if ds has both channels (2×N or N×2)."""
+    """Return (t, ch0, ch1, xlabel) if ds has both channels (2×N or N×2).
+    Channels filled with NaN (from selective saving) are returned as NaN arrays."""
     arr = ds[()]
     if not (isinstance(arr, np.ndarray) and arr.ndim == 2 and 2 in arr.shape):
         return None
@@ -166,7 +167,39 @@ def ensure_time_ms(t, y, fs_hz=1_000_000):
     return t, y
 
 
-def load_ni_scope_sequences(folder_path_day, seq_list, shot_indices=None, ch=0, fs_hz=1_000_000):
+def _resolve_fs_hz(h5_path, fs_hz_override):
+    """Resolve sample rate from dataset attrs, connection table properties, or override.
+
+    Fallback chain:
+      1. Dataset attrs 'sample_rate' (new files with Fix 1 attrs)
+      2. Connection table property 'min_sample_rate'
+      3. User-provided fs_hz override
+      4. Default 1 MHz
+    """
+    import labscript_utils.properties
+    try:
+        with h5py.File(h5_path, 'r') as f:
+            # 1. Dataset attrs
+            for key in ['data/traces/NI_SCOPE', 'data/traces/ni_scope']:
+                if key in f and isinstance(f[key], h5py.Dataset):
+                    sr = f[key].attrs.get('sample_rate', None)
+                    if sr is not None and float(sr) > 0:
+                        return float(sr)
+            # 2. Connection table properties
+            try:
+                props = labscript_utils.properties.get(f, 'NI_SCOPE', 'connection_table_properties')
+                sr = props.get('min_sample_rate', None)
+                if sr is not None and float(sr) > 0:
+                    return float(sr)
+            except Exception:
+                pass
+    except Exception:
+        pass
+    # 3. User override or 4. default
+    return float(fs_hz_override) if fs_hz_override is not None else 1_000_000.0
+
+
+def load_ni_scope_sequences(folder_path_day, seq_list, shot_indices=None, ch=0, fs_hz=None):
     """
     Load NI_SCOPE into dict keyed by sequence.
 
@@ -175,6 +208,9 @@ def load_ni_scope_sequences(folder_path_day, seq_list, shot_indices=None, ch=0, 
     shot_indices : array-like or None
         Specific shot indices to load (e.g. [0,2,5]).
         If None → load all shots.
+    fs_hz : float or None
+        Sample rate in Hz. If None, auto-detected from h5 dataset attrs
+        or connection table properties (recommended for new files).
     """
 
     seq_list = np.atleast_1d(seq_list).astype(int).ravel().tolist()
@@ -182,7 +218,8 @@ def load_ni_scope_sequences(folder_path_day, seq_list, shot_indices=None, ch=0, 
     if shot_indices is not None:
         shot_indices = np.atleast_1d(shot_indices).astype(int).ravel().tolist()
 
-    scope_seq_data = {} 
+    scope_seq_data = {}
+    resolved_fs = None  # cache after first file
 
     for seq in seq_list:
         seq_folder = os.path.join(folder_path_day, f"{seq:04d}")
@@ -217,6 +254,10 @@ def load_ni_scope_sequences(folder_path_day, seq_list, shot_indices=None, ch=0, 
 
             h5_path = os.path.join(seq_folder, files[shot_idx])
 
+            # Resolve sample rate from first file (cached for rest of batch)
+            if resolved_fs is None:
+                resolved_fs = _resolve_fs_hz(h5_path, fs_hz)
+
             try:
                 out = plot_ni_scope_channels(h5_path, show=False)
             except Exception as e:
@@ -228,7 +269,7 @@ def load_ni_scope_sequences(folder_path_day, seq_list, shot_indices=None, ch=0, 
             else:
                 t, y = out["t1"], out["y1"]
 
-            t_ms, y = ensure_time_ms(t, y, fs_hz=fs_hz)
+            t_ms, y = ensure_time_ms(t, y, fs_hz=resolved_fs)
 
             if t_ms.ndim != 1 or y.ndim != 1 or t_ms.size != y.size:
                 skip_counts["bad_shape"] += 1

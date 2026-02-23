@@ -475,8 +475,14 @@ class NI_SCOPEWorker(Worker):
         except Exception as e:
             print(f'[NI_SCOPE] Warning reading actual timing: {e}')
 
-        data = np.zeros([self.channel_count, self.min_num_pts])
-        for i in range(self.channel_count):
+        # Determine which channels to save (default: all)
+        channels_to_save = getattr(self, 'channels_to_save', None)
+        if channels_to_save is None:
+            channels_to_save = list(range(self.channel_count))
+
+        # NaN-fill so unsaved channels are explicitly marked invalid
+        data = np.full([self.channel_count, self.min_num_pts], np.nan)
+        for i in channels_to_save:
             wfm = self.scope.channels[i].fetch(num_records=1)
             ns = min(len(wfm[0].samples), self.min_num_pts)
             print(f'[NI_SCOPE] Fetch: CH{wfm[0].channel}, rec {wfm[0].record}, '
@@ -488,8 +494,12 @@ class NI_SCOPEWorker(Worker):
             print('[NI_SCOPE] Saving traces…')
             if self.device_name in grp:
                 del grp[self.device_name]
-            grp.create_dataset(self.device_name, data=data)
-        print('[NI_SCOPE] Fetch complete.')
+            dset = grp.create_dataset(self.device_name, data=data)
+            # Write time metadata so analysis can reconstruct time axis from attrs
+            dset.attrs['sample_rate'] = float(getattr(self, 'samp_rate_actual', self.min_sample_rate))
+            dset.attrs['t0'] = 0.0
+            dset.attrs['channels_saved'] = channels_to_save
+        print(f'[NI_SCOPE] Fetch complete. Channels saved: {channels_to_save}')
 
         try:
             self.scope.abort()

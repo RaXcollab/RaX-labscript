@@ -43,8 +43,10 @@ labconfig/
 
 ## Python Environment
 
+**Every Python command must be preceded by conda activation.** Bare `python` gives the wrong version (3.13 base env); `python3` hits the Windows Store shim. Always use:
+
 ```bash
-source ~/miniconda/etc/profile.d/conda.sh && conda activate labscript
+source ~/miniconda/etc/profile.d/conda.sh && conda activate labscript && python ...
 ```
 
 - Python 3.11, pyzmq=23.2.0 (do NOT upgrade pyzmq), numpy=1.26.4
@@ -103,13 +105,34 @@ When adding a new external GUI, add it to this table.
 
 The analysis utility library in `userlib/analysislib/Main_Experiment/` provides reusable functions for lyse scripts and Jupyter notebooks:
 
-- **`filtering.py`**: `process_trace()` (adaptive drift correction with slope check), `smooth()`, `butter_lowpass_filter()`
-- **`NI_SCOPE.py`**: `plot_ni_scope_channels()`, `load_ni_scope_sequences()`, `ensure_time_ms()`
-- **`Abs_data.py`**: `load_sequence()` (threaded batch loader), `extract_metadata()`
+- **`filtering.py`**: `process_trace()` (adaptive drift correction with slope check; deprecated kwargs `beforeYAG_time`, `after_abs_time`, `end_time` accepted with conversion), `smooth()`, `butter_lowpass_filter()`
+- **`NI_SCOPE.py`**: `plot_ni_scope_channels()`, `load_ni_scope_sequences()` (auto-detects sample rate from h5 attrs), `ensure_time_ms()`, `_resolve_fs_hz()` (internal fallback chain)
+- **`Abs_data.py`**: `load_sequence()` (threaded batch loader, warns on read failures and shape-mismatch drops), `extract_metadata()`
 
 **API stability rule:** Analysis utility functions (`filtering.py`, `NI_SCOPE.py`, `Abs_data.py`, and any future utility modules) must maintain backward compatibility. New features add new kwargs with defaults; existing parameters never change meaning or get removed. This ensures old notebooks that import from these modules continue to work. New notebooks should import from the utility library rather than redefining functions inline.
 
 For analysis-specific questions, use the `lyse-analysis` agent. It knows the full utility API and the two analysis contexts: real-time lyse scripts (performance-critical) and offline Jupyter notebooks (thoroughness).
+
+### NI_SCOPE Data Conventions
+
+The NI_SCOPE device (`userlib/user_devices/NI_SCOPE/`) is a custom NI-5922 high-speed digitizer driver. Data flows: connection table params → h5 properties → worker → h5 dataset + attrs → analysis.
+
+**h5 dataset layout:** `/data/traces/NI_SCOPE` — shape `[channel_count, N]` (always 2D, even with selective saving). Channel index = row index.
+
+**Dataset attributes (written by worker):**
+- `sample_rate` — actual sample rate in Hz (from `scope.horz_sample_rate` post-acquisition)
+- `t0` — time offset in seconds (currently 0.0; reserved for future trigger delay support)
+- `channels_saved` — list of channel indices that contain real data (e.g., `[0, 1]` or `[0]`)
+
+**Selective channel saving:** `channels_to_save` in the connection table controls which channels are fetched. Unsaved channels are NaN-filled (preserves array shape for backward compat). Analysis code should check `channels_saved` attr or test for NaN.
+
+**Sample rate resolution in analysis (`_resolve_fs_hz`):** Fallback chain:
+1. Dataset attrs `sample_rate` (new files)
+2. Connection table property `min_sample_rate`
+3. User-provided `fs_hz` kwarg
+4. Default 1 MHz
+
+**NaN-padding pattern:** When optional data columns exist, fill with NaN rather than omitting. This preserves indexing semantics (`channel 0 = row 0`) and makes missing data visible (NaN propagates) rather than silent.
 
 ### Session Documentation
 
@@ -128,6 +151,7 @@ Invoke agents proactively based on task type. Don't wait for the user to ask.
 | BLACS crash / thread issue | `blacs-expert` → `labscript-diagnostics` | Immediately |
 | Experiment sequence design | `amo-expert` | When writing sequences or connection tables |
 | Analysis work | `lyse-analysis` | When touching analysislib/ |
+| Codebase audit / code review | Domain agents per routing table below | Use `blacs-expert` for user_devices/blacs/, `amo-expert` for labscriptlib/, `lyse-analysis` for analysislib/. **Never** use generic Explore for audits — it produces false positives on physics-lab conventions (RunManager globals, thread safety patterns, device registration). |
 
 **File-to-agent routing:** When searching or auditing files, validate findings through the domain agent that owns that path. Generic Explore agents lack physics-lab context and produce false positives.
 
@@ -154,6 +178,8 @@ These are normal in this codebase — not bugs, not code smell, not cleanup oppo
 - **Single-occurrence log errors** without recurrence — flag as yellow observation, not critical (check frequency before escalating)
 - **Connection table parameters that differ from hardware maximums** — they reflect the current experiment, not hardware limits (e.g., `num_lasers=1` when 2 are wired)
 - **Inline function definitions in old Jupyter notebooks** — frozen analysis snapshots, not code duplication
+- **NaN rows in NI_SCOPE h5 datasets** — unsaved channels are NaN-filled intentionally (selective saving), not data corruption
+- **Deprecated kwargs in analysis utilities** — `beforeYAG_time`, `after_abs_time`, `end_time` in `process_trace()` are backward-compat aliases, not dead code
 
 ### Agent Workflow (plan agent use upfront, not as afterthoughts)
 
@@ -168,6 +194,8 @@ The Deliverables section of every plan must specify which agents produce which a
 **session-notes:** At session start, ask the user if they want session-notes tracking (use AskUserQuestion, short yes/no). If yes, launch in background and resume at milestones. `session-notes` handles note-taking only — wrap-up deliverables are owned by the `wrap-up` agent.
 
 **Plan mode integration:** Use specialized agents (`device-builder`, `blacs-expert`, `amo-expert`) as your Explore/Plan agents for domain-matching tasks. Don't default to generic Explore/Plan when a specialized agent exists.
+
+**Routing enforcement (check before every agent launch):** Before launching any Explore or Plan agent, check the file-to-agent routing table above. If the task touches files owned by a domain agent, use that domain agent instead. This applies to plan mode Phase 1 (exploration) and Phase 2 (design) — both should use domain agents for domain-matching paths. The routing table is authoritative; generic agents are a last resort for truly cross-cutting or novel tasks.
 
 **Small fixes (single-file, ~10 lines, obvious approach):** Don't use full multi-phase plan mode. Instead, state the fix in a few sentences, then ask the user for permission to proceed. One cycle, not three.
 

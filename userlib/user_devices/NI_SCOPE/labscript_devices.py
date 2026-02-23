@@ -98,22 +98,23 @@ class NI_SCOPE(Device):
     @set_passed_properties(
         property_names = {
             'connection_table_properties': [
-                'MAX_name', 
+                'MAX_name',
                 'vertical_range',
                 'vertical_coupling',
                 'min_sample_rate',
                 'min_num_pts',
                 'trigger_source',
                 'trigger_level',
-                'trigger_delay'
+                'trigger_delay',
+                'channels_to_save'
             ],
             'device_properties': []}
         )
     def __init__(
-        self, 
+        self,
         name = None,
         parent_device = None,
-        MAX_name = None, 
+        MAX_name = None,
         vertical_range = None,
         vertical_coupling = None,
         min_sample_rate = None,
@@ -121,6 +122,7 @@ class NI_SCOPE(Device):
         trigger_source = None,
         trigger_level = 2.5,
         trigger_delay  = 0.0,
+        channels_to_save = None,
         **kwargs):
 
         # formally instantiate labscripts.base.device

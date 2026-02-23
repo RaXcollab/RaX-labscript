@@ -1,5 +1,6 @@
 from scipy.signal import butter, sosfiltfilt, sosfreqz
 from scipy.signal import savgol_filter
+import warnings
 import numpy as np
 from scipy.optimize import curve_fit
 
@@ -28,7 +29,8 @@ def butter_lowpass(lowcut, fs, order=5):
 
 def process_trace(time_ms, signal, tYAG_ms,
                   margin_ms=0.05, tail_ms=1.0,
-                  slope_warn_threshold=0.01, filter_on=True):
+                  slope_warn_threshold=0.01, filter_on=True,
+                  beforeYAG_time=None, after_abs_time=None, end_time=None):
     """
     Remove linear drift and baseline offset from a trace.
 
@@ -57,11 +59,43 @@ def process_trace(time_ms, signal, tYAG_ms,
     filter_on : bool
         If True -> remove linear drift + baseline.
         If False -> return original signal.
+    beforeYAG_time : float, optional
+        **Deprecated.** Old absolute time threshold for the pre-YAG region.
+        Converted to ``margin_ms = tYAG_ms - beforeYAG_time``.
+        Use ``margin_ms`` instead.
+    after_abs_time : float, optional
+        **Deprecated.** Old absolute start time for the after-signal region.
+        Used together with ``end_time`` to compute ``tail_ms``.
+        Use ``tail_ms`` instead.
+    end_time : float, optional
+        **Deprecated.** Old absolute end time for the after-signal region.
+        Converted to ``tail_ms = end_time - after_abs_time``.
+        Use ``tail_ms`` instead.
 
     Returns
     -------
     corrected_signal : 1D array
     """
+    # Handle deprecated kwargs -- convert to current API
+    if beforeYAG_time is not None:
+        warnings.warn(
+            "process_trace(): 'beforeYAG_time' is deprecated. "
+            "Use 'margin_ms' instead (margin_ms = tYAG_ms - beforeYAG_time).",
+            DeprecationWarning, stacklevel=2)
+        margin_ms = tYAG_ms - beforeYAG_time
+
+    if after_abs_time is not None and end_time is not None:
+        warnings.warn(
+            "process_trace(): 'after_abs_time' and 'end_time' are deprecated. "
+            "Use 'tail_ms' instead (tail_ms = end_time - after_abs_time).",
+            DeprecationWarning, stacklevel=2)
+        tail_ms = end_time - after_abs_time
+    elif after_abs_time is not None or end_time is not None:
+        warnings.warn(
+            "process_trace(): 'after_abs_time' and 'end_time' must both be "
+            "provided to take effect. Ignoring partial deprecated kwargs.",
+            DeprecationWarning, stacklevel=2)
+
     if not filter_on:
         return signal.copy()
 

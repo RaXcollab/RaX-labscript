@@ -153,6 +153,7 @@ NI_SCOPE(
     trigger_source='TRIG',
     trigger_level=1.0,           # triggers at +1V
     trigger_delay=0.0,            # 0s time offset between trigger event and when sampling starts
+    channels_to_save=[0, 1],      # which NI-5922 channels to save to h5
 )
 
 

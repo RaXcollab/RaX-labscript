@@ -69,7 +69,7 @@ ax1.legend(loc='upper right')
 ax3 = fig.add_subplot(gs[1, 0])
 if 'Absorption3' in trace_data:
     analog_data_3 = trace_data['Absorption3']
-    times_3 = analog_data_3[0].flatten() - 2e-3
+    times_3 = analog_data_3[0].flatten() - 2e-3  # Subtract tYAG offset (2 ms); update if pre-YAG timing changes
     values_3 = analog_data_3[1].flatten()
     ax3.plot(times_3 * 1000, values_3, 'g')
     ax3.axvline(x=tYAG * 1000, color='r', linestyle='--', label='YAG')

@@ -57,8 +57,8 @@ def read_shot(args):
                 result['traces_v'] = traces_v
                 result['valid'] = True
  
-    except Exception:
-        pass
+    except Exception as e:
+        print(f"Warning: failed to read {os.path.basename(filepath)}: {e}")
     return result
  
 # --- 3. Main Loader ---
@@ -110,6 +110,9 @@ def load_sequence(seq_num, folder_root, trace_names):
     final_data = {}
     for name, v_list in v_buffer.items():
         clean_v = [v for v in v_list if v is not None and v.shape == shared_time.shape]
+        dropped = len(v_list) - len(clean_v)
+        if dropped:
+            print(f"Warning: {dropped}/{len(v_list)} shots dropped for trace '{name}' (shape mismatch)")
         if clean_v:
             final_data[name] = {'data': np.stack(clean_v), 'time': shared_time}
  
