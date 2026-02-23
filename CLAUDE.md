@@ -71,7 +71,7 @@ The `RemoteControl` device class (`userlib/user_devices/RemoteControl/`) is the 
 
 | Name | BLACS Device Class | GUI Codebase | REQ-REP Port | PUB-SUB Port | Connection Table Name |
 |------|-------------------|--------------|-------------|-------------|----------------------|
-| Laser Lock | `RemoteControl` | LabVIEW (not in git) | 3796 | 3797 | `LaserLockGUI` |
+| Laser Lock | `LaserLockDevice` | LabVIEW (not in git) | 3796 | 3797 | `LaserLockGUI` |
 | Rastering GUI | `RasteringDevice` | `C:\Users\radmo\Desktop\GUIs\rastering` | 55535 | 55536 | `RasteringGUI` |
 | BigSky YAG Hub | `BigSkyHub` | `C:\Users\radmo\Desktop\GUIs\BigSkyControl` | 55540 | 55541 | `BigSkyLasers` |
 
