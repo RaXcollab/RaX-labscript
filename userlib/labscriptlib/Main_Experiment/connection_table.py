@@ -4,7 +4,8 @@ from labscript_devices.PrawnBlaster.labscript_devices import PrawnBlaster
 from labscript_devices.NI_DAQmx.models.NI_PXIe_6361 import NI_PXIe_6361
 from labscript_devices.NI_DAQmx.models.NI_PXIe_6535 import NI_PXIe_6535
 from user_devices.NI_SCOPE.labscript_devices import NI_SCOPE
-from user_devices.RemoteControl.labscript_devices import RemoteControl, RemoteAnalogOut, RemoteAnalogMonitor
+from user_devices.RemoteControl.labscript_devices import RemoteAnalogOut, RemoteAnalogMonitor
+from user_devices.LaserLockDevice.labscript_devices import LaserLockDevice
 from user_devices.RasteringDevice.labscript_devices import RasteringDevice
 from user_devices.BigSkyHub.labscript_devices import BigSkyHub
 
@@ -47,7 +48,7 @@ ni_6535 = NI_PXIe_6535(
 
 
 # === Laser Lock Communication === #
-RemoteControl(name='LaserLockGUI', host="127.0.0.1", reqrep_port=3796,pubsub_port=3797, mock=False) # add IP address and Port of the host software
+LaserLockDevice(name='LaserLockGUI', host="127.0.0.1", reqrep_port=3796, pubsub_port=3797, mock=False)
 
 # Name convention: <wavemeter channel>_Setpoint and <wavemeter channel>_Value
 
