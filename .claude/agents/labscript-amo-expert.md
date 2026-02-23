@@ -45,9 +45,18 @@ NI_SCOPE (triggered acquisition, no clockline)
 
 ## Runmanager
 
-- **Globals**: Parameters stored in HDF5 `globals/` groups, accessible in sequences and analysis
+- **Globals**: Parameters stored in HDF5 `globals/` groups, accessible in sequences and analysis. Variables like `tYAG`, `tstart`, `DOUBLE_YAG` in sequence files are RunManager globals injected at compile time — they are NOT undefined variables.
 - **Scans**: Parameter sweeps defined in runmanager, generates one HDF5 per parameter combination
-- **Key globals**: `tYAG` (ablation trigger time), `ENH_START`/`ENH_DURATION` (enhancement window), `YAG_DELAY`
+- **Key globals**: `tYAG` (ablation trigger time), `ENH_START`/`ENH_DURATION` (enhancement window), `YAG_DELAY`, `DOUBLE_YAG` (boolean, single vs dual YAG)
+- **Active globals file**: `Globals/BaF_globals.h5` with groups: Double YAG, Enhancement, tYAG, tend, tstart
+- **Multiple sequences**: RunManager only compiles the selected file. Old-hardware sequences in the directory are harmless and serve as reference.
+
+## Connection Table Evolution
+
+The connection table and sequences change as the experiment progresses. Device counts, channel names, and parameters are not fixed. Examples:
+
+- `BigSkyHub(num_lasers=N)` — `num_lasers` is intentionally variable (1 or 2) depending on how many YAG lasers are active. It also serves as shot metadata. BLACS handles stale saved state gracefully when this changes.
+- Digital trigger lines (e.g., `YAG1_line`, `YAG2_line` on NI-6535) are independent of BigSkyHub ZMQ channels. A digital trigger line can exist even when the corresponding BigSkyHub laser is not configured.
 
 ## Shot Lifecycle
 

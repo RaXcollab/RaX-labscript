@@ -1,0 +1,142 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<style>
+  body { font-family: Calibri, Segoe UI, sans-serif; font-size: 11pt; color: #333; max-width: 900px; margin: 20px auto; }
+  h1 { font-size: 20pt; border-bottom: 2px solid #0078d4; padding-bottom: 6px; color: #0078d4; }
+  h2 { font-size: 14pt; color: #0078d4; margin-top: 24px; }
+  h3 { font-size: 12pt; color: #444; }
+  table { border-collapse: collapse; width: 100%; margin: 10px 0; }
+  th, td { border: 1px solid #ccc; padding: 6px 10px; text-align: left; vertical-align: top; }
+  th { background: #f0f0f0; font-weight: bold; }
+  code { font-family: Consolas, monospace; font-size: 10pt; background: #f4f4f4; padding: 1px 4px; border-radius: 3px; }
+  pre { background: #f4f4f4; border: 1px solid #ddd; border-radius: 4px; padding: 10px; font-family: Consolas, monospace; font-size: 10pt; overflow-x: auto; white-space: pre; }
+  .badge { display: inline-block; padding: 2px 8px; border-radius: 10px; color: white; font-size: 9pt; font-weight: bold; }
+  .green { background: #4CAF50; }
+  .orange { background: #F57C00; }
+  .yellow { background: #FFC107; color: #333; }
+  .blue { background: #0078d4; }
+  .purple { background: #9C27B0; }
+  .gray { background: #9E9E9E; }
+  .red { background: #f44336; }
+  .meta { color: #888; font-size: 10pt; }
+  ol, ul { margin: 6px 0; padding-left: 24px; }
+  li { margin: 3px 0; }
+  strong { color: #222; }
+  .callout { background: #e8f4fd; border-left: 4px solid #0078d4; padding: 8px 12px; margin: 10px 0; }
+  .warn { background: #fff3cd; border-left: 4px solid #ffc107; padding: 8px 12px; margin: 10px 0; }
+</style>
+</head>
+<body>
+
+<h1>Pre-Scan Codebase Audit</h1>
+<p class="meta">
+  <strong>Date:</strong> 2026-02-23 &nbsp;&bull;&nbsp;
+  <strong>Commits:</strong> <code>3533a33</code> (labscript-suite), <code>6787f2d</code> (rastering) &nbsp;&bull;&nbsp;
+  <strong>Context:</strong> Full-workspace audit in preparation for transverse laser cooling parameter scans (magnetically assisted Sisyphus cooling, cryogenic buffer-gas molecular beam).
+</p>
+
+<h2>Scope</h2>
+<p>
+Audited the entire labscript-suite workspace: 7 custom BLACS devices, all sequences and connection tables, the analysis pipeline (4 utility files + single-shot script), the Rastering GUI codebase, labconfig, BLACS logs, Jupyter notebooks, saved state files, and the agent/documentation system (CLAUDE.md, 6 agent prompts, BLACS_COMMUNICATION_CONTRACT.md).
+</p>
+
+<h2>Findings &amp; Fixes</h2>
+
+<h3>Critical &mdash; Fixed</h3>
+<table>
+  <tr><th>Issue</th><th>File</th><th>Fix</th></tr>
+  <tr>
+    <td><span class="badge red">CRITICAL</span> <code>edge_counter/__init__ .py</code> had a space in the filename, breaking the Python package. Imports only worked via stale <code>.pyc</code> bytecode.</td>
+    <td><code>userlib/user_devices/edge_counter/__init__.py</code></td>
+    <td>Renamed file, deleted <code>__pycache__/</code>.</td>
+  </tr>
+  <tr>
+    <td><span class="badge red">CRITICAL</span> Rastering GUI: no reply sent for unrecognized <code>PROGRAM_VALUE</code> connections. Desynchronizes ZMQ REP socket, permanently killing the server thread.</td>
+    <td><code>rastering/raster_controller.py:1168</code></td>
+    <td>Added fallthrough <code>else</code> clause returning ERROR.</td>
+  </tr>
+</table>
+
+<h3>High &mdash; Fixed</h3>
+<table>
+  <tr><th>Issue</th><th>File</th><th>Fix</th></tr>
+  <tr>
+    <td><span class="badge orange">HIGH</span> <code>CHECK_VALUE</code> returned <code>SUCCESS</code> with <code>null</code> for unknown connections instead of ERROR.</td>
+    <td><code>rastering/raster_controller.py:1087</code></td>
+    <td>Returns ERROR for unrecognized connection names.</td>
+  </tr>
+  <tr>
+    <td><span class="badge orange">HIGH</span> PUB socket <code>send_string()</code> not wrapped in try-except &mdash; socket error would kill ZMQ loop.</td>
+    <td><code>rastering/raster_controller.py:1017</code></td>
+    <td>Wrapped in try-except with pass.</td>
+  </tr>
+</table>
+
+<h3>Medium &mdash; Fixed</h3>
+<table>
+  <tr><th>Issue</th><th>Fix</th></tr>
+  <tr>
+    <td><span class="badge yellow">MEDIUM</span> Stale BLACS saved-state files cluttering <code>app_saved_configs/Main_Experiment/blacs/</code>.</td>
+    <td>Archived <code>Broken_RaX-Control_BLACS.h5</code>, <code>DESKTOP-5KV7DIT_BLACS.h5</code>, <code>OLD_DESKTOP-5KV7DIT_BLACS.h5</code> into <code>archive/</code> subfolder.</td>
+  </tr>
+</table>
+
+<h3>Noted for Future Work</h3>
+<table>
+  <tr><th>Item</th><th>Action</th></tr>
+  <tr>
+    <td>BLACS.log shows recurring "unknown_action" from RasteringGUI</td>
+    <td>Restart Rastering GUI from current source &mdash; the running instance is likely stale.</td>
+  </tr>
+  <tr>
+    <td>Notebooks duplicate <code>smooth()</code>, <code>butter_lowpass_filter()</code> inline</td>
+    <td>New notebooks should import from <code>filtering.py</code>. Old notebooks left as-is (frozen snapshots). <code>filtering.py</code> API must remain backward-compatible.</td>
+  </tr>
+</table>
+
+<h2>Investigated &amp; Cleared</h2>
+<p>These areas were thoroughly audited and found to be clean:</p>
+<ul>
+  <li><strong>Qt thread safety</strong> &mdash; all 7 devices use <code>inmain()</code> correctly, no <code>qtlock</code> for widget calls, PUB-SUB threads use <code>pyqtSignal</code> bridges</li>
+  <li><strong>Worker paths</strong> &mdash; all use <code>user_devices.X.blacs_workers.Y</code></li>
+  <li><strong>ZMQ protocol compliance</strong> &mdash; HELLO, PROGRAM_VALUE, CHECK_VALUE with timeout/error handling</li>
+  <li><strong>Delta tracking &amp; poll race protection</strong> &mdash; correctly implemented in BigSkyHub</li>
+  <li><strong>All <code>register_classes.py</code> files</strong> &mdash; correct references</li>
+  <li><strong>CLAUDE.md, BLACS_COMMUNICATION_CONTRACT.md, all 6 agent prompts</strong> &mdash; consistent and current</li>
+  <li><strong>Analysis pipeline</strong> &mdash; <code>analysis.py</code>, <code>filtering.py</code>, <code>NI_SCOPE.py</code>, <code>Abs_data.py</code> all robust</li>
+  <li><strong>Backend repos</strong> &mdash; <code>blacs/</code>, <code>labscript-devices/</code>, <code>labscript-utils/</code> clean, no local mods</li>
+  <li><strong>Labconfig</strong> &mdash; all sections present, ports consistent</li>
+  <li><strong>Rastering GUI thread safety</strong> &mdash; proper <code>_state_lock</code> usage throughout</li>
+  <li><strong>RunManager globals</strong> &mdash; <code>BaF_globals.h5</code> with 5 groups, well-organized for parameter scans</li>
+  <li><strong>BLACS faulthandler.log</strong> &mdash; empty (no segfaults)</li>
+</ul>
+
+<h2>Not Issues (Investigated, Dismissed)</h2>
+<ul>
+  <li><strong>BigSkyHub <code>num_lasers</code></strong> &mdash; intentionally variable (1 or 2) per experiment. BLACS <code>restore_save_data()</code> handles stale channels gracefully via <code>FrontPanelSettings.check_row()</code>. Recurring YAG_2 log messages are debug-level poll noise.</li>
+  <li><strong>Sequence "undefined globals"</strong> &mdash; <code>tYAG</code>, <code>tstart</code>, <code>tend</code>, etc. are RunManager globals injected from <code>BaF_globals.h5</code> at compile time. Standard labscript pattern.</li>
+  <li><strong>Legacy sequences</strong> &mdash; RunManager only compiles the selected file. Old-hardware sequences are useful reference, not clutter.</li>
+  <li><strong>PrawnBlaster COM port error</strong> &mdash; one-time stale port designation, already fixed.</li>
+  <li><strong><code>__pycache__</code> files</strong> &mdash; auto-managed by Python.</li>
+  <li><strong>Jupyter checkpoints</strong> &mdash; auto-managed by Jupyter.</li>
+</ul>
+
+<h2>Expert Consultations</h2>
+<table>
+  <tr><th>Agent</th><th>Question</th><th>Answer</th></tr>
+  <tr>
+    <td><code>blacs-expert</code></td>
+    <td>Does BLACS handle stale saved state gracefully when <code>num_lasers</code> changes?</td>
+    <td>Yes. <code>FrontPanelSettings.check_row()</code> returns <code>-1</code> for missing channels, silently excluding them. No h5 deletion needed. Recurring errors are debug-level poll noise from <code>BigSkyWorker.check_remote_values()</code>.</td>
+  </tr>
+  <tr>
+    <td><code>amo-expert</code></td>
+    <td>Should legacy sequences be archived? What's the multi-sequence workflow?</td>
+    <td>RunManager only compiles the selected file. Keep old sequences as reference. For parameter scans, use a single well-parameterized sequence with globals.</td>
+  </tr>
+</table>
+
+</body>
+</html>

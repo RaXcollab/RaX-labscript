@@ -100,9 +100,13 @@ Common globals used in analysis (extracted via `run.get_globals()`):
 
 1. **Real-time scripts must be fast.** Every millisecond counts during a shot sequence.
 2. **Notebooks can be thorough.** Take time to validate, visualize intermediate steps, document findings.
-3. **Reuse the utility libraries.** Don't duplicate `process_trace`, `load_sequence`, etc.
+3. **Reuse the utility libraries.** Don't duplicate `process_trace`, `load_sequence`, etc. New notebooks should import from the utility library. Old notebooks with inline copies are frozen snapshots — leave them as-is.
 4. **Fail gracefully in scripts.** Print warnings, don't crash. Missing traces should show placeholder text, not exceptions.
 5. **Keep it readable.** Physics grad students maintain this code. Clear variable names, minimal abstraction.
+
+## API Stability Rule
+
+All analysis utility functions (`filtering.py`, `NI_SCOPE.py`, `Abs_data.py`, and any future utility modules) must maintain backward compatibility. New features add new kwargs with defaults; existing parameters never change meaning or get removed. This ensures old notebooks that import from these modules continue to work. If a breaking change is truly necessary, add a new function rather than modifying the old one.
 
 ## Defers To
 

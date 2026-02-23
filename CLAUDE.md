@@ -19,6 +19,12 @@ This machine runs the `Main_Experiment` apparatus. Only `userlib/labscriptlib/Ma
 
 **Connection table convention:** BLACS loads only the file named `connection_table.py`. Other connection table files (e.g. `connection_table_closed_cell.py`) are storage/backups and are not active. Sequence files must duplicate the active connection table header exactly — keep them in sync when devices are added or removed.
 
+**RunManager globals:** Variables like `tYAG`, `tstart`, `tend`, `DOUBLE_YAG` in sequence files are NOT undefined — they are RunManager globals injected from `.h5` globals files at compile time. This is standard labscript behavior. Do not flag them as bugs. The active globals file is `Globals/BaF_globals.h5`.
+
+**Multiple sequences:** RunManager only compiles the selected file. Old-hardware sequences in the directory cause no issues and serve as reference for past experiments. Do not archive or delete them.
+
+**Evolving configuration:** The connection table and sequences change as the experiment progresses (new devices, different laser configurations, new measurement modes). Treat the current state as a snapshot — do not assume device counts or channel names are fixed. Use the `amo-expert` agent for connection table questions.
+
 ### Key Paths
 
 ```
@@ -101,6 +107,8 @@ The analysis utility library in `userlib/analysislib/Main_Experiment/` provides 
 - **`NI_SCOPE.py`**: `plot_ni_scope_channels()`, `load_ni_scope_sequences()`, `ensure_time_ms()`
 - **`Abs_data.py`**: `load_sequence()` (threaded batch loader), `extract_metadata()`
 
+**API stability rule:** Analysis utility functions (`filtering.py`, `NI_SCOPE.py`, `Abs_data.py`, and any future utility modules) must maintain backward compatibility. New features add new kwargs with defaults; existing parameters never change meaning or get removed. This ensures old notebooks that import from these modules continue to work. New notebooks should import from the utility library rather than redefining functions inline.
+
 For analysis-specific questions, use the `lyse-analysis` agent. It knows the full utility API and the two analysis contexts: real-time lyse scripts (performance-critical) and offline Jupyter notebooks (thoroughness).
 
 ### Session Documentation
@@ -136,6 +144,10 @@ Standard deliverables:
 2. HTML lab note — `notes/YYYY-MM-DD_Topic.html`
 3. CLAUDE.md updates — if conventions/registry changed
 4. Session introspection — what went well, what to improve, lessons
+
+### BLACS Saved-State Resilience
+
+When the connection table changes (e.g., devices added/removed, parameters changed), BLACS handles stale saved state gracefully. `FrontPanelSettings.check_row()` silently excludes channels no longer in the connection table. **No need to delete the saved state h5 file** after connection table changes.
 
 ### State Machine Event Ordering
 
