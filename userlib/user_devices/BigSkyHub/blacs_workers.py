@@ -69,6 +69,11 @@ class BigSkyWorker(RemoteControlWorker):
                         f"check_remote_values: skipping {connection} (not registered in GUI)"
                     )
                     continue
+                if "laser disconnected" in msg:
+                    self.logger.warning(
+                        f"check_remote_values: skipping {connection} (laser disconnected)"
+                    )
+                    continue
                 # Other errors: raise as usual
                 self._check_response(response, f"check_remote_values({connection})")
             remote_values[connection] = float(response["value"])
@@ -98,6 +103,11 @@ class BigSkyWorker(RemoteControlWorker):
                 if "unknown connection" in msg:
                     self.logger.debug(
                         f"check_all_remote_values: skipping {connection} (not registered in GUI)"
+                    )
+                    continue
+                if "laser disconnected" in msg:
+                    self.logger.warning(
+                        f"check_all_remote_values: skipping {connection} (laser disconnected)"
                     )
                     continue
                 self._check_response(response, f"check_all({connection})")
@@ -136,6 +146,11 @@ class BigSkyWorker(RemoteControlWorker):
                 if "unknown connection" in msg:
                     self.logger.debug(
                         f"program_manual: skipping {connection} (not registered in GUI)"
+                    )
+                    continue
+                if "laser disconnected" in msg:
+                    self.logger.warning(
+                        f"program_manual: skipping {connection} (laser disconnected)"
                     )
                     continue
                 self._check_response(response, f"program_manual({connection}={value})")

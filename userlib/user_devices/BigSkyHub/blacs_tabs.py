@@ -136,6 +136,9 @@ class BigSkyTab(RemoteControlTab):
         self._recently_changed = {}  # {connection: monotonic timestamp}
         self._lamps_active = {}     # {prefix: bool} — tracks per-laser lamp state
         self._input_enabled = True  # tracks "Disable Input" checkbox state
+        self._laser_groups = {}       # {prefix: QGroupBox} — stored from _create_laser_group
+        self._last_monitor_time = {}  # {prefix: float} — time.monotonic() of last PUB-SUB value
+        self._laser_online = {}       # {prefix: bool} — tracks online state to avoid redundant updates
 
         laser_prefixes = sorted(set(
             m.group(1) for c in self.child_output_connections
@@ -151,6 +154,11 @@ class BigSkyTab(RemoteControlTab):
         for prefix in laser_prefixes:
             group = self._create_laser_group(prefix)
             laser_layout.addWidget(group)
+
+        # ── 6b. Per-laser health check timer (30s stale threshold) ──
+        self._laserHealthTimer = QtCore.QTimer()
+        self._laserHealthTimer.timeout.connect(self._check_laser_health)
+        self._laserHealthTimer.start(10000)
 
         # ── 7. Reconnect buttons ──
         self.reconnect_reqrep_button = QtWidgets.QPushButton(
@@ -294,6 +302,13 @@ class BigSkyTab(RemoteControlTab):
         layout.addLayout(mode_row)
 
         group.setLayout(layout)
+
+        # Store ref and start offline — restored on first PUB-SUB message
+        self._laser_groups[prefix] = group
+        self._laser_online[prefix] = False
+        group.setEnabled(False)
+        group.setTitle("%s (OFFLINE)" % prefix)
+
         return group
 
     # ── Toggle / combo callbacks ──────────────────────────────────────
@@ -429,6 +444,17 @@ class BigSkyTab(RemoteControlTab):
         except (ValueError, TypeError):
             return
 
+        # Per-laser disconnect detection: update timestamp, restore if offline
+        m = _PREFIX_RE.match(connection)
+        if m:
+            prefix = m.group(1)
+            self._last_monitor_time[prefix] = time.monotonic()
+            if not self._laser_online.get(prefix, False):
+                self._laser_online[prefix] = True
+                if prefix in self._laser_groups:
+                    self._laser_groups[prefix].setEnabled(True)
+                    self._laser_groups[prefix].setTitle(prefix)
+
         # Temperature monitor
         if connection in self._temp_labels:
             self._style_temp(self._temp_labels[connection], value)
@@ -455,6 +481,19 @@ class BigSkyTab(RemoteControlTab):
                 self._AO[connection].set_value(value, program=False, update_gui=True)
             except (ValueError, KeyError):
                 pass
+
+    # ── Per-laser health check ─────────────────────────────────────────
+
+    def _check_laser_health(self):
+        """Gray out lasers whose PUB-SUB data is stale (>30s)."""
+        now = time.monotonic()
+        for prefix, group in self._laser_groups.items():
+            last = self._last_monitor_time.get(prefix, 0)
+            if last > 0 and (now - last) > 30.0:
+                if self._laser_online.get(prefix, False):
+                    self._laser_online[prefix] = False
+                    group.setEnabled(False)
+                    group.setTitle("%s (OFFLINE)" % prefix)
 
     # ── Override: enable/disable controls ──────────────────────────────
 
@@ -504,3 +543,7 @@ class BigSkyTab(RemoteControlTab):
             self._start_polling()
         else:
             self.connect_to_remote()
+
+    def close_tab(self, finalise=True):
+        self._laserHealthTimer.stop()
+        return super().close_tab(finalise=finalise)
