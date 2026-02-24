@@ -1,6 +1,8 @@
 from labscript import *
-from labscriptlib.Main_Experiment.connection_table import *
+from labscriptlib.Main_Experiment.connection_table import connection_table
 from labscriptlib.Main_Experiment.subsequences.subsequences import digital_pulse
+
+connection_table()  # Initialize devices from connection table
 
 # === Labscript sequence ===
 t = 0
