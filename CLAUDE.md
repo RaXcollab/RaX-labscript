@@ -17,7 +17,14 @@ The parent repo's `.gitignore` excludes the backend folders (`blacs/`, `labscrip
 
 This machine runs the `Main_Experiment` apparatus. Only `userlib/labscriptlib/Main_Experiment/` is relevant — ignore `lyman29/` and other labscriptlib folders.
 
-**Connection table convention:** BLACS loads only the file named `connection_table.py`. Other connection table files (e.g. `connection_table_closed_cell.py`) are storage/backups and are not active. Sequence files must duplicate the active connection table header exactly — keep them in sync when devices are added or removed.
+**Connection table convention:** BLACS loads only the file named `connection_table.py`. Other connection table files (e.g. `connection_table_closed_cell.py`) are storage/backups and are not active.
+
+**Connection table import pattern:** The connection table wraps all device instantiation in a `def connection_table():` function. Sequences import and call it:
+```python
+from labscriptlib.Main_Experiment.connection_table import connection_table
+connection_table()  # re-runs device constructors every compile
+```
+The `if __name__ == '__main__':` guard calls `connection_table()` + `start()` + `stop()` for BLACS. **Why a function, not module-level code:** RunManager's `batch_compiler` caches modules in `sys.modules` across compiles. Module-level device instantiation only runs on the first import; after `compiler.reset()` clears `builtins` between compiles, subsequent imports are no-ops and devices vanish (`No toplevel devices and no master pseudoclock found`). The function pattern ensures device constructors re-run every compile. Device names (e.g. `YAG1_line`) are accessible via `builtins.__dict__` — no need to return them.
 
 **RunManager globals:** Variables like `tYAG`, `tstart`, `tend`, `DOUBLE_YAG` in sequence files are NOT undefined — they are RunManager globals injected from `.h5` globals files at compile time. This is standard labscript behavior. Do not flag them as bugs. The active globals file is `Globals/BaF_globals.h5`.
 
@@ -99,7 +106,7 @@ When adding a new external GUI, add it to this table.
 7. **Update this file:** Add the new GUI to the External GUI Registry table.
 8. **Wrap up:** Resume `session-notes` for commit message, HTML lab note, context updates, and session introspection.
 
-**Worked examples:** `RemoteControl` (generic, laser lock) | `RasteringDevice` (subclassed, raster stepping + status indicators) | `BigSkyHub` (subclassed, safe command ordering + auto-created children)
+**Worked examples:** `RemoteControl` (generic, laser lock) | `RasteringDevice` (subclassed, raster stepping + status indicators) | `BigSkyHub` (subclassed, safe command ordering + auto-created children + serial disconnect resilience)
 
 ### Analysis Utilities
 
