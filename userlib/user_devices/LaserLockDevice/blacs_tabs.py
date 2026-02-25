@@ -2,6 +2,9 @@ import threading
 
 import zmq
 from qtutils.qt import QtWidgets, QtCore
+from qtutils import inmain
+
+from blacs.device_base_class import define_state, MODE_MANUAL
 
 from user_devices.RemoteControl.blacs_tabs import (
     RemoteControlTab,
@@ -226,6 +229,87 @@ class LaserLockTab(RemoteControlTab):
                 self._lock_indicators[conn_id].setStyleSheet(
                     "color: #f44336; font-weight: bold;"
                 )
+
+    # ── Override: compare remote vs saved on startup ──────────────────
+
+    @define_state(MODE_MANUAL, True)
+    def _fetch_initial_values(self):
+        """Pull current setpoints from the server.  If they differ from
+        the saved BLACS state (e.g. after a restart zeroed the remote GUI),
+        prompt the user to choose which to keep."""
+        remote_values = yield (
+            self.queue_work(self.primary_worker, 'check_remote_values')
+        )
+
+        if not remote_values:
+            self.logger.warning(
+                "Failed to fetch initial setpoints from remote server"
+            )
+            self._mark_initial_fetch_done()
+            return
+
+        self.logger.info(f"Fetched initial setpoints: {remote_values}")
+
+        # Build display-name lookup from _pairs (populated in initialise_GUI)
+        display_names = {
+            conn_id: display_name
+            for conn_id, _, _, display_name in self._pairs
+        }
+
+        # Compare remote values with saved state already in self._AO[].value
+        THRESHOLD = 1e-8  # THz  (~0.01 MHz, filters floating-point noise)
+        mismatches = {}
+        for connection, remote_val in remote_values.items():
+            if connection not in self._AO:
+                continue
+            saved_val = self._AO[connection].value
+            if abs(float(remote_val) - saved_val) > THRESHOLD:
+                name = display_names.get(connection, str(connection))
+                mismatches[connection] = (name, saved_val, float(remote_val))
+
+        if not mismatches:
+            # Values agree — accept remote silently (same as base class)
+            inmain(self._update_ao_widgets, remote_values)
+            self._mark_initial_fetch_done()
+            return
+
+        # Build dialog text
+        lines = []
+        for connection, (name, saved_val, remote_val) in mismatches.items():
+            diff_mhz = (remote_val - saved_val) * 1e6
+            lines.append(
+                f"  {name}: saved {saved_val:.9f} THz, "
+                f"remote {remote_val:.9f} THz "
+                f"(\u0394 {diff_mhz:+.3f} MHz)"
+            )
+        detail = "\n".join(lines)
+        msg = (
+            "The remote laser lock GUI has different frequency setpoints "
+            "than the saved BLACS state.\n"
+            "This usually means the GUI restarted with zeroed values.\n\n"
+            f"{detail}\n\n"
+            "Use SAVED values (Yes) or accept REMOTE values (No)?"
+        )
+
+        answer = inmain(
+            QtWidgets.QMessageBox.question,
+            self._ui,
+            "Setpoint Mismatch",
+            msg,
+            QtWidgets.QMessageBox.Yes | QtWidgets.QMessageBox.No,
+            QtWidgets.QMessageBox.Yes,
+        )
+
+        if answer == QtWidgets.QMessageBox.Yes:
+            # Keep saved values; program them to the remote server
+            self.logger.info("User chose SAVED values; will program to server")
+            self._mark_initial_fetch_done()
+            self.program_device()
+        else:
+            # Accept remote values; update front panel widgets
+            self.logger.info("User chose REMOTE values; updating front panel")
+            inmain(self._update_ao_widgets, remote_values)
+            self._mark_initial_fetch_done()
 
     # ── Override: update AO widgets from remote values ────────────────
 

@@ -1,0 +1,148 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<style>
+  body { font-family: Calibri, Segoe UI, sans-serif; font-size: 11pt; color: #333; max-width: 900px; margin: 20px auto; }
+  h1 { font-size: 20pt; border-bottom: 2px solid #0078d4; padding-bottom: 6px; color: #0078d4; }
+  h2 { font-size: 14pt; color: #0078d4; margin-top: 24px; }
+  h3 { font-size: 12pt; color: #444; }
+  table { border-collapse: collapse; width: 100%; margin: 10px 0; }
+  th, td { border: 1px solid #ccc; padding: 6px 10px; text-align: left; vertical-align: top; }
+  th { background: #f0f0f0; font-weight: bold; }
+  code { font-family: Consolas, monospace; font-size: 10pt; background: #f4f4f4; padding: 1px 4px; border-radius: 3px; }
+  pre { background: #f4f4f4; border: 1px solid #ddd; border-radius: 4px; padding: 10px; font-family: Consolas, monospace; font-size: 10pt; overflow-x: auto; white-space: pre; }
+  .badge { display: inline-block; padding: 2px 8px; border-radius: 10px; color: white; font-size: 9pt; font-weight: bold; }
+  .green { background: #4CAF50; }
+  .orange { background: #F57C00; }
+  .yellow { background: #FFC107; color: #333; }
+  .blue { background: #0078d4; }
+  .purple { background: #9C27B0; }
+  .gray { background: #9E9E9E; }
+  .red { background: #f44336; }
+  .meta { color: #888; font-size: 10pt; }
+  ol, ul { margin: 6px 0; padding-left: 24px; }
+  li { margin: 3px 0; }
+  strong { color: #222; }
+  .callout { background: #e8f4fd; border-left: 4px solid #0078d4; padding: 8px 12px; margin: 10px 0; }
+  .warn { background: #fff3cd; border-left: 4px solid #ffc107; padding: 8px 12px; margin: 10px 0; }
+</style>
+</head>
+<body>
+
+<h1>WS7 Wavemeter PID Config Recovery &amp; BLACS Startup Protection</h1>
+<p class="meta">
+  <strong>Date:</strong> 2026-02-25 &nbsp;&bull;&nbsp;
+  <strong>Commit:</strong> <code>pending</code> &nbsp;&bull;&nbsp;
+  <strong>Context:</strong> PC restart lost wavemeter PID settings; BLACS blindly overwrote saved setpoints with zeros from the restarted GUI
+</p>
+
+<h2>What Changed</h2>
+<p>
+After a PC restart, the HF_Locking GUI came up with zeroed frequency setpoints (the WS7 DLL does not persist
+PID settings set at runtime). BLACS's <code>_fetch_initial_values</code> blindly accepted these zeros and
+overwrote its saved state, which still had the correct setpoints (348.661086 / 420.899794 THz).
+A new override in <span class="badge blue">LaserLockTab</span> now detects mismatches between remote and saved
+values on startup and prompts the user to choose which to keep. The user can push saved values back
+to the remote server or accept the remote state.
+</p>
+<p>
+Separately, a context file was written for a future session to implement full PID config persistence
+in the HF_Locking GUI itself, and the CLAUDE.md External GUI Registry was corrected.
+</p>
+
+<h2>Files Changed</h2>
+<table>
+  <tr><th>File</th><th>Change</th><th>Why</th></tr>
+  <tr>
+    <td><code>userlib/user_devices/LaserLockDevice/blacs_tabs.py</code></td>
+    <td>Added <code>_fetch_initial_values</code> override (~80 lines). Imports <code>define_state</code>,
+        <code>MODE_MANUAL</code>, <code>inmain</code>.</td>
+    <td>Prevents BLACS from silently accepting zeroed setpoints after a GUI restart.
+        Shows a QMessageBox with per-channel delta (in MHz) and lets user choose saved vs remote.</td>
+  </tr>
+  <tr>
+    <td><code>CLAUDE.md</code></td>
+    <td>External GUI Registry: Laser Lock codebase changed from "LabVIEW (not in git)" to
+        <code>C:\Users\radmo\Desktop\GUIs\HF_Locking</code></td>
+    <td>The laser lock GUI was rewritten in Python (PyQt5) but the registry still referenced the old LabVIEW version.</td>
+  </tr>
+  <tr>
+    <td><code>HF_Locking/.claude/agents/pid-persistence.md</code></td>
+    <td><strong>NEW</strong> &mdash; Agent context file for PID config persistence task</td>
+    <td>Documents DLL constants, config schema, read-before-write principle, and startup/shutdown flow
+        for a future session to implement JSON-based PID persistence in the HF_Locking GUI.</td>
+  </tr>
+</table>
+
+<h2>Bugs Found &amp; Fixed</h2>
+
+<div class="warn">
+<strong>Bug: BLACS startup overwrites good setpoints with zeros.</strong><br>
+The base <code>RemoteControlTab._fetch_initial_values</code> unconditionally accepts whatever the remote
+server reports and updates the front panel. After a PC restart, the HF_Locking GUI has no persistence
+and reports 0.000000 THz for all channels. BLACS then overwrites its saved 348.661086 / 420.899794 THz
+with zeros. The new override compares remote vs saved values (threshold: 0.01 MHz = 1e-8 THz) and
+shows a dialog on mismatch.
+</div>
+
+<div class="warn">
+<strong>Root cause: WS7 DLL does not persist PID settings set at runtime.</strong><br>
+The WS7 native app stores config in <code>wlm_ws7.ini</code> (via Windows VirtualStore at
+<code>C:\Users\radmo\AppData\Local\VirtualStore\Program Files (x86)\HighFinesse\...</code>),
+but PID gains set via <code>SetPIDSetting()</code> at runtime are NOT written to this file.
+After a restart, the WS7 reverts to factory/INI defaults. The HF_Locking Python GUI adds no
+persistence layer on top. This is the upstream root cause; the BLACS override is a downstream safety net.
+</div>
+
+<h2>Key Decisions</h2>
+<ol>
+  <li><strong>Dialog-based user choice, not auto-restore.</strong> Auto-restoring saved values would be
+      dangerous if the user intentionally changed setpoints in the WS7 native app while BLACS was off.
+      The dialog shows exact deltas in MHz so the user can make an informed decision.</li>
+  <li><strong>Threshold of 0.01 MHz (1e-8 THz).</strong> Filters floating-point representation noise
+      while catching any real setpoint drift. Typical setpoint changes are tens of MHz or more.</li>
+  <li><strong>"Use saved" triggers <code>program_device()</code>.</strong> This pushes the saved values
+      back through the full <code>program_manual</code> path, which sends them to the remote server
+      via ZMQ. This is the same code path as a user manually changing a spinbox value.</li>
+  <li><strong>Two-layer fix strategy.</strong> The BLACS override (implemented now) is the safety net.
+      Full PID persistence in the HF_Locking GUI (documented in <code>pid-persistence.md</code> for a
+      future session) is the proper fix that eliminates the problem at the source.</li>
+</ol>
+
+<h2>How to Use</h2>
+<ol>
+  <li>Start the HF_Locking GUI as normal.</li>
+  <li>Start BLACS. During the LaserLock tab initialization, <code>_fetch_initial_values</code> runs.</li>
+  <li>If remote setpoints match saved state (within 0.01 MHz): no dialog, silent accept.</li>
+  <li>If mismatch detected: a dialog appears showing each mismatched channel with saved value,
+      remote value, and delta in MHz.</li>
+  <li>Click <strong>Yes</strong> to keep saved values and push them to the remote server.
+      Click <strong>No</strong> to accept the remote values.</li>
+</ol>
+
+<h3>Example dialog text</h3>
+<pre>
+The remote laser lock GUI has different frequency setpoints
+than the saved BLACS state.
+This usually means the GUI restarted with zeroed values.
+
+  TiSa_1 Freq: saved 348.661086000 THz, remote 0.000000000 THz (D -348661086.000 MHz)
+  Vexlum Freq: saved 420.899794000 THz, remote 0.000000000 THz (D -420899794.000 MHz)
+
+Use SAVED values (Yes) or accept REMOTE values (No)?
+</pre>
+
+<h2>Future Work</h2>
+<ul>
+  <li><strong>HF_Locking PID persistence</strong> (<code>pid-persistence.md</code>): Implement
+      <code>config.py</code> with JSON save/load, shutdown auto-save, startup compare-and-restore
+      dialog. This eliminates the root cause (zero setpoints after restart).</li>
+  <li><strong>Stubbed <code>get_pid_settings()</code></strong> in <code>wlm_utils.py:156-160</code>:
+      Needs to be completed to read all PID gains from the DLL. Required for the persistence feature.</li>
+  <li>Consider extending this mismatch-detection pattern to other RemoteControl devices
+      (e.g., RasteringDevice, BigSkyHub) if similar restart-zeroing scenarios arise.</li>
+</ul>
+
+</body>
+</html>

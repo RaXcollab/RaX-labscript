@@ -86,7 +86,7 @@ The `RemoteControl` device class (`userlib/user_devices/RemoteControl/`) is the 
 
 | Name | BLACS Device Class | GUI Codebase | REQ-REP Port | PUB-SUB Port | Connection Table Name |
 |------|-------------------|--------------|-------------|-------------|----------------------|
-| Laser Lock | `LaserLockDevice` | LabVIEW (not in git) | 3796 | 3797 | `LaserLockGUI` |
+| Laser Lock | `LaserLockDevice` | `C:\Users\radmo\Desktop\GUIs\HF_Locking` | 3796 | 3797 | `LaserLockGUI` |
 | Rastering GUI | `RasteringDevice` | `C:\Users\radmo\Desktop\GUIs\rastering` | 55535 | 55536 | `RasteringGUI` |
 | BigSky YAG Hub | `BigSkyHub` | `C:\Users\radmo\Desktop\GUIs\BigSkyControl` | 55540 | 55541 | `BigSkyLasers` |
 
@@ -267,6 +267,22 @@ Set the cooldown to 2x the poll interval (default 5s → 10s cooldown).
 **Problem 3: `transition_to_buffered` uses safe ordering, `program_manual` does not.** If your device has command ordering constraints (e.g., must be in standby before changing mode), implement ordering in `program_manual` or the worker, not just in `transition_to_buffered`.
 
 **Custom `initialise_GUI` pattern:** Call `create_analog_outputs()` for ALL channels (BLACS needs AO objects for save/restore and `program_device`). Create standard widgets only for continuous values. Binary controls → toggle buttons. Mode selectors → combo boxes. Command-only channels → hidden (no widget). Custom widgets call `AO.set_value(value, program=True)`.
+
+**Problem 4: `_fetch_initial_values` blindly accepts remote zeros after GUI restart.** The base class fetches remote values on startup and updates the front panel unconditionally. If the remote GUI has no config persistence and restarts with zeroed values, BLACS silently overwrites its saved state (which may contain correct setpoints from the last session).
+
+**Pattern: startup mismatch dialog (tab-side override)**
+```python
+@define_state(MODE_MANUAL, True)
+def _fetch_initial_values(self):
+    remote_values = yield (
+        self.queue_work(self.primary_worker, 'check_remote_values')
+    )
+    # Compare remote_values vs self._AO[connection].value
+    # If mismatch > threshold: show QMessageBox, let user choose
+    # "Use saved" → self._mark_initial_fetch_done(); self.program_device()
+    # "Accept remote" → inmain(self._update_ao_widgets, remote_values)
+```
+Implemented in `LaserLockTab`. Consider for any RemoteControl device where the remote GUI lacks config persistence.
 
 ## Reference Documentation
 
