@@ -33,7 +33,9 @@ class DynamicStackedWidget(QtWidgets.QStackedWidget):
         return super().minimumSizeHint()
 
     def adjustSize(self):
-        self.setMinimumSize(self.minimumSizeHint())
+        hint = self.minimumSizeHint()
+        if hint.isValid():
+            self.setMinimumSize(hint)
         super().adjustSize()
         if self.parent() and isinstance(self.parent(), QtWidgets.QWidget):
             self.parent().adjustSize()

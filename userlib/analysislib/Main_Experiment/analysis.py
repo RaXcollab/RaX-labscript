@@ -90,7 +90,7 @@ try:
         sample_rate = float(props['min_sample_rate'])
     times_SCOPE = np.arange(len(voltages[0])) / sample_rate * 1000  # samples -> ms
     ax2.plot(times_SCOPE, voltages[0], label='Ch0', alpha=0.5)
-    ax2.set_ylim([-0.1, 0.01])
+    ax2.set_ylim([-1.5, 0.01])
     ax2.axvline(x=tYAG * 1000, color='r', linestyle='--', label='YAG')
     ax2.legend()
 except Exception as e:

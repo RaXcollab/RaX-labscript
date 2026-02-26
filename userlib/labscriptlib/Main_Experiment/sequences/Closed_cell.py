@@ -49,4 +49,4 @@ daq_ai3.acquire('Absorption3',tstart,tend) #added 07/17/2025
 
 
 # stop(tend+ 50e-3)   # change to whatever you want
-stop(tend+ 1)   # change to whatever you want
+stop(tend+ 50e-3)   # change to whatever you want
