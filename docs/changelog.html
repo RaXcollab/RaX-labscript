@@ -35,6 +35,30 @@
   Each entry links to the lab note with full details.
 </p>
 
+<h2>v4.0 &mdash; 2026-02-26</h2>
+<p><strong>Agent workflow optimization: best practices audit, skills, memory, context management</strong></p>
+<ul>
+  <li><strong>CLAUDE.md split with @imports:</strong> Extracted BLACS device patterns, NI_SCOPE conventions, and analysis API into <code>docs/*.md</code> files. CLAUDE.md drops from ~290 to ~210 lines. Detailed docs load on-demand.</li>
+  <li><strong>Compaction preservation rules:</strong> Added explicit instructions for what to preserve during auto-compaction (routing table, conda command, suppression list, External GUI Registry).</li>
+  <li><strong>Model selection:</strong> <span class="badge purple">session-notes</span> and <span class="badge yellow">labscript-diagnostics</span> now run on Sonnet for cost efficiency. All other agents remain on Opus for complex reasoning.</li>
+  <li><strong><span class="badge purple">session-notes</span> auto-background:</strong> Added <code>background: true</code> to frontmatter &mdash; no longer requires manual background dispatch.</li>
+  <li><strong>Persistent agent memory:</strong> Enabled <code>memory: project</code> on <span class="badge red">blacs-expert</span>, <span class="badge blue">device-builder</span>, <span class="badge yellow">labscript-diagnostics</span>, and <span class="badge orange">amo-expert</span>. Agents accumulate institutional knowledge in <code>.claude/agent-memory/</code>.</li>
+  <li><strong>4 new skills (slash commands):</strong>
+    <ul>
+      <li><code>/new-device</code> &mdash; full integration checklist for new external GUIs</li>
+      <li><code>/debug-blacs</code> &mdash; standardized BLACS triage workflow</li>
+      <li><code>/check-sequence</code> &mdash; validate globals and device names before RunManager compilation</li>
+      <li><code>/check-guis</code> &mdash; ping all external GUI ZMQ ports to verify they are running</li>
+    </ul>
+  </li>
+  <li><strong>Push guard hook:</strong> PreToolUse hook blocks <code>git push</code> to backend repos (<code>blacs/</code>, <code>labscript-devices/</code>, <code>labscript-utils/</code>) unless explicitly confirmed.</li>
+  <li><strong>Notification hook:</strong> Windows toast notification when Claude needs user attention.</li>
+  <li><strong>Permission cleanup:</strong> Pruned accumulated one-off grants from <code>settings.local.json</code>. Pre-approved common git operations in <code>settings.json</code>.</li>
+  <li><strong>Context management guidance:</strong> Added <code>/clear</code> between tasks and <code>/rename</code> for sessions to CLAUDE.md and user guide.</li>
+  <li><strong>User guide rewritten</strong> to v4.0 with new sections: Skills, Context Management, Agent Memory, Safety &amp; Permissions.</li>
+</ul>
+<p class="meta">Lab note: <code>notes/2026-02-26_Agent-Workflow-Optimization.html</code></p>
+
 <h2>v3.1 &mdash; 2026-02-23</h2>
 <p><strong>Codebase audit fixes + introspection-driven context hardening</strong></p>
 <ul>

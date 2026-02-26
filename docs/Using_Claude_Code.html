@@ -32,8 +32,8 @@
 
 <h1>Using Claude Code with Labscript</h1>
 <p class="meta">
-  <strong>Last updated:</strong> 2026-02-23 &nbsp;&bull;&nbsp;
-  <strong>Version:</strong> 3.1 &nbsp;&bull;&nbsp;
+  <strong>Last updated:</strong> 2026-02-26 &nbsp;&bull;&nbsp;
+  <strong>Version:</strong> 4.0 &nbsp;&bull;&nbsp;
   <strong>Canonical reference for the RaX lab Claude Code setup</strong>
 </p>
 
@@ -57,68 +57,123 @@ Open a terminal in the <code>labscript-suite</code> folder and run <code>claude<
   <li>How to activate the conda environment</li>
   <li>The ExternalSoftware/RemoteControl communication pattern (REQ-REP + PUB-SUB)</li>
 </ul>
-<p>You do not need to re-explain the repo layout or conventions at the start of each session. If Claude seems confused about the project structure, just say "read CLAUDE.md."</p>
+<p>Detailed reference docs (BLACS device patterns, NI_SCOPE conventions, analysis API) are in <code>docs/*.md</code> and loaded on-demand via <code>@import</code> when Claude works in relevant directories.</p>
 
 <h2>The 7 Agents</h2>
 <p>Agents are specialized subprocesses stored in <code>.claude/agents/</code>. Claude launches them automatically based on the task type.</p>
 <table>
-  <tr><th>Agent</th><th>Domain</th><th>Invoke When</th></tr>
+  <tr><th>Agent</th><th>Domain</th><th>Model</th><th>Invoke When</th></tr>
   <tr>
     <td><span class="badge purple">session-notes</span></td>
     <td>Background note-taking: decisions, patterns, bugs during a session</td>
-    <td>Every non-trivial session (runs in background)</td>
+    <td>Sonnet (auto-background)</td>
+    <td>Every non-trivial session</td>
   </tr>
   <tr>
     <td><span class="badge gray">wrap-up</span></td>
     <td>End-of-session deliverables: commits, HTML lab notes, session introspection, CLAUDE.md updates</td>
-    <td>After implementation is complete (mandatory for non-trivial sessions)</td>
+    <td>Opus</td>
+    <td>After implementation is complete</td>
   </tr>
   <tr>
     <td><span class="badge blue">device-builder</span></td>
     <td>Scaffolding BLACS device classes: 5-file RemoteControl pattern, worker/tab overrides, auto-child creation</td>
+    <td>Opus</td>
     <td>Creating or modifying devices in <code>userlib/user_devices/</code></td>
   </tr>
   <tr>
     <td><span class="badge red">blacs-expert</span></td>
     <td>BLACS internals: Qt thread safety, state machine event ordering, PUB-SUB threading</td>
+    <td>Opus</td>
     <td>BLACS crashes, segfaults, access violations, event ordering bugs</td>
   </tr>
   <tr>
     <td><span class="badge orange">amo-expert</span></td>
     <td>Experiment sequences (labscript DSL), connection table architecture, NI PXIe hardware, runmanager scans</td>
+    <td>Opus</td>
     <td>Writing sequences, configuring hardware, designing experiments</td>
   </tr>
   <tr>
     <td><span class="badge yellow">labscript-diagnostics</span></td>
     <td>Log analysis (<code>BLACS.log</code>, <code>BLACS_faulthandler.log</code>), error classification, pattern detection</td>
+    <td>Sonnet</td>
     <td>Runtime errors, log interpretation, crash diagnosis</td>
   </tr>
   <tr>
     <td><span class="badge green">lyse-analysis</span></td>
     <td>Post-shot analysis scripts, utility libraries (<code>filtering.py</code>, <code>NI_SCOPE.py</code>, <code>Abs_data.py</code>), Jupyter notebooks</td>
+    <td>Opus</td>
     <td>Writing or modifying analysis code in <code>userlib/analysislib/</code></td>
   </tr>
 </table>
 
+<h3>Agent Memory</h3>
+<p>Four agents have <strong>persistent memory</strong> that accumulates knowledge across sessions:</p>
+<ul>
+  <li><span class="badge red">blacs-expert</span> &mdash; device quirks, crash patterns, thread safety fixes</li>
+  <li><span class="badge blue">device-builder</span> &mdash; which patterns worked for which devices, integration lessons</li>
+  <li><span class="badge yellow">labscript-diagnostics</span> &mdash; recurring error patterns and resolutions</li>
+  <li><span class="badge orange">amo-expert</span> &mdash; timing patterns, active globals, sequence conventions</li>
+</ul>
+<p>Memory files are stored in <code>.claude/agent-memory/{agent-name}/</code>. When the same issue appears again, the agent can reference its memory for the resolution that worked last time.</p>
+
+<h2>Skills (Slash Commands)</h2>
+<p>Skills are reusable workflows invoked with <code>/skill-name</code>. They run in the main conversation.</p>
+<table>
+  <tr><th>Skill</th><th>What It Does</th><th>Example</th></tr>
+  <tr>
+    <td><code>/new-device</code></td>
+    <td>Scaffold a new external GUI integration into BLACS. Runs the full integration checklist.</td>
+    <td><code>/new-device WavemeterGUI</code></td>
+  </tr>
+  <tr>
+    <td><code>/debug-blacs</code></td>
+    <td>Standardized BLACS triage: faulthandler &rarr; BLACS.log &rarr; connection table &rarr; route to specialist.</td>
+    <td><code>/debug-blacs tab crashed when I clicked reconnect</code></td>
+  </tr>
+  <tr>
+    <td><code>/check-sequence</code></td>
+    <td>Validate a sequence before RunManager compilation. Checks globals, device names, structure.</td>
+    <td><code>/check-sequence Closed_cell.py</code></td>
+  </tr>
+  <tr>
+    <td><code>/check-guis</code></td>
+    <td>Ping all external GUI ZMQ ports to verify they are running before BLACS startup.</td>
+    <td><code>/check-guis</code></td>
+  </tr>
+</table>
+
+<h2>Context Management</h2>
+<div class="callout">
+<strong>Context is the most important resource to manage.</strong> Claude's performance degrades as the context window fills with irrelevant information from earlier tasks.
+</div>
+<ul>
+  <li><strong><code>/clear</code></strong> &mdash; Reset context between unrelated tasks. If you debug BLACS, then tweak a sequence, then fix analysis &mdash; use <code>/clear</code> between each.</li>
+  <li><strong><code>/rename</code></strong> &mdash; Give sessions descriptive names (e.g., <code>/rename bigsky-disconnect-fix</code>) so you can find them with <code>claude --resume</code>.</li>
+  <li><strong>Status line</strong> &mdash; Shows context usage %, current model, and session name at the bottom of the terminal. When context gets high (&gt;70%), consider <code>/clear</code> or <code>/compact</code>.</li>
+  <li><strong>Auto-compaction</strong> &mdash; When context fills, Claude automatically summarizes. The CLAUDE.md includes preservation rules ensuring the routing table, conda command, and suppression list survive compaction.</li>
+  <li><strong>Subagent delegation</strong> &mdash; Heavy research is delegated to agents that work in separate context windows, keeping your main conversation clean.</li>
+</ul>
+
 <h2>Orchestration</h2>
 <div class="callout">
-<strong>Three-phase workflow:</strong> (1) <span class="badge purple">session-notes</span> launches at session start for background note-taking. (2) Domain agents do the work. (3) <span class="badge gray">wrap-up</span> runs at the end for deliverables. All three are planned upfront, not as afterthoughts.
+<strong>Three-phase workflow:</strong> (1) <span class="badge purple">session-notes</span> launches automatically in background. (2) Domain agents do the work. (3) <span class="badge gray">wrap-up</span> runs at the end for deliverables. All three are planned upfront, not as afterthoughts.
 </div>
 <table>
   <tr><th>Task Type</th><th>Agents</th><th>When</th></tr>
   <tr>
     <td>Any non-trivial workflow</td>
-    <td><span class="badge purple">session-notes</span> (background) + <span class="badge gray">wrap-up</span> (at end)</td>
+    <td><span class="badge purple">session-notes</span> (auto-background) + <span class="badge gray">wrap-up</span> (at end)</td>
     <td>Session start / session end</td>
   </tr>
   <tr>
     <td>New device integration</td>
-    <td>+ <span class="badge blue">device-builder</span></td>
+    <td>+ <span class="badge blue">device-builder</span> (or use <code>/new-device</code>)</td>
     <td>During planning and implementation</td>
   </tr>
   <tr>
     <td>BLACS crash / thread issue</td>
-    <td>+ <span class="badge red">blacs-expert</span> then <span class="badge yellow">labscript-diagnostics</span></td>
+    <td>+ <span class="badge red">blacs-expert</span> then <span class="badge yellow">labscript-diagnostics</span> (or use <code>/debug-blacs</code>)</td>
     <td>Immediately</td>
   </tr>
   <tr>
@@ -131,17 +186,9 @@ Open a terminal in the <code>labscript-suite</code> folder and run <code>claude<
     <td>+ <span class="badge green">lyse-analysis</span></td>
     <td>When touching <code>analysislib/</code></td>
   </tr>
-  <tr>
-    <td>Codebase audit / code review</td>
-    <td>Domain agents per routing table</td>
-    <td><strong>Never</strong> generic Explore for audits &mdash; use domain agents that know the conventions</td>
-  </tr>
 </table>
 
 <h2>Domain-Aware Routing</h2>
-<p>
-When Claude searches or audits files, it validates findings through the agent that owns that path. This prevents false positives from generic software engineering heuristics being applied to experimental physics code.
-</p>
 <table>
   <tr><th>Path</th><th>Routes to</th></tr>
   <tr><td><code>labscriptlib/</code> (sequences, connection tables)</td><td><span class="badge orange">amo-expert</span></td></tr>
@@ -152,74 +199,35 @@ When Claude searches or audits files, it validates findings through the agent th
   <tr><td>External GUI codebases</td><td>Local agent in GUI's <code>.claude/agents/</code></td></tr>
 </table>
 
-<h3>Things Claude Intentionally Ignores</h3>
-<p>These are normal in our codebase and are <strong>not</strong> bugs or code smell:</p>
+<h2>Safety &amp; Permissions</h2>
 <ul>
-  <li>RunManager globals (<code>tYAG</code>, <code>tstart</code>, <code>DOUBLE_YAG</code>, etc.) appearing "undefined" in sequences — injected at compile time</li>
-  <li><code>__pycache__/</code> and <code>.ipynb_checkpoints/</code> directories</li>
-  <li>Single-occurrence log errors without recurrence — triaged as yellow, not critical</li>
-  <li>Connection table parameters differing from hardware maximums (e.g., <code>num_lasers=1</code>)</li>
-  <li>Inline function definitions in old Jupyter notebooks — frozen analysis snapshots</li>
-  <li>NaN rows in NI_SCOPE h5 datasets — unsaved channels are NaN-filled intentionally (selective saving)</li>
-  <li>Deprecated kwargs in analysis utilities — backward-compat aliases, not dead code</li>
+  <li><strong>Push guard hook:</strong> <code>git push</code> to backend repos (<code>blacs/</code>, <code>labscript-devices/</code>, <code>labscript-utils/</code>) is blocked by a PreToolUse hook. Claude will ask for explicit confirmation.</li>
+  <li><strong>Notification hook:</strong> When Claude is waiting for input or done with a task, a Windows notification appears.</li>
+  <li><strong>Pre-approved operations:</strong> Common git commands, conda activation, and pip commands run without permission prompts.</li>
 </ul>
-
-<h2>Deferral Pattern</h2>
-<p>Each agent defers out-of-scope questions to the right specialist:</p>
-<pre>
-amo-expert ──────┬──&gt; device-builder ──&gt; blacs-expert
-                 │                           ▲
-lyse-analysis ───┤                           │
-                 │                           │
-diagnostics ─────┴───────────────────────────┘
-
-session-notes ◄── all agents (note-taking)
-wrap-up       ◄── orchestrator  (deliverables)
-</pre>
 
 <h2>Example Prompts</h2>
 <table>
   <tr><th>You say</th><th>What happens</th></tr>
-  <tr>
-    <td>"BLACS crashed silently, can you figure out what happened?"</td>
-    <td><span class="badge red">blacs-expert</span> + <span class="badge yellow">diagnostics</span> check both BLACS.log and faulthandler.log</td>
-  </tr>
-  <tr>
-    <td>"Help me create a new RemoteControl device for the rastering GUI"</td>
-    <td><span class="badge blue">device-builder</span> scaffolds the 5-file template pattern</td>
-  </tr>
-  <tr>
-    <td>"Why is the LaserLockGUI tab showing 0 for all setpoints?"</td>
-    <td><span class="badge red">blacs-expert</span> investigates <code>_initial_fetch_done</code> guard / initialization logic</td>
-  </tr>
-  <tr>
-    <td>"Check if the last 5 shots ran cleanly"</td>
-    <td><span class="badge yellow">diagnostics</span> parses recent log entries</td>
-  </tr>
-  <tr>
-    <td>"Review blacs_tabs.py for thread safety issues"</td>
-    <td><span class="badge red">blacs-expert</span> checks for <code>inmain()</code> vs <code>qtlock</code> violations</td>
-  </tr>
-  <tr>
-    <td>"Write an experiment sequence for absorption imaging"</td>
-    <td><span class="badge orange">amo-expert</span> writes the labscript sequence with proper timing</td>
-  </tr>
-  <tr>
-    <td>"My single-shot analysis is too slow"</td>
-    <td><span class="badge green">lyse-analysis</span> profiles and optimizes the script</td>
-  </tr>
+  <tr><td>"BLACS crashed silently"</td><td><span class="badge red">blacs-expert</span> + <span class="badge yellow">diagnostics</span> check faulthandler + BLACS.log</td></tr>
+  <tr><td><code>/new-device WavemeterGUI</code></td><td>Full integration checklist with <span class="badge blue">device-builder</span></td></tr>
+  <tr><td><code>/check-guis</code></td><td>Pings all external GUI ZMQ ports, reports up/down</td></tr>
+  <tr><td><code>/check-sequence Closed_cell.py</code></td><td>Validates globals, devices, structure before compilation</td></tr>
+  <tr><td><code>/debug-blacs tab shows 0 for all setpoints</code></td><td>Triage: faulthandler &rarr; BLACS.log &rarr; route to specialist</td></tr>
+  <tr><td>"Write a sequence for absorption imaging"</td><td><span class="badge orange">amo-expert</span> writes labscript sequence</td></tr>
+  <tr><td>"My analysis is too slow"</td><td><span class="badge green">lyse-analysis</span> profiles and optimizes</td></tr>
 </table>
 
 <h2>Tips</h2>
 <ul>
-  <li><strong>Be specific about what you want.</strong> "Fix the bug" is worse than "the RemoteControlTab crashes when I click reconnect."</li>
-  <li><strong>Claude can read the Confluence PDF.</strong> Say "check the Confluence PDF for how ExternalSoftware communication works" and it will extract the relevant pages.</li>
-  <li><strong>It knows about separate repos.</strong> If you need to commit, say "commit this to labscript-devices" and it will commit to the right repo. Always say "don't push" if you want to review first.</li>
-  <li><strong>Plan mode.</strong> For bigger tasks, Claude enters "plan mode" where it explores the codebase and proposes a plan before making changes. You approve the plan before any code is written.</li>
-  <li><strong>Context gets compacted in long sessions.</strong> If Claude seems to forget earlier context, this is normal. The CLAUDE.md and agent prompts ensure key knowledge persists regardless.</li>
-  <li><strong>Propose defaults, don't ask open-ended questions.</strong> If Claude is asking too many questions, tell it: "propose a default and I'll correct you."</li>
-  <li><strong>Front-load the key decision.</strong> For multi-file changes, Claude should present a plan first. If it doesn't, ask for one.</li>
-  <li><strong>Explore code first.</strong> Many answers are already in the codebase. Claude should check before asking you.</li>
+  <li><strong>Use <code>/clear</code> between unrelated tasks.</strong> Single most impactful thing for session quality.</li>
+  <li><strong>Name sessions with <code>/rename</code>.</strong> Resume later with <code>claude --resume bigsky-debug</code>.</li>
+  <li><strong>Use <code>/check-guis</code> before BLACS.</strong> Catches "why is my tab red?" before it happens.</li>
+  <li><strong>Use <code>/check-sequence</code> before compiling.</strong> Catches missing globals and device name mismatches.</li>
+  <li><strong>Be specific.</strong> "Fix the bug" is worse than "RemoteControlTab crashes when I click reconnect."</li>
+  <li><strong>Watch the status line.</strong> When context &gt;70%, use <code>/clear</code> or <code>/compact</code>.</li>
+  <li><strong>Plan mode for big tasks.</strong> Claude proposes a plan before making changes. You approve first.</li>
+  <li><strong>It knows about separate repos.</strong> Say "commit to labscript-devices" and "don't push."</li>
 </ul>
 
 <h2>Config &amp; Files</h2>
@@ -227,97 +235,30 @@ wrap-up       ◄── orchestrator  (deliverables)
   <tr><th>What</th><th>Path</th></tr>
   <tr><td>Project instructions (read every session)</td><td><code>CLAUDE.md</code></td></tr>
   <tr><td>Agent prompts (7 files)</td><td><code>.claude/agents/*.md</code></td></tr>
-  <tr><td>Permission settings</td><td><code>.claude/settings.json</code></td></tr>
-  <tr><td>Scratch notes (transient, not committed)</td><td><code>.claude/session-scratch.md</code></td></tr>
+  <tr><td>Skills (4 slash commands)</td><td><code>.claude/skills/*/SKILL.md</code></td></tr>
+  <tr><td>Agent memory (persistent)</td><td><code>.claude/agent-memory/{agent-name}/</code></td></tr>
+  <tr><td>Permission settings + hooks</td><td><code>.claude/settings.json</code></td></tr>
+  <tr><td>Imported docs (BLACS patterns, NI_SCOPE, analysis API)</td><td><code>docs/*.md</code></td></tr>
   <tr><td>Session lab notes</td><td><code>notes/YYYY-MM-DD_Topic.html</code></td></tr>
   <tr><td>This guide</td><td><code>docs/Using_Claude_Code.html</code></td></tr>
+  <tr><td>Changelog</td><td><code>docs/changelog.html</code></td></tr>
   <tr><td>ZMQ protocol spec</td><td><code>userlib/user_devices/BLACS_COMMUNICATION_CONTRACT.md</code></td></tr>
-  <tr><td>New GUI agent template</td><td><code>userlib/user_devices/New_GUI_Agent_Prompt.md</code></td></tr>
 </table>
-<p>If you update these files and commit, all lab computers will get the changes on next pull.</p>
-
-<h2>BLACS Communication Contract</h2>
-<p>Full document: <code>userlib/user_devices/BLACS_COMMUNICATION_CONTRACT.md</code>. Summary:</p>
-<table>
-  <tr><th>Protocol</th><th>Format</th><th>Purpose</th></tr>
-  <tr>
-    <td><strong>ZMQ REQ-REP</strong></td>
-    <td><code>{"action": "HELLO|PROGRAM_VALUE|CHECK_VALUE", "connection": str, "value": any}</code></td>
-    <td>Synchronous control: set values, read values, connection check</td>
-  </tr>
-  <tr>
-    <td><strong>ZMQ PUB-SUB</strong></td>
-    <td><code>"{topic} {value}"</code> (space-separated string)</td>
-    <td>Async monitoring: heartbeat (~1 Hz), positions (~4 Hz), status (~1 Hz)</td>
-  </tr>
-</table>
-<h3>Connection Naming</h3>
-<table>
-  <tr><th>Type</th><th>Convention</th><th>Example</th></tr>
-  <tr><td>Writable output</td><td>Descriptive physical quantity</td><td><code>laser_raster_x_coord</code></td></tr>
-  <tr><td>Read-only monitor</td><td>Same name + <code>_monitor</code></td><td><code>laser_raster_x_coord_monitor</code></td></tr>
-</table>
-
-<h2>Integration Checklist</h2>
-<p>Adding a new external GUI to BLACS:</p>
-<ol>
-  <li value="0"><strong>Start <span class="badge purple">session-notes</span></strong> to track decisions throughout the integration.</li>
-  <li><strong>Decide:</strong> subclass <code>RemoteControl</code> or use it directly?</li>
-  <li><strong>Check for local agents:</strong> look in the external GUI folder for <code>.claude/agents/</code>. Use local agents for domain questions, <span class="badge blue">device-builder</span> for BLACS-side architecture.</li>
-  <li><strong>External GUI side:</strong> add ZMQ server (HELLO, PROGRAM_VALUE, CHECK_VALUE + optional PUB-SUB). Follow <code>BLACS_COMMUNICATION_CONTRACT.md</code>.</li>
-  <li><strong>Create device class</strong> (if subclassing): 5 files in <code>userlib/user_devices/{DeviceName}/</code>.</li>
-  <li><strong>Connection table entry:</strong> import, instantiate, add children.</li>
-  <li><strong>Test:</strong> start GUI first, then BLACS. Verify REQ-REP + PUB-SUB + buffered mode. Use <span class="badge yellow">diagnostics</span> if errors appear.</li>
-  <li><strong>Update registry:</strong> add to External GUI Registry in <code>CLAUDE.md</code>.</li>
-  <li><strong>Wrap up:</strong> launch <span class="badge gray">wrap-up</span> for commit message, HTML lab note, context updates, and introspection.</li>
-</ol>
 
 <h2>External GUI Registry</h2>
 <table>
   <tr><th>Name</th><th>BLACS Device</th><th>GUI Codebase</th><th>REQ-REP</th><th>PUB-SUB</th></tr>
-  <tr>
-    <td>Laser Lock</td>
-    <td><code>RemoteControl</code></td>
-    <td>LabVIEW (not in git)</td>
-    <td>:3796</td>
-    <td>:3797</td>
-  </tr>
-  <tr>
-    <td>Rastering GUI</td>
-    <td><code>RasteringDevice</code></td>
-    <td><code>Desktop/GUIs/rastering</code></td>
-    <td>:55535</td>
-    <td>:55536</td>
-  </tr>
-  <tr>
-    <td>BigSky YAG Hub</td>
-    <td><code>BigSkyHub</code></td>
-    <td><code>Desktop/GUIs/BigSkyControl</code></td>
-    <td>:55540</td>
-    <td>:55541</td>
-  </tr>
+  <tr><td>Laser Lock</td><td><code>LaserLockDevice</code></td><td><code>Desktop/GUIs/HF_Locking</code></td><td>:3796</td><td>:3797</td></tr>
+  <tr><td>Rastering GUI</td><td><code>RasteringDevice</code></td><td><code>Desktop/GUIs/rastering</code></td><td>:55535</td><td>:55536</td></tr>
+  <tr><td>BigSky YAG Hub</td><td><code>BigSkyHub</code></td><td><code>Desktop/GUIs/BigSkyControl</code></td><td>:55540</td><td>:55541</td></tr>
 </table>
 
 <h2>External Agents</h2>
-<p>Some external GUI codebases have their own agents. Claude uses them during cross-repo integration work.</p>
 <table>
   <tr><th>Agent</th><th>Location</th><th>Domain</th></tr>
-  <tr>
-    <td><code>ablation-tech</code></td>
-    <td><code>C:\Users\radmo\Desktop\GUIs\rastering\.claude\agents\</code></td>
-    <td>Rastering GUI motor control, calibration, raster patterns</td>
-  </tr>
-  <tr>
-    <td><code>bigsky-yag-laser-controller</code></td>
-    <td><code>C:\Users\radmo\Desktop\GUIs\BigSkyControl\.claude\agents\</code></td>
-    <td>Big Sky YAG laser GUI, serial protocol, safety interlocks</td>
-  </tr>
+  <tr><td><code>ablation-tech</code></td><td><code>Desktop\GUIs\rastering\.claude\agents\</code></td><td>Rastering GUI motor control, calibration, raster patterns</td></tr>
+  <tr><td><code>bigsky-yag-laser-controller</code></td><td><code>Desktop\GUIs\BigSkyControl\.claude\agents\</code></td><td>Big Sky YAG laser GUI, serial protocol, safety interlocks</td></tr>
 </table>
-
-<h2>Lab Notes</h2>
-<p>
-Session lab notes are stored in <code>notes/</code> at the repo root, named <code>YYYY-MM-DD_Topic.html</code>. They are generated by the <span class="badge gray">wrap-up</span> agent at the end of each session and pasted into OneNote.
-</p>
 
 </body>
 </html>

@@ -11,10 +11,39 @@
       "Bash(source:*)",
       "Bash(conda activate:*)",
       "Read(//c/Users/radmo/miniconda/**)",
-      "Bash(git add:*)"
+      "Bash(git add:*)",
+      "Bash(git diff:*)",
+      "Bash(git log:*)",
+      "Bash(git status:*)",
+      "Bash(git show:*)",
+      "WebFetch(domain:claudefa.st)"
     ],
     "additionalDirectories": [
-      "C:\\Users\\radmo\\Desktop\\GUIs\\rastering"
+      "C:\\Users\\radmo\\Desktop\\GUIs\\rastering",
+      "c:\\Users\\radmo\\labscript-suite\\.claude\\skills"
+    ]
+  },
+  "hooks": {
+    "PreToolUse": [
+      {
+        "matcher": "Bash",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "bash -c 'INPUT=$(cat); CMD=$(echo \"$INPUT\" | python -c \"import sys,json; print(json.load(sys.stdin).get(\\\"tool_input\\\",{}).get(\\\"command\\\",\\\"\\\"))\"); if echo \"$CMD\" | grep -qE \"git push\"; then if echo \"$CMD\" | grep -qE \"(blacs|labscript-devices|labscript-utils)\"; then echo \"Blocked: pushing to backend repo. Use explicit user confirmation.\" >&2; exit 2; fi; fi; exit 0'"
+          }
+        ]
+      }
+    ],
+    "Notification": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "powershell.exe -Command \"[System.Reflection.Assembly]::LoadWithPartialName('System.Windows.Forms') | Out-Null; [System.Windows.Forms.MessageBox]::Show('Claude Code needs your attention', 'Claude Code') | Out-Null\""
+          }
+        ]
+      }
     ]
   }
 }

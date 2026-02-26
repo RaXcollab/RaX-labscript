@@ -1,5 +1,13 @@
 # RaX Lab — Labscript Suite
 
+## Context Management
+
+**When compacting**, always preserve: the file-to-agent routing table, conda activation command, External GUI Registry, "Do NOT Flag These" list, and worker path convention.
+
+**Between unrelated tasks**, use `/clear` to reset context. Long sessions with mixed domains (BLACS debugging → sequence editing → analysis) degrade performance as irrelevant context accumulates. Use `/rename` to give sessions descriptive names for easy resumption.
+
+**Always present results to the user before acting on them.** When an agent returns findings, proposed changes, or deliverables — present them to the user for review before committing, editing, or taking irreversible actions. This applies to all agents (wrap-up introspection, device-builder scaffolding, blacs-expert diagnoses, etc.) and to Claude itself. The user must have the opportunity to review, approve, or redirect before changes land. Never skip this step to save time.
+
 ## Repository Structure
 
 This is a **multi-repo workspace**. The parent directory (`labscript-suite/`) is the main user-facing git repo. Several subdirectories are **separate git repos** with their own remotes:
@@ -110,36 +118,11 @@ When adding a new external GUI, add it to this table.
 
 ### Analysis Utilities
 
-The analysis utility library in `userlib/analysislib/Main_Experiment/` provides reusable functions for lyse scripts and Jupyter notebooks:
-
-- **`filtering.py`**: `process_trace()` (adaptive drift correction with slope check; deprecated kwargs `beforeYAG_time`, `after_abs_time`, `end_time` accepted with conversion), `smooth()`, `butter_lowpass_filter()`
-- **`NI_SCOPE.py`**: `plot_ni_scope_channels()`, `load_ni_scope_sequences()` (auto-detects sample rate from h5 attrs), `ensure_time_ms()`, `_resolve_fs_hz()` (internal fallback chain)
-- **`Abs_data.py`**: `load_sequence()` (threaded batch loader, warns on read failures and shape-mismatch drops), `extract_metadata()`
-
-**API stability rule:** Analysis utility functions (`filtering.py`, `NI_SCOPE.py`, `Abs_data.py`, and any future utility modules) must maintain backward compatibility. New features add new kwargs with defaults; existing parameters never change meaning or get removed. This ensures old notebooks that import from these modules continue to work. New notebooks should import from the utility library rather than redefining functions inline.
-
-For analysis-specific questions, use the `lyse-analysis` agent. It knows the full utility API and the two analysis contexts: real-time lyse scripts (performance-critical) and offline Jupyter notebooks (thoroughness).
+@docs/analysis-api.md
 
 ### NI_SCOPE Data Conventions
 
-The NI_SCOPE device (`userlib/user_devices/NI_SCOPE/`) is a custom NI-5922 high-speed digitizer driver. Data flows: connection table params → h5 properties → worker → h5 dataset + attrs → analysis.
-
-**h5 dataset layout:** `/data/traces/NI_SCOPE` — shape `[channel_count, N]` (always 2D, even with selective saving). Channel index = row index.
-
-**Dataset attributes (written by worker):**
-- `sample_rate` — actual sample rate in Hz (from `scope.horz_sample_rate` post-acquisition)
-- `t0` — time offset in seconds (currently 0.0; reserved for future trigger delay support)
-- `channels_saved` — list of channel indices that contain real data (e.g., `[0, 1]` or `[0]`)
-
-**Selective channel saving:** `channels_to_save` in the connection table controls which channels are fetched. Unsaved channels are NaN-filled (preserves array shape for backward compat). Analysis code should check `channels_saved` attr or test for NaN.
-
-**Sample rate resolution in analysis (`_resolve_fs_hz`):** Fallback chain:
-1. Dataset attrs `sample_rate` (new files)
-2. Connection table property `min_sample_rate`
-3. User-provided `fs_hz` kwarg
-4. Default 1 MHz
-
-**NaN-padding pattern:** When optional data columns exist, fill with NaN rather than omitting. This preserves indexing semantics (`channel 0 = row 0`) and makes missing data visible (NaN propagates) rather than silent.
+@docs/ni-scope-conventions.md
 
 ### Session Documentation
 
@@ -198,7 +181,7 @@ During the planning phase, walk through the full agent pipeline from start to fi
 
 The Deliverables section of every plan must specify which agents produce which artifacts, so nothing is forgotten.
 
-**session-notes:** At session start, ask the user if they want session-notes tracking (use AskUserQuestion, short yes/no). If yes, launch in background and resume at milestones. `session-notes` handles note-taking only — wrap-up deliverables are owned by the `wrap-up` agent.
+**session-notes:** At session start, ask the user if they want session-notes tracking (use AskUserQuestion, short yes/no). If yes, launch in background and resume at milestones. `session-notes` handles note-taking only — wrap-up deliverables are owned by the `wrap-up` agent. For pure config/tooling sessions (editing CLAUDE.md, agent prompts, settings, skills) where changes are self-documenting, session-notes can be skipped — the diffs serve as the record.
 
 **Plan mode integration:** Use specialized agents (`device-builder`, `blacs-expert`, `amo-expert`) as your Explore/Plan agents for domain-matching tasks. Don't default to generic Explore/Plan when a specialized agent exists.
 
@@ -224,65 +207,7 @@ Events queued by `@define_state` methods execute in FIFO order in the mainloop t
 
 ### BLACS Device Patterns (RemoteControl Subclasses)
 
-These patterns address friction points in the BLACS base class that affect any RemoteControl-pattern device with ordering constraints or non-spinbox UI. See `notes/2026-02-22_BigSky_tab_redesign.html` for the full writeup.
-
-**Problem 1: `program_manual` sends ALL values, not deltas.** The base class calls `get_front_panel_values()` on every change, then sends the full dict to the worker. For devices where re-sending an unchanged value has side effects (e.g., BigSky rejects mode changes while lamps are active), this causes silent failures.
-
-**Pattern: `_last_sent_values` delta tracking (worker-side)**
-```python
-def init(self):
-    super().init()
-    self._last_sent_values = {}
-
-def check_remote_values(self):
-    # ... get remote_values ...
-    self._last_sent_values.update(remote_values)  # seed from remote state
-    return remote_values
-
-def program_manual(self, front_panel_values):
-    for connection, value in front_panel_values.items():
-        if self._last_sent_values.get(connection) == value:
-            continue  # skip unchanged
-        # ... send value ...
-        self._last_sent_values[connection] = value
-```
-
-**Problem 2: `check_remote_values` poll races with user input.** The 5s periodic poll returns stale values and overwrites AO objects via `_update_ao_widgets`. With spinboxes this is a brief flicker; with toggle buttons the revert is very visible and can cause the reverted value to be programmed to hardware.
-
-**Pattern: `_recently_changed` cooldown (tab-side)**
-```python
-self._recently_changed = {}  # {connection: monotonic_timestamp}
-
-def _on_toggle_clicked(self, connection, value):
-    self._recently_changed[connection] = time.monotonic()
-    self._AO[connection].set_value(value, program=True)
-
-def _update_ao_widgets(self, connection, value):
-    if time.monotonic() - self._recently_changed.get(connection, 0) < 10:
-        return  # skip — user changed this recently, poll hasn't caught up
-    # ... update widget ...
-```
-Set the cooldown to 2x the poll interval (default 5s → 10s cooldown).
-
-**Problem 3: `transition_to_buffered` uses safe ordering, `program_manual` does not.** If your device has command ordering constraints (e.g., must be in standby before changing mode), implement ordering in `program_manual` or the worker, not just in `transition_to_buffered`.
-
-**Custom `initialise_GUI` pattern:** Call `create_analog_outputs()` for ALL channels (BLACS needs AO objects for save/restore and `program_device`). Create standard widgets only for continuous values. Binary controls → toggle buttons. Mode selectors → combo boxes. Command-only channels → hidden (no widget). Custom widgets call `AO.set_value(value, program=True)`.
-
-**Problem 4: `_fetch_initial_values` blindly accepts remote zeros after GUI restart.** The base class fetches remote values on startup and updates the front panel unconditionally. If the remote GUI has no config persistence and restarts with zeroed values, BLACS silently overwrites its saved state (which may contain correct setpoints from the last session).
-
-**Pattern: startup mismatch dialog (tab-side override)**
-```python
-@define_state(MODE_MANUAL, True)
-def _fetch_initial_values(self):
-    remote_values = yield (
-        self.queue_work(self.primary_worker, 'check_remote_values')
-    )
-    # Compare remote_values vs self._AO[connection].value
-    # If mismatch > threshold: show QMessageBox, let user choose
-    # "Use saved" → self._mark_initial_fetch_done(); self.program_device()
-    # "Accept remote" → inmain(self._update_ao_widgets, remote_values)
-```
-Implemented in `LaserLockTab`. Consider for any RemoteControl device where the remote GUI lacks config persistence.
+@docs/blacs-device-patterns.md
 
 ## Reference Documentation
 

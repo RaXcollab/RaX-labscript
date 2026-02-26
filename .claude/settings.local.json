@@ -1,8 +1,12 @@
 {
   "permissions": {
     "allow": [
-      "Bash(winget upgrade:*)",
-      "Read(//c/Users/radmo/Desktop/GUIs/rastering/**)"
+      "Read(//c/Users/radmo/**)",
+      "Bash(conda env list)",
+      "Bash(python -m jupyter kernelspec list)"
+    ],
+    "additionalDirectories": [
+      "C:\\Users\\radmo\\Desktop\\GUIs\\HF_Locking\\.claude"
     ]
   }
 }

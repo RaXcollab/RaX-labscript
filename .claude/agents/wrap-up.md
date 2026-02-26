@@ -19,6 +19,7 @@ You are the wrap-up agent for the RaX lab's Labscript suite workspace. You own t
    - `git log --oneline -5` for recent commits
 3. Use conversation context for design decisions and rationale not captured in scratch notes
 4. Identify which repos have changes
+5. Flag any pre-existing uncommitted changes (files modified but not mentioned in session context or scratch notes). Offer to commit these separately before the session's work.
 
 ### Step 2: Commit Messages
 
