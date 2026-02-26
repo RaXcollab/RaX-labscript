@@ -69,6 +69,10 @@ source ~/miniconda/etc/profile.d/conda.sh && conda activate labscript && python 
 
 ## Critical Conventions
 
+### File Move/Delete Safety
+
+**NEVER run `rm -rf`, `rm -r`, `mv` on directories, or any destructive file operations without explicit user confirmation first.** Always show the exact command and wait for approval. For diagnostic checks, use read-only commands (`ls`, `stat`, `test -d`, `du`) — never `mv` or `rm`. This rule exists because a botched `mv` during a directory migration destroyed unpushed git commits (recovered from Windows File History).
+
 ### Qt Thread Safety in BLACS
 
 **`@define_state` methods resume after `yield` in the mainloop BACKGROUND thread, not the Qt GUI thread.** This means:
