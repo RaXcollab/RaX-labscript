@@ -234,17 +234,19 @@ class RemoteControl(Device):
                 "reqrep_port",
                 "pubsub_port",
                 "mock",
+                "wait_for_lock",
             ],
             "device_properties": [],
         }
     )
     def __init__(
-        self, 
+        self,
         name,
         host="",
         reqrep_port=None,
         pubsub_port=None,
-        mock=True, 
+        mock=True,
+        wait_for_lock=False,
         **kwargs
     ):
         """

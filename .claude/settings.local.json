@@ -5,8 +5,6 @@
       "Bash(conda env list)",
       "Bash(python -m jupyter kernelspec list)"
     ],
-    "additionalDirectories": [
-      "C:\\Users\\radmo\\Desktop\\GUIs\\HF_Locking\\.claude"
-    ]
+    "additionalDirectories": []
   }
 }

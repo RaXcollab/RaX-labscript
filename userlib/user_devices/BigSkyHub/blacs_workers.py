@@ -199,8 +199,9 @@ class BigSkyWorker(RemoteControlWorker):
                         f"transition_to_buffered: programming {col} = {value} "
                         f"(laser={laser_prefix}, order={COMMAND_ORDER.get(suffix, 99)})"
                     )
+                    wait = getattr(self, 'wait_for_lock', False)
                     response = self.remote_comms.program_value(
-                        col, value, wait_for_lock=True
+                        col, value, wait_for_lock=wait
                     )
                     self._check_response(
                         response, f"buffered_program({col}={value})"

@@ -1,7 +1,7 @@
 {
   "permissions": {
     "allow": [
-      "Read(//c/Users/radmo/Desktop/GUIs/rastering/**)",
+      "Read(//c/Users/radmo/labscript-suite/GUIs/rastering/**)",
       "Bash(python -c:*)",
       "Bash(pip show:*)",
       "Read(//c/Users/radmo/miniconda/envs/labscript/Lib/site-packages/labscript/**)",
@@ -19,9 +19,9 @@
       "WebFetch(domain:claudefa.st)"
     ],
     "additionalDirectories": [
-      "C:\\Users\\radmo\\Desktop\\GUIs\\rastering",
       "c:\\Users\\radmo\\labscript-suite\\.claude\\skills",
-      "C:\\Users\\radmo\\Desktop\\GUIs"
+      "C:\\Users\\radmo\\MIT Dropbox\\Shungo Fukaya\\Experiments\\Main_Experiment",
+      "C:\\Users\\radmo\\AppData\\Local\\Packages\\Microsoft.WindowsTerminal_8wekyb3d8bbwe\\LocalState"
     ]
   },
   "hooks": {

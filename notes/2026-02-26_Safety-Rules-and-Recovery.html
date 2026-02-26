@@ -1,0 +1,179 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<style>
+  body { font-family: Calibri, Segoe UI, sans-serif; font-size: 11pt; color: #333; max-width: 900px; margin: 20px auto; }
+  h1 { font-size: 20pt; border-bottom: 2px solid #0078d4; padding-bottom: 6px; color: #0078d4; }
+  h2 { font-size: 14pt; color: #0078d4; margin-top: 24px; }
+  h3 { font-size: 12pt; color: #444; }
+  table { border-collapse: collapse; width: 100%; margin: 10px 0; }
+  th, td { border: 1px solid #ccc; padding: 6px 10px; text-align: left; vertical-align: top; }
+  th { background: #f0f0f0; font-weight: bold; }
+  code { font-family: Consolas, monospace; font-size: 10pt; background: #f4f4f4; padding: 1px 4px; border-radius: 3px; }
+  pre { background: #f4f4f4; border: 1px solid #ddd; border-radius: 4px; padding: 10px; font-family: Consolas, monospace; font-size: 10pt; overflow-x: auto; white-space: pre; }
+  .badge { display: inline-block; padding: 2px 8px; border-radius: 10px; color: white; font-size: 9pt; font-weight: bold; }
+  .green { background: #4CAF50; }
+  .orange { background: #F57C00; }
+  .yellow { background: #FFC107; color: #333; }
+  .blue { background: #0078d4; }
+  .purple { background: #9C27B0; }
+  .gray { background: #9E9E9E; }
+  .red { background: #f44336; }
+  .meta { color: #888; font-size: 10pt; }
+  ol, ul { margin: 6px 0; padding-left: 24px; }
+  li { margin: 3px 0; }
+  strong { color: #222; }
+  .callout { background: #e8f4fd; border-left: 4px solid #0078d4; padding: 8px 12px; margin: 10px 0; }
+  .warn { background: #fff3cd; border-left: 4px solid #ffc107; padding: 8px 12px; margin: 10px 0; }
+</style>
+</head>
+<body>
+
+<h1>Safety Rules and BigSkyControl Recovery</h1>
+<p class="meta">
+  <strong>Date:</strong> 2026-02-26 &nbsp;&bull;&nbsp;
+  <strong>Commits:</strong> <code>0e45c3e</code> (labscript-suite), <code>7be3919</code> (BigSkyControl) &nbsp;&bull;&nbsp;
+  <strong>Context:</strong> Data loss incident during planned folder move; recovery and prevention measures
+</p>
+
+<h2>What Changed</h2>
+<p>
+  A session planning four changes (sequence integration, wait_for_lock property, BigSky voltage skip, GUIs folder move)
+  was interrupted when a diagnostic <code>mv</code> command partially moved BigSkyControl's directory.
+  A subsequent <code>rm -rf</code> on the partial move destination destroyed local-only git commits.
+  Recovery used Windows File History (Feb 24 backup) plus session context to restore documentation files.
+  Safety rules were added to prevent recurrence. All four GUI repos were pushed to remote as an immediate safeguard.
+</p>
+
+<h2>Incident Timeline</h2>
+<div class="warn">
+  <strong>Root cause:</strong> A diagnostic command used <code>mv</code> instead of <code>ls</code>/<code>stat</code>
+  to test which directory was locked by a running process. This partially moved BigSkyControl's files to a temp location.
+  Then <code>rm -rf</code> was used on the temp directory without verifying that the content was recoverable,
+  destroying unpushed git commits (Feb 22-24 work: tab redesign, disconnect resilience, serial error handling).
+</div>
+<table>
+  <tr><th>Step</th><th>What happened</th><th>Impact</th></tr>
+  <tr>
+    <td>1. Diagnostic <code>mv</code></td>
+    <td>Used <code>mv BigSkyControl BigSkyControl_test</code> to test directory lock</td>
+    <td>Files partially moved; git history intact in new location</td>
+  </tr>
+  <tr>
+    <td>2. <code>rm -rf</code> cleanup</td>
+    <td>Removed the moved directory assuming original was intact</td>
+    <td>Destroyed local git repo with unpushed commits (Feb 22-24)</td>
+  </tr>
+  <tr>
+    <td>3. File History recovery</td>
+    <td>Windows File History restored Feb 24 snapshot of BigSkyControl</td>
+    <td>Recovered source code; lost git history and post-Feb-24 docs</td>
+  </tr>
+  <tr>
+    <td>4. Documentation rewrite</td>
+    <td>CLAUDE.md and agent file rebuilt from session context</td>
+    <td>Content restored with Feb 24 disconnect resilience additions</td>
+  </tr>
+  <tr>
+    <td>5. Push all repos</td>
+    <td>Pushed BigSkyControl, rastering, HF_Locking, LakeshoreGUI to GitHub</td>
+    <td>All GUI repos now have remote backups</td>
+  </tr>
+</table>
+
+<h2>Files Changed</h2>
+
+<h3><span class="badge blue">labscript-suite</span> <code>0e45c3e</code></h3>
+<table>
+  <tr><th>File</th><th>Change</th><th>Why</th></tr>
+  <tr>
+    <td><code>CLAUDE.md</code></td>
+    <td>Added "File Move/Delete Safety" section under Critical Conventions</td>
+    <td>Requires user confirmation before <code>rm -rf</code>, <code>rm -r</code>, or <code>mv</code> on directories; mandates read-only diagnostics</td>
+  </tr>
+  <tr>
+    <td><code>.claude/settings.json</code></td>
+    <td>Added PreToolUse hook blocking destructive directory operations; added GUIs directory</td>
+    <td>Automated guardrail: triggers approval prompt before <code>rm -r</code>/<code>rm -rf</code> and <code>mv</code> on directories</td>
+  </tr>
+</table>
+
+<h3><span class="badge purple">BigSkyControl</span> <code>7be3919</code></h3>
+<table>
+  <tr><th>File</th><th>Change</th><th>Why</th></tr>
+  <tr>
+    <td><code>CLAUDE.md</code></td>
+    <td>Restored and expanded: Serial Error Handling Convention, Disconnection Resilience section</td>
+    <td>Content lost in incident; rebuilt from session context with Feb 24 additions</td>
+  </tr>
+  <tr>
+    <td><code>.claude/agents/bigsky-yag-laser-controller.md</code></td>
+    <td>Restored and expanded: _sendCommand convention, Disconnection Lifecycle</td>
+    <td>Agent prompt lost in incident; rebuilt with current architecture knowledge</td>
+  </tr>
+  <tr>
+    <td><code>LabNotes_BigSky_BLACS_ZMQ.html</code></td>
+    <td><strong>NEW</strong> &mdash; Lab notes from Feb 21 BigSky BLACS ZMQ integration</td>
+    <td>Previously untracked; now committed for preservation</td>
+  </tr>
+</table>
+
+<h2>Key Decisions</h2>
+<div class="callout">
+  <strong>Two-layer defense:</strong> Safety rules are enforced at both the documentation level (CLAUDE.md instructions)
+  and the tooling level (settings.json PreToolUse hook). The hook catches the command before execution;
+  the CLAUDE.md rule prevents the command from being formed in the first place.
+</div>
+<ul>
+  <li><strong>Push-after-commit policy:</strong> All four GUI repos pushed immediately. Going forward,
+    unpushed-only commits are a known risk — push promptly after committing.</li>
+  <li><strong>Read-only diagnostics rule:</strong> When investigating directory locks or filesystem state,
+    use <code>ls</code>, <code>stat</code>, <code>dir</code>, <code>Get-ChildItem</code> — never <code>mv</code> or <code>cp</code> as a test.</li>
+  <li><strong>Documentation rebuilt from context, not guessed:</strong> The CLAUDE.md and agent prompt
+    were rewritten using the conversation's full session context, not from memory. This preserved
+    the _sendCommand convention, disconnect lifecycle, and ZMQ error handling details accurately.</li>
+</ul>
+
+<h2>Safety Rules Added</h2>
+<h3>CLAUDE.md "File Move/Delete Safety" Section</h3>
+<pre>
+Destructive file operations (rm -rf, rm -r, mv on directories) require:
+1. Explicit user confirmation before execution
+2. Read-only commands (ls, stat) for diagnostics — never mv/cp as tests
+3. Verify target is recoverable before deleting source
+</pre>
+
+<h3>settings.json PreToolUse Hook</h3>
+<pre>
+Blocks Bash commands matching:
+  - rm -rf or rm -r (directory removal)
+  - mv applied to directories
+Triggers approval prompt — user must confirm before execution.
+</pre>
+
+<h2>Repos Pushed to Remote</h2>
+<table>
+  <tr><th>Repo</th><th>Remote</th><th>Status</th></tr>
+  <tr><td>BigSkyControl</td><td>github.com (private)</td><td><span class="badge green">pushed</span></td></tr>
+  <tr><td>rastering</td><td>github.com (private)</td><td><span class="badge green">pushed</span></td></tr>
+  <tr><td>HF_Locking</td><td>github.com (private)</td><td><span class="badge green">pushed</span></td></tr>
+  <tr><td>LakeshoreGUI</td><td>github.com (private)</td><td><span class="badge green">pushed</span></td></tr>
+</table>
+
+<h2>Future Work</h2>
+<p>A comprehensive plan was written during this session (<code>.claude/plans/scalable-sprouting-peach.md</code>)
+  covering the four originally planned changes. All are deferred to the next session:</p>
+<ol>
+  <li><strong>Sequence integration:</strong> Add <code>.constant()</code> calls in <code>Closed_cell.py</code> for
+    <code>TiSa_1_Setpoint</code>, <code>Vexlum_Setpoint</code>, <code>wait_for_lock</code>
+    (<code>Closed_cell.py</code> partially done — two setpoints uncommented)</li>
+  <li><strong><code>wait_for_lock</code> property:</strong> Add to LaserLockDevice connection table entry +
+    LaserLockWorker <code>transition_to_buffered</code></li>
+  <li><strong>BigSky voltage skip:</strong> Skip voltage programming when value unchanged (delta tracking)</li>
+  <li><strong>GUIs folder move:</strong> User moves <code>Desktop\GUIs</code> manually; then update 20 path references
+    + Windows Terminal settings. Full path audit in the plan file.</li>
+</ol>
+
+</body>
+</html>

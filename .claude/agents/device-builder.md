@@ -93,8 +93,8 @@ Full patterns with code templates: see "BLACS Device Patterns" section in `CLAUD
 See `CLAUDE.md` for the full table of integrated GUIs with ports, device classes, and codebase paths.
 
 **Known external agents** (check `.claude/agents/` in GUI folders):
-- **`ablation-tech`** in `C:\Users\radmo\Desktop\GUIs\rastering\.claude\agents\`
-- **`bigsky-yag-laser-controller`** in `C:\Users\radmo\Desktop\GUIs\BigSkyControl\.claude\agents\`
+- **`ablation-tech`** in `GUIs\rastering\.claude\agents\`
+- **`bigsky-yag-laser-controller`** in `GUIs\BigSkyControl\.claude\agents\`
 
 For the full ZMQ protocol: `userlib/user_devices/BLACS_COMMUNICATION_CONTRACT.md`
 

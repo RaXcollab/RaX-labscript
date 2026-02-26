@@ -56,6 +56,14 @@ labconfig/
   {COMPUTER_NAME}.ini    ← Per-machine config (apparatus name, paths, etc.)
 ```
 
+### Experiment Data Storage
+
+Shot h5 files are stored on Dropbox (synced across lab machines):
+```
+C:\Users\radmo\MIT Dropbox\Shungo Fukaya\Experiments\Main_Experiment\
+```
+This path is configured in `labconfig/RaX-Control.ini` as `experiment_shot_storage`. RunManager writes compiled shots here (organized by `YYYY/MM/DD/`), and lyse reads them for analysis. This directory is in `additionalDirectories` so Claude can access h5 files when needed.
+
 ## Python Environment
 
 **Every Python command must be preceded by conda activation.** Bare `python` gives the wrong version (3.13 base env); `python3` hits the Windows Store shim. Always use:
@@ -98,9 +106,9 @@ The `RemoteControl` device class (`userlib/user_devices/RemoteControl/`) is the 
 
 | Name | BLACS Device Class | GUI Codebase | REQ-REP Port | PUB-SUB Port | Connection Table Name |
 |------|-------------------|--------------|-------------|-------------|----------------------|
-| Laser Lock | `LaserLockDevice` | `C:\Users\radmo\Desktop\GUIs\HF_Locking` | 3796 | 3797 | `LaserLockGUI` |
-| Rastering GUI | `RasteringDevice` | `C:\Users\radmo\Desktop\GUIs\rastering` | 55535 | 55536 | `RasteringGUI` |
-| BigSky YAG Hub | `BigSkyHub` | `C:\Users\radmo\Desktop\GUIs\BigSkyControl` | 55540 | 55541 | `BigSkyLasers` |
+| Laser Lock | `LaserLockDevice` | `GUIs\HF_Locking` | 3796 | 3797 | `LaserLockGUI` |
+| Rastering GUI | `RasteringDevice` | `GUIs\rastering` | 55535 | 55536 | `RasteringGUI` |
+| BigSky YAG Hub | `BigSkyHub` | `GUIs\BigSkyControl` | 55540 | 55541 | `BigSkyLasers` |
 
 When adding a new external GUI, add it to this table.
 
@@ -161,7 +169,7 @@ Invoke agents proactively based on task type. Don't wait for the user to ask.
 | `notes/` (lab notes, session history) | `labscript-diagnostics` | Correlate errors with recent changes |
 | External GUI codebases | Local agent in `.claude/agents/` of the GUI directory | GUI internals, motor control, ZMQ server |
 
-**External GUI agent discovery:** Check for `.claude/agents/` inside the GUI's codebase directory (e.g., `C:\Users\radmo\Desktop\GUIs\rastering\.claude\agents\ablation-tech.md`). The External GUI Registry above lists each GUI's codebase path.
+**External GUI agent discovery:** Check for `.claude/agents/` inside the GUI's codebase directory (e.g., `GUIs\rastering\.claude\agents\ablation-tech.md`). The External GUI Registry above lists each GUI's codebase path.
 
 ### Do NOT Flag These
 

@@ -48,7 +48,7 @@ def connection_table():
 
 
     # === Laser Lock Communication === #
-    LaserLockDevice(name='LaserLockGUI', host="127.0.0.1", reqrep_port=3796, pubsub_port=3797, mock=False)
+    LaserLockDevice(name='LaserLockGUI', host="127.0.0.1", reqrep_port=3796, pubsub_port=3797, mock=False, wait_for_lock=True)
 
     # Name convention: <wavemeter channel>_Setpoint and <wavemeter channel>_Value
 

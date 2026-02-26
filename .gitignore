@@ -1,6 +1,7 @@
 # Folders to ignore
 app_saved_configs/
 blacs/
+GUIs/
 labscript-devices/
 labconfig/
 labscript-utils/

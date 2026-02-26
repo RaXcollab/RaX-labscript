@@ -2,7 +2,7 @@
 
 **Date:** 2026-02-21
 **Author:** Claude Opus 4.6 + Lab Member
-**Repos:** `RaX-labscript` (labscript-suite) + rastering GUI (`Desktop/GUIs/rastering`)
+**Repos:** `RaX-labscript` (labscript-suite) + rastering GUI (`GUIs/rastering`)
 
 ---
 
@@ -32,7 +32,7 @@ Rastering GUI (localhost)          BLACS (RasteringDevice tab)
 
 ## Files Changed
 
-### Rastering GUI (`Desktop/GUIs/rastering/`)
+### Rastering GUI (`GUIs/rastering/`)
 
 | File | Change |
 |------|--------|

@@ -15,8 +15,11 @@ t_trigger = 0.5e-3      #0.5ms
 
 # Ensure at least 4 samples for DO buffer
 start()
-# TiSa_1_Setpoint.constant(FREQ_RAMP)  # Set desired frequency here
-# Vexlum_Setpoint.constant(FREQ_RAMP)    # Set desired frequency here
+TiSa_1_Setpoint.constant(TISA_1)  # Set desired frequency here
+Vexlum_Setpoint.constant(VEXLUM)    # Set desired frequency here
+YAG_1_voltage.constant(V_YAG1)      # Set YAG voltage from global
+Raster_X.constant(RASTER_X)         # Set raster X position from global
+Raster_Y.constant(RASTER_Y)         # Set raster Y position from global
 
 # #YAG triggering
 # YAG1_line.go_low(0)

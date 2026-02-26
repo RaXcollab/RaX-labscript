@@ -338,8 +338,9 @@ class RemoteControlWorker(Worker):
             for connection in table.dtype.names:
                 value = float(table[0][connection])
                 self.logger.debug(f"transition_to_buffered: programming {connection} = {value}")
+                wait = getattr(self, 'wait_for_lock', False)
                 response = self.remote_comms.program_value(
-                    connection, value, wait_for_lock=True
+                    connection, value, wait_for_lock=wait
                 )
                 self._check_response(response, f"buffered_program({connection}={value})")
 

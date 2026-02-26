@@ -92,7 +92,7 @@ Between shots (manual mode):
 
 - **Client side** (BLACS): `userlib/user_devices/RemoteControl/blacs_workers.py` — `RemoteCommunication` class
 - **Generic server**: Laser lock GUI (LabVIEW, not in git) — simplest case, just PROGRAM_VALUE + CHECK_VALUE
-- **Extended server**: `C:\Users\radmo\Desktop\GUIs\rastering\raster_controller.py:_zmq_loop()` — adds HELLO, PUB-SUB, custom `move_to_next` action
+- **Extended server**: `GUIs\rastering\raster_controller.py:_zmq_loop()` — adds HELLO, PUB-SUB, custom `move_to_next` action
 - **Extended BLACS device**: `userlib/user_devices/RasteringDevice/` — subclassed worker + tab with status indicators. See `BLACS_Integration_Notes.md` in that directory.
 
 ## Cross-References

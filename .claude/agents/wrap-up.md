@@ -167,8 +167,8 @@ This workspace spans multiple git repos:
 - `blacs/` — BLACS runtime
 - `labscript-devices/` — official device drivers
 - `labscript-utils/` — shared utilities
-- `C:\Users\radmo\Desktop\GUIs\rastering` — rastering GUI (separate workspace)
-- `C:\Users\radmo\Desktop\GUIs\BigSkyControl` — BigSky GUI (separate workspace)
+- `GUIs\rastering` — rastering GUI (separate workspace)
+- `GUIs\BigSkyControl` — BigSky GUI (separate workspace)
 
 When documenting:
 - Check which repos have changes
