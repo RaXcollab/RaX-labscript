@@ -1,0 +1,139 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<style>
+  body { font-family: Calibri, Segoe UI, sans-serif; font-size: 11pt; color: #333; max-width: 900px; margin: 20px auto; }
+  h1 { font-size: 20pt; border-bottom: 2px solid #0078d4; padding-bottom: 6px; color: #0078d4; }
+  h2 { font-size: 14pt; color: #0078d4; margin-top: 24px; }
+  h3 { font-size: 12pt; color: #444; }
+  table { border-collapse: collapse; width: 100%; margin: 10px 0; }
+  th, td { border: 1px solid #ccc; padding: 6px 10px; text-align: left; vertical-align: top; }
+  th { background: #f0f0f0; font-weight: bold; }
+  code { font-family: Consolas, monospace; font-size: 10pt; background: #f4f4f4; padding: 1px 4px; border-radius: 3px; }
+  pre { background: #f4f4f4; border: 1px solid #ddd; border-radius: 4px; padding: 10px; font-family: Consolas, monospace; font-size: 10pt; overflow-x: auto; white-space: pre; }
+  .badge { display: inline-block; padding: 2px 8px; border-radius: 10px; color: white; font-size: 9pt; font-weight: bold; }
+  .green { background: #4CAF50; }
+  .orange { background: #F57C00; }
+  .yellow { background: #FFC107; color: #333; }
+  .blue { background: #0078d4; }
+  .purple { background: #9C27B0; }
+  .gray { background: #9E9E9E; }
+  .red { background: #f44336; }
+  .meta { color: #888; font-size: 10pt; }
+  ol, ul { margin: 6px 0; padding-left: 24px; }
+  li { margin: 3px 0; }
+  strong { color: #222; }
+  .callout { background: #e8f4fd; border-left: 4px solid #0078d4; padding: 8px 12px; margin: 10px 0; }
+  .warn { background: #fff3cd; border-left: 4px solid #ffc107; padding: 8px 12px; margin: 10px 0; }
+</style>
+</head>
+<body>
+
+<h1>CLAUDE.md Best Practices Rewrite</h1>
+<p class="meta">
+  <strong>Date:</strong> 2026-02-26 &nbsp;&bull;&nbsp;
+  <strong>Commit:</strong> <code>pending</code> &nbsp;&bull;&nbsp;
+  <strong>Context:</strong> Rewrite CLAUDE.md based on expert best-practices research (Anthropic docs, HumanLayer, Maxitect, Arize, DEV.to)
+</p>
+
+<h2>What Changed</h2>
+<p>
+CLAUDE.md was rewritten from 228 to 154 lines (32% reduction) based on a survey of expert recommendations for Claude Code project instructions. The two highest-impact additions are a Verification section (Anthropic's #1 recommendation for CLAUDE.md files) and an Available Tools section listing all skills and agents. Agent orchestration rules (65 lines) were extracted into a new auto-activating skill to reduce always-loaded context. This is a continuation of the earlier session's <code>@import</code> and skills work.
+</p>
+
+<h2>Files Changed</h2>
+<table>
+  <tr><th>File</th><th>Change</th><th>Why</th></tr>
+  <tr>
+    <td><code>CLAUDE.md</code></td>
+    <td>Rewritten: 228 &rarr; 154 lines. Added Verification section, Available Tools section. Condensed paragraphs to bullets. Removed content duplicated in skills/agents (GUI workflow, RemoteControl pattern description, full agent routing table).</td>
+    <td>Expert consensus: &lt;150 lines ideal for CLAUDE.md. Verification is the #1 gap. Skills handle non-universal knowledge.</td>
+  </tr>
+  <tr>
+    <td><code>.claude/skills/agent-workflow/SKILL.md</code></td>
+    <td><strong>NEW</strong> -- Auto-activating skill (<code>user-invocable: false</code>) containing agent dispatch table, file-to-agent routing table, routing enforcement rules, plan mode integration, session-notes protocol, deliverables checklist, BLACS internals quick reference.</td>
+    <td>65 lines of agent orchestration rules only needed when planning multi-agent work. Skill auto-loads on demand based on description matching, avoiding bloat in every session.</td>
+  </tr>
+  <tr>
+    <td><code>docs/blacs-device-patterns.md</code></td>
+    <td>Appended BLACS Saved-State Resilience and State Machine Event Ordering sections.</td>
+    <td>Moved from CLAUDE.md. Already <code>@imported</code> -- content is available when working on device patterns without occupying CLAUDE.md space.</td>
+  </tr>
+  <tr>
+    <td><code>.claude/settings.json</code></td>
+    <td>Added <code>www.maxitect.blog</code> to allowed WebFetch domains.</td>
+    <td>Used during best-practices research phase.</td>
+  </tr>
+</table>
+
+<h2>Key Decisions</h2>
+
+<div class="callout">
+<strong>Skill vs @import for agent orchestration:</strong> Skills auto-activate based on description matching when Claude plans multi-step work. <code>@import</code> docs load when the directory is accessed. Agent orchestration is task-type-triggered, not file-path-triggered, so a skill is the correct mechanism. Set <code>user-invocable: false</code> to keep it out of the slash menu -- it's background knowledge, not a user action.
+</div>
+
+<div class="callout">
+<strong>What stays in CLAUDE.md vs what gets extracted:</strong> CLAUDE.md retains universal knowledge needed in every session (repo structure, conda activation, Qt thread safety, worker paths, Do NOT Flag These). Domain-specific knowledge (@imports) and workflow knowledge (skills) are loaded on demand. The test: "Would Claude need this for a single-file bug fix?" If no, extract it.
+</div>
+
+<div class="callout">
+<strong>Verification section rationale:</strong> Anthropic's official docs and multiple community guides identify verification steps as the highest-ROI addition to CLAUDE.md. Without them, Claude proposes changes without checking they work. The 7 items map to the lab's actual testing workflow (compile in RunManager, restart BLACS, check logs, etc.).
+</div>
+
+<h2>Before / After</h2>
+<table>
+  <tr><th>Aspect</th><th>Before</th><th>After</th></tr>
+  <tr>
+    <td>CLAUDE.md line count</td>
+    <td>228 lines</td>
+    <td>154 lines (32% reduction)</td>
+  </tr>
+  <tr>
+    <td>Verification steps</td>
+    <td>None</td>
+    <td>7 items covering sequences, connection tables, devices, analysis, GUIs, BLACS, and saved-state</td>
+  </tr>
+  <tr>
+    <td>Available tools listing</td>
+    <td>None (scattered across agent prompts)</td>
+    <td>Consolidated section: 4 skills + 8 agents with one-line descriptions</td>
+  </tr>
+  <tr>
+    <td>Agent orchestration</td>
+    <td>~65 lines inline in CLAUDE.md</td>
+    <td>Extracted to <code>agent-workflow</code> skill, auto-loads on demand</td>
+  </tr>
+  <tr>
+    <td>"Adding New External GUI" workflow</td>
+    <td>8-step inline workflow</td>
+    <td>Removed (already the <code>/new-device</code> skill)</td>
+  </tr>
+  <tr>
+    <td>RemoteControl pattern description</td>
+    <td>Inline paragraph</td>
+    <td>Removed (already in <code>device-builder</code> agent prompt)</td>
+  </tr>
+  <tr>
+    <td>BLACS saved-state + event ordering</td>
+    <td>Inline in CLAUDE.md</td>
+    <td>Moved to <code>docs/blacs-device-patterns.md</code> (already @imported) + duplicated in skill for quick-ref</td>
+  </tr>
+</table>
+
+<h2>Patterns Observed</h2>
+<ul>
+  <li><strong>Content migration path:</strong> CLAUDE.md &rarr; @import docs (file-path-triggered) or skills (task-type-triggered) &rarr; agent prompts (agent-specific). Each level loads less frequently. The hierarchy is now: CLAUDE.md (always) &rarr; @imports (directory access) &rarr; skills (task matching) &rarr; agents (explicit launch).</li>
+  <li><strong>Expert consensus was consistent:</strong> All 5 sources independently recommended: keep CLAUDE.md short, add verification, use project structure. Disagreement was only on formatting (some preferred YAML frontmatter, which Claude Code doesn't support).</li>
+  <li><strong><code>user-invocable: false</code> is underused:</strong> Most skill examples are user-facing. Background skills that auto-load based on description matching are a powerful pattern for domain knowledge that's needed intermittently but not universally.</li>
+</ul>
+
+<h2>Future Work</h2>
+<ul>
+  <li>Monitor whether the <code>agent-workflow</code> skill actually auto-loads when planning multi-agent tasks. If not, may need to adjust the skill description or move content back.</li>
+  <li>The earlier session's lab note (<code>2026-02-26_Agent-Workflow-Optimization.html</code>) has <code>commit: pending</code> -- should be updated with actual commit hash after committing.</li>
+  <li>Consider a periodic review (monthly?) of CLAUDE.md line count to prevent re-bloat as new conventions are added.</li>
+</ul>
+
+</body>
+</html>

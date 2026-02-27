@@ -57,3 +57,13 @@ def _fetch_initial_values(self):
     # "Accept remote" → inmain(self._update_ao_widgets, remote_values)
 ```
 Implemented in `LaserLockTab`. Consider for any RemoteControl device where the remote GUI lacks config persistence.
+
+---
+
+## BLACS Saved-State Resilience
+
+When the connection table changes (devices added/removed, parameters changed), BLACS handles stale saved state gracefully. `FrontPanelSettings.check_row()` silently excludes channels no longer in the connection table. **No need to delete the saved state h5 file** after connection table changes.
+
+## State Machine Event Ordering
+
+Events queued by `@define_state` methods execute in FIFO order in the mainloop thread. The base class `DeviceTab.__init__` runs: `initialise_GUI()` → `restore_save_data()` → `initialise_workers()` → `program_device()`. Events queued during `initialise_workers` (like `connect_to_reqrep`) execute before `program_device`.
