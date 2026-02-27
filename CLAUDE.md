@@ -56,6 +56,12 @@ source ~/miniconda/etc/profile.d/conda.sh && conda activate labscript && python 
 - Python 3.11, pyzmq=23.2.0 (do NOT upgrade pyzmq), numpy=1.26.4
 - Backend repos: `pip install --no-build-isolation --no-deps -e blacs -e labscript-devices -e labscript-utils`
 
+## Design Philosophy
+
+- **Modularity over simplicity** — when the user describes distinct categories (e.g., manual vs timed vs latched channels), the solution must handle each type independently. Do NOT collapse into blanket behavior.
+- **Need-driven complexity** — match solution complexity to the problem. A latched channel gets distinct code; a rename gets one line.
+- **Our fork is ground truth** — `shafinulh/blacs`, `shafinulh/labscript-devices`, `shafinulh/labscript-utils` are custom. When official docs disagree with our code, our code wins.
+
 ## Critical Conventions
 
 ### File Move/Delete Safety
@@ -100,7 +106,7 @@ Add new external GUIs to this table.
 
 ### Agents (launched automatically based on task type)
 
-- `blacs-expert` — Qt threading, state machine, BLACS runtime internals
+- `blacs-expert` — Qt threading, state machine, BLACS runtime internals, NI_DAQmx worker lifecycle, cross-device impact analysis
 - `amo-expert` — sequences, connection tables, experiment design, RunManager
 - `device-builder` — scaffolding new device classes (confers with blacs-expert + amo-expert)
 - `lyse-analysis` — analysis scripts, Jupyter notebooks, utility API
@@ -119,7 +125,7 @@ Add new external GUIs to this table.
 
 @docs/ni-scope-conventions.md
 
-### BLACS Device Patterns (RemoteControl Subclasses)
+### BLACS Device Patterns (RemoteControl + NI_DAQmx)
 
 @docs/blacs-device-patterns.md
 
@@ -130,4 +136,4 @@ Add new external GUIs to this table.
 ### Other References
 
 - `Labscript-Confluence-2026-02-11.pdf` in repo root — Lab-specific Confluence docs
-- Official labscript docs: https://docs.labscriptsuite.org/
+- Official labscript docs: https://docs.labscriptsuite.org/ (reference only — our fork code takes precedence)

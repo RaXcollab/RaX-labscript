@@ -67,3 +67,38 @@ When the connection table changes (devices added/removed, parameters changed), B
 ## State Machine Event Ordering
 
 Events queued by `@define_state` methods execute in FIFO order in the mainloop thread. The base class `DeviceTab.__init__` runs: `initialise_GUI()` → `restore_save_data()` → `initialise_workers()` → `program_device()`. Events queued during `initialise_workers` (like `connect_to_reqrep`) execute before `program_device`.
+
+---
+
+## NI_DAQmx Output Worker Lifecycle
+
+**Shared class warning:** `NI_DAQmxOutputWorker` is used by ALL NI devices (6361, 6535, etc.). Changes to `transition_to_buffered`, `post_experiment`, or `transition_to_manual` affect every NI device. Guard device-specific behavior with property checks (e.g., `if self._latched_lines:`).
+
+### Queued-Shot Lifecycle (no transition_to_manual between shots)
+
+```
+Shot 1: transition_to_buffered → run → post_experiment
+Shot 2: transition_to_buffered → run → post_experiment   ← NO transition_to_manual
+...
+Last:   transition_to_manual                              ← only here (or on abort)
+```
+
+**Consequence:** Per-shot cleanup (restoring latched channels, etc.) must go in `post_experiment`, not `transition_to_manual`. `transition_to_manual` is for queue-end and abort only.
+
+**`program_manual` silent no-op:** After `post_experiment` clears tasks (`self.DO_task = None`), `program_manual` silently skips DO writes. Use `_ensure_manual_DO_task()` to create a temporary DO-only task when needed between queued shots.
+
+### Latched Digital Output Pattern
+
+Channels in `device_properties['latched_lines']` (set via `set_property` in connection table):
+1. **Pre-latch** (`transition_to_buffered`): `_ensure_manual_DO_task()` → `program_manual(latch_values)` → `stop_tasks()` → hardware holds latched state
+2. **Restore** (`post_experiment`): `_ensure_manual_DO_task()` → three-layer merge → `program_manual(restore)`
+3. **Restore** (`transition_to_manual`): `start_manual_mode_tasks()` → three-layer merge → `program_manual(restore)`
+4. **Three-layer merge**: `initial_values` (baseline) → `cached_final_values` (timed channels) → `initial_values` for latched channels only
+
+### ZMQ REQ Socket Resilience
+
+REQ sockets stuck in pending-recv after abort. Pattern: `_reset_socket()` closes and re-creates. Call between `stop_task()` and `start_task()` (thread-safe window). Always use `LINGER=0`. Store context as instance variable for reuse.
+
+### Init-Order Safety
+
+When making a method idempotent by adding cleanup at the top (e.g., `stop_tasks()` in `start_manual_mode_tasks()`), initialize all attributes the cleanup accesses BEFORE the first call. Example: `self.AO_task = None` and `self.DO_task = None` in `init()` before `start_manual_mode_tasks()`.

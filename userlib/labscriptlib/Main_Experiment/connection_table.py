@@ -135,12 +135,16 @@ def connection_table():
     BigSkyHub(name='BigSkyLasers',num_lasers=1, laser_prefix="YAG", host="127.0.0.1")
     # All channels auto-created
 
-    # Define digital output line on PXIe-6535
+    # Define digital output lines on PXIe-6535
     DigitalOut('LIF_shutter', ni_6535, 'port0/line0')
-    DigitalOut('YAG1_line', ni_6535, 'port0/line1') 
-    DigitalOut('YAG2_line', ni_6535, 'port0/line2') 
-    DigitalOut('ENH_line', ni_6535, 'port0/line3') 
+    DigitalOut('YAG1_line', ni_6535, 'port0/line1')
+    DigitalOut('YAG2_line', ni_6535, 'port0/line2')
+    DigitalOut('ENH_line', ni_6535, 'port0/line3')
     # DigitalOut('dummy_line', ni_6535, 'port0/line4')    #for even number
+
+    # Register latched lines — pre-set during transition_to_buffered,
+    # restored to manual-mode state after the shot:
+    ni_6535.set_property('latched_lines', ['port0/line0'], location='device_properties')
 
 
     NI_SCOPE(

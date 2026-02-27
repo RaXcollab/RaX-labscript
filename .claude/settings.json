@@ -16,12 +16,21 @@
       "Bash(git log:*)",
       "Bash(git status:*)",
       "Bash(git show:*)",
-      "WebFetch(domain:claudefa.st)"
+      "WebFetch(domain:claudefa.st)",
+      "WebFetch(domain:www.maxitect.blog)",
+      "WebFetch(domain:docs.labscriptsuite.org)",
+      "WebFetch(domain:github.com)",
+      "WebFetch(domain:groups.google.com)",
+      "Bash(ls -1 /c/Users/radmo/miniconda/envs/labscript/Lib/site-packages/labscript/*.py)",
+      "WebFetch(domain:www.humanlayer.dev)",
+      "WebFetch(domain:www.builder.io)",
+      "Bash(find ~/miniconda/envs/labscript/Lib/site-packages/labscript -name \"*.py\" -exec grep -l \"class Shutter\" {} ;)"
     ],
     "additionalDirectories": [
       "c:\\Users\\radmo\\labscript-suite\\.claude\\skills",
       "C:\\Users\\radmo\\MIT Dropbox\\Shungo Fukaya\\Experiments\\Main_Experiment",
-      "C:\\Users\\radmo\\AppData\\Local\\Packages\\Microsoft.WindowsTerminal_8wekyb3d8bbwe\\LocalState"
+      "C:\\Users\\radmo\\AppData\\Local\\Packages\\Microsoft.WindowsTerminal_8wekyb3d8bbwe\\LocalState",
+      "c:\\Users\\radmo\\labscript-suite\\.claude"
     ]
   },
   "hooks": {

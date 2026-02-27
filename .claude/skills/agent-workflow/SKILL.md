@@ -1,7 +1,7 @@
 ---
 name: agent-workflow
 description: Agent orchestration rules for multi-step tasks — file-to-agent routing, session-notes, wrap-up, plan mode integration, and deliverables checklist. Auto-loads when planning multi-agent work.
-user-invocable: false
+user-invokable: false
 ---
 
 # Agent Orchestration
@@ -47,6 +47,23 @@ Before launching any Explore or Plan agent, check the routing table. If the task
 - **Small fixes** (single-file, ~10 lines, obvious approach): Don't use full multi-phase plan mode. State the fix in a few sentences, ask for permission, one cycle.
 - **Full plan mode**: Multi-file changes, architectural decisions, unclear requirements, or anything the user explicitly requests planning for.
 
+### Agent Dispatch Declaration (required for full plan mode)
+
+At the START of Phase 1, before launching any agents, state an **Agent Dispatch Table** listing which agents will be used and why:
+
+```
+| Agent | Purpose | Phase |
+|-------|---------|-------|
+| blacs-expert | Audit worker lifecycle, thread safety | Phase 1 + 2 |
+| amo-expert | Verify sequence-side patterns, DO table | Phase 1 + 2 |
+```
+
+This prevents: (a) forgetting to launch experts, (b) using generic Explore for domain tasks, (c) missing cross-device impact analysis.
+
+### Cross-Audit Rule
+
+For **BLACS worker changes** (safety-critical — affects live hardware): every claim audited by one expert must be cross-audited by the other. State cross-audit status in the plan's Agent Audit Trail table. Do not exit plan mode with unaudited claims.
+
 ## Session Notes Protocol
 
 - At session start, ask the user if they want session-notes tracking (use AskUserQuestion, short yes/no)
@@ -74,3 +91,5 @@ The Deliverables section of every plan must specify which agents produce which a
 **Saved-State Resilience:** When the connection table changes (devices added/removed, parameters changed), BLACS handles stale saved state gracefully. `FrontPanelSettings.check_row()` silently excludes channels no longer in the connection table. No need to delete the saved state h5 file.
 
 **State Machine Event Ordering:** Events queued by `@define_state` execute in FIFO order in the mainloop thread. Base class `DeviceTab.__init__` runs: `initialise_GUI()` → `restore_save_data()` → `initialise_workers()` → `program_device()`. Events queued during `initialise_workers` (like `connect_to_reqrep`) execute before `program_device`.
+
+**NI_DAQmx Queued-Shot Lifecycle:** Between queued shots: `post_experiment → transition_to_buffered` (NO `transition_to_manual`). Per-shot cleanup goes in `post_experiment`. `transition_to_manual` only at queue end or abort. `NI_DAQmxOutputWorker` is shared by ALL NI devices — changes affect 6361 + 6535.

@@ -1,6 +1,6 @@
 from labscript import *
 from labscriptlib.Main_Experiment.connection_table import connection_table
-from labscriptlib.Main_Experiment.subsequences.subsequences import digital_pulse
+from labscriptlib.Main_Experiment.subsequences.subsequences import digital_pulse, latch_digital
 
 connection_table()  # Initialize devices from connection table
 
@@ -18,8 +18,10 @@ start()
 TiSa_1_Setpoint.constant(TISA_1)  # Set desired frequency here
 Vexlum_Setpoint.constant(VEXLUM)    # Set desired frequency here
 YAG_1_voltage.constant(V_YAG1)      # Set YAG voltage from global
-Raster_X.constant(RASTER_X)         # Set raster X position from global
-Raster_Y.constant(RASTER_Y)         # Set raster Y position from global
+# Raster_X.constant(RASTER_X)         # Set raster X position from global
+# Raster_Y.constant(RASTER_Y)         # Set raster Y position from global
+
+latch_digital(LIF_shutter, LIF_SHUTTER_OPEN)  # pre-set during transition_to_buffered
 
 # #YAG triggering
 # YAG1_line.go_low(0)
