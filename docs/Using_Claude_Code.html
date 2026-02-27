@@ -32,8 +32,8 @@
 
 <h1>Using Claude Code with Labscript</h1>
 <p class="meta">
-  <strong>Last updated:</strong> 2026-02-26 &nbsp;&bull;&nbsp;
-  <strong>Version:</strong> 4.0 &nbsp;&bull;&nbsp;
+  <strong>Last updated:</strong> 2026-02-27 &nbsp;&bull;&nbsp;
+  <strong>Version:</strong> 5.0 &nbsp;&bull;&nbsp;
   <strong>Canonical reference for the RaX lab Claude Code setup</strong>
 </p>
 
@@ -56,8 +56,11 @@ Open a terminal in the <code>labscript-suite</code> folder and run <code>claude<
   <li>Log file locations (<code>logs/BLACS.log</code>, <code>logs/BLACS_faulthandler.log</code>)</li>
   <li>How to activate the conda environment</li>
   <li>The ExternalSoftware/RemoteControl communication pattern (REQ-REP + PUB-SUB)</li>
+  <li>Design philosophy: modularity over simplicity, need-driven complexity, our fork is ground truth</li>
+  <li>NI_DAQmx output worker lifecycle: queued-shot flow, latched DO pattern, three-layer merge restore</li>
+  <li>Labscript DSL &amp; device driver API reference (class signatures, sequence methods, constraints)</li>
 </ul>
-<p>Detailed reference docs (BLACS device patterns, NI_SCOPE conventions, analysis API) are in <code>docs/*.md</code> and loaded on-demand via <code>@import</code> when Claude works in relevant directories.</p>
+<p>Detailed reference docs (BLACS device patterns, NI_SCOPE conventions, analysis API, labscript API) are in <code>docs/*.md</code> and loaded on-demand via <code>@import</code>. Path-scoped rules in <code>.claude/rules/</code> auto-activate when editing matching files (e.g., device rules for <code>user_devices/</code>, sequence rules for <code>labscriptlib/</code>).</p>
 
 <h2>The 7 Agents</h2>
 <p>Agents are specialized subprocesses stored in <code>.claude/agents/</code>. Claude launches them automatically based on the task type.</p>
@@ -83,9 +86,9 @@ Open a terminal in the <code>labscript-suite</code> folder and run <code>claude<
   </tr>
   <tr>
     <td><span class="badge red">blacs-expert</span></td>
-    <td>BLACS internals: Qt thread safety, state machine event ordering, PUB-SUB threading</td>
+    <td>BLACS internals: Qt thread safety, state machine event ordering, PUB-SUB threading, NI_DAQmx worker lifecycle, cross-device impact analysis</td>
     <td>Opus</td>
-    <td>BLACS crashes, segfaults, access violations, event ordering bugs</td>
+    <td>BLACS crashes, segfaults, access violations, event ordering bugs, NI_DAQmx driver changes</td>
   </tr>
   <tr>
     <td><span class="badge orange">amo-expert</span></td>
@@ -159,6 +162,9 @@ Open a terminal in the <code>labscript-suite</code> folder and run <code>claude<
 <div class="callout">
 <strong>Three-phase workflow:</strong> (1) <span class="badge purple">session-notes</span> launches automatically in background. (2) Domain agents do the work. (3) <span class="badge gray">wrap-up</span> runs at the end for deliverables. All three are planned upfront, not as afterthoughts.
 </div>
+<div class="callout">
+<strong>Cross-audit for safety-critical changes:</strong> Changes to BLACS workers (which control live hardware) require every claim to be audited by <span class="badge red">blacs-expert</span> AND cross-audited by <span class="badge orange">amo-expert</span>. Plans must include an Agent Dispatch Table (which agents, which phase) and an Agent Audit Trail (which claims audited, by whom).
+</div>
 <table>
   <tr><th>Task Type</th><th>Agents</th><th>When</th></tr>
   <tr>
@@ -216,6 +222,7 @@ Open a terminal in the <code>labscript-suite</code> folder and run <code>claude<
   <tr><td><code>/debug-blacs tab shows 0 for all setpoints</code></td><td>Triage: faulthandler &rarr; BLACS.log &rarr; route to specialist</td></tr>
   <tr><td>"Write a sequence for absorption imaging"</td><td><span class="badge orange">amo-expert</span> writes labscript sequence</td></tr>
   <tr><td>"My analysis is too slow"</td><td><span class="badge green">lyse-analysis</span> profiles and optimizes</td></tr>
+  <tr><td>"Add a latched digital output for the shutter"</td><td><span class="badge red">blacs-expert</span> + <span class="badge orange">amo-expert</span> cross-audit NI_DAQmx worker changes</td></tr>
 </table>
 
 <h2>Tips</h2>
@@ -238,7 +245,8 @@ Open a terminal in the <code>labscript-suite</code> folder and run <code>claude<
   <tr><td>Skills (4 slash commands)</td><td><code>.claude/skills/*/SKILL.md</code></td></tr>
   <tr><td>Agent memory (persistent)</td><td><code>.claude/agent-memory/{agent-name}/</code></td></tr>
   <tr><td>Permission settings + hooks</td><td><code>.claude/settings.json</code></td></tr>
-  <tr><td>Imported docs (BLACS patterns, NI_SCOPE, analysis API)</td><td><code>docs/*.md</code></td></tr>
+  <tr><td>Path-scoped rules (auto-activate per file type)</td><td><code>.claude/rules/*.md</code></td></tr>
+  <tr><td>Imported docs (BLACS patterns, NI_SCOPE, analysis API, labscript API)</td><td><code>docs/*.md</code></td></tr>
   <tr><td>Session lab notes</td><td><code>notes/YYYY-MM-DD_Topic.html</code></td></tr>
   <tr><td>This guide</td><td><code>docs/Using_Claude_Code.html</code></td></tr>
   <tr><td>Changelog</td><td><code>docs/changelog.html</code></td></tr>

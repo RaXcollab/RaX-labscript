@@ -35,6 +35,29 @@
   Each entry links to the lab note with full details.
 </p>
 
+<h2>v5.0 &mdash; 2026-02-27</h2>
+<p><strong>Latched digital outputs, ZMQ socket resilience, labscript API reference, cross-audit workflow</strong></p>
+<ul>
+  <li><strong>NI_DAQmx latched digital outputs:</strong> Per-channel opt-in via <code>set_property('latched_lines', [...])</code> in the connection table. Worker pre-latches DO channels to their sequence value during <code>transition_to_buffered</code> (before the pseudoclock starts) and restores to manual-mode state after each shot. Three-layer merge ensures correct post-shot state for manual, timed, and latched channels independently.</li>
+  <li><strong><code>_ensure_manual_DO_task()</code>:</strong> Creates a temporary DO-only task between queued shots (when <code>post_experiment</code> has cleared tasks). Avoids AO glitch risk from creating a full manual-mode task. Enables per-shot restore of latched channels in queued shot mode.</li>
+  <li><strong>ZMQ REQ socket resilience (pre-existing fix):</strong> NI_DAQmx acquisition worker's data socket could get stuck in a half-sent state after abort, causing all subsequent shots to fail. New <code>_reset_data_socket()</code> method with <code>LINGER=0</code> and context reuse.</li>
+  <li><strong>Connection table:</strong> LIF shutter changed from <code>Shutter</code> to <code>DigitalOut</code> + latched line registration. New <code>latch_digital()</code> helper in <code>subsequences.py</code>. Shutter state now controlled per-shot by RunManager global <code>LIF_SHUTTER_OPEN</code>.</li>
+  <li><strong>New doc: <code>docs/labscript-api.md</code>:</strong> Comprehensive labscript DSL + device driver API reference (class signatures, sequence methods, key constraints). Prevents agents from guessing class signatures.</li>
+  <li><strong>New doc section:</strong> NI_DAQmx Output Worker Lifecycle in <code>docs/blacs-device-patterns.md</code> &mdash; queued-shot flow, shared class warning, latched DO pattern, ZMQ resilience, init-order safety.</li>
+  <li><strong>Design Philosophy</strong> added to CLAUDE.md: modularity over simplicity, need-driven complexity, our fork is ground truth.</li>
+  <li><strong>Path-scoped rules (<code>.claude/rules/</code>):</strong>
+    <ul>
+      <li><code>devices.md</code> &mdash; hardware change scoping, cross-device impact, Qt thread safety</li>
+      <li><code>sequences.md</code> &mdash; timing safety (verify t=0 clamping, delays from source)</li>
+      <li><code>context-writing.md</code> &mdash; writing-style best practices for instruction files</li>
+    </ul>
+  </li>
+  <li><strong>Cross-audit workflow:</strong> Agent Dispatch Declaration required at plan start. Safety-critical BLACS worker changes require cross-audit by both <span class="badge red">blacs-expert</span> and <span class="badge orange">amo-expert</span>. Audit Trail table tracks claim-by-claim verification.</li>
+  <li><strong>Agent prompt hardening:</strong> <span class="badge red">blacs-expert</span> gained scope audit checklist + mandatory audit questions. <span class="badge orange">amo-expert</span> gained safety rules. "Research before proposing" rule added to CLAUDE.md.</li>
+  <li><strong>User guide updated</strong> to v5.0.</li>
+</ul>
+<p class="meta">Lab notes: <code>notes/2026-02-27_Latched_DO_and_ZMQ_fix.html</code>, <code>notes/2026-02-27_Context-Hardening-Post-Shutter-Incident.html</code></p>
+
 <h2>v4.0 &mdash; 2026-02-26</h2>
 <p><strong>Agent workflow optimization: best practices audit, skills, memory, context management</strong></p>
 <ul>
