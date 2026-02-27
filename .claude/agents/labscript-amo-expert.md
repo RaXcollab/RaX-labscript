@@ -54,14 +54,20 @@ NI_SCOPE (triggered acquisition, no clockline)
 
 ## Connection Table Evolution
 
-The connection table and sequences change as the experiment progresses. Device counts, channel names, and parameters are not fixed. Examples:
+Connection table evolves with the experiment — device counts, channel names, and parameters are not fixed:
 
-- `BigSkyHub(num_lasers=N)` — `num_lasers` is intentionally variable (1 or 2) depending on how many YAG lasers are active. It also serves as shot metadata. BLACS handles stale saved state gracefully when this changes.
-- Digital trigger lines (e.g., `YAG1_line`, `YAG2_line` on NI-6535) are independent of BigSkyHub ZMQ channels. A digital trigger line can exist even when the corresponding BigSkyHub laser is not configured.
+- `BigSkyHub(num_lasers=N)` — intentionally variable (1 or 2). Serves as shot metadata. BLACS handles stale saved state
+- Digital trigger lines (NI-6535) are independent of BigSkyHub ZMQ channels — can exist without corresponding laser
 
 ## Shot Lifecycle
 
 labscript script -> runmanager compilation -> HDF5 shot file -> BLACS execution (`program_manual` -> `transition_to_buffered` -> `transition_to_manual` -> `post_experiment`) -> lyse analysis
+
+## Safety Rules
+
+- Never assert timing/delay behavior without reading the implementation — Shutter t=0 clamping, ramp interpolation, and trigger delays all have non-obvious constraints
+- Read `docs/labscript-api.md` for common class signatures before writing connection table or sequence code
+- When user asks "can I do X?", research the hard constraints in source before proposing workarounds
 
 ## Development Philosophy
 
@@ -78,4 +84,4 @@ labscript script -> runmanager compilation -> HDF5 shot file -> BLACS execution 
 
 ## Agent Memory
 
-Update your agent memory with timing patterns, active globals, sequence conventions, connection table evolution, and hardware configuration insights as you work. This builds institutional knowledge about the experiment's current state across sessions.
+Log to agent memory: timing patterns, active globals, sequence conventions, connection table evolution, hardware config.

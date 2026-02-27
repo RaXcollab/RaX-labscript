@@ -1,0 +1,135 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<style>
+  body { font-family: Calibri, Segoe UI, sans-serif; font-size: 11pt; color: #333; max-width: 900px; margin: 20px auto; }
+  h1 { font-size: 20pt; border-bottom: 2px solid #0078d4; padding-bottom: 6px; color: #0078d4; }
+  h2 { font-size: 14pt; color: #0078d4; margin-top: 24px; }
+  h3 { font-size: 12pt; color: #444; }
+  table { border-collapse: collapse; width: 100%; margin: 10px 0; }
+  th, td { border: 1px solid #ccc; padding: 6px 10px; text-align: left; vertical-align: top; }
+  th { background: #f0f0f0; font-weight: bold; }
+  code { font-family: Consolas, monospace; font-size: 10pt; background: #f4f4f4; padding: 1px 4px; border-radius: 3px; }
+  pre { background: #f4f4f4; border: 1px solid #ddd; border-radius: 4px; padding: 10px; font-family: Consolas, monospace; font-size: 10pt; overflow-x: auto; white-space: pre; }
+  .badge { display: inline-block; padding: 2px 8px; border-radius: 10px; color: white; font-size: 9pt; font-weight: bold; }
+  .green { background: #4CAF50; }
+  .orange { background: #F57C00; }
+  .yellow { background: #FFC107; color: #333; }
+  .blue { background: #0078d4; }
+  .purple { background: #9C27B0; }
+  .gray { background: #9E9E9E; }
+  .red { background: #f44336; }
+  .meta { color: #888; font-size: 10pt; }
+  ol, ul { margin: 6px 0; padding-left: 24px; }
+  li { margin: 3px 0; }
+  strong { color: #222; }
+  .callout { background: #e8f4fd; border-left: 4px solid #0078d4; padding: 8px 12px; margin: 10px 0; }
+  .warn { background: #fff3cd; border-left: 4px solid #ffc107; padding: 8px 12px; margin: 10px 0; }
+</style>
+</head>
+<body>
+
+<h1>Context Hardening: Post-Shutter-Incident Fixes</h1>
+<p class="meta">
+  <strong>Date:</strong> 2026-02-27 &nbsp;&bull;&nbsp;
+  <strong>Commit:</strong> <code>pending</code> &nbsp;&bull;&nbsp;
+  <strong>Context:</strong> Close 5 context gaps identified from a parallel session's shutter scoping incident; codify writing-style practices
+</p>
+
+<h2>What Changed</h2>
+<p>
+A parallel session proposed NI_DAQmx code that wrote ALL digital lines on a port instead of just the
+requested shutter line. Post-mortem identified five gaps in the agent context structure. This session
+created a labscript API reference doc, added hardware scoping rules, timing verification rules, a
+blacs-expert scope audit checklist, and codified context-file writing practices as a path-scoped rule.
+</p>
+
+<div class="warn">
+<strong>Root cause of the shutter incident:</strong> The agent had no labscript API reference and guessed
+the <code>Shutter</code> constructor signature (separate kwargs instead of a delay tuple). It also
+proposed writing all DO lines on the port instead of scoping to the single requested line. Both gaps
+are now covered by <code>docs/labscript-api.md</code> and the hardware scoping rules.
+</div>
+
+<h2>Files Changed</h2>
+<table>
+  <tr><th>File</th><th>Change</th><th>Why</th></tr>
+  <tr>
+    <td><code>docs/labscript-api.md</code></td>
+    <td><strong>NEW</strong> &mdash; Comprehensive labscript DSL + device driver API reference</td>
+    <td>Agent was guessing class signatures (Shutter delay tuple, RemoteAnalogOut static API). Authoritative reference prevents hallucinated APIs</td>
+  </tr>
+  <tr>
+    <td><code>.claude/rules/context-writing.md</code></td>
+    <td><strong>NEW</strong> &mdash; Writing-style rule scoped to <code>.claude/**</code>, <code>CLAUDE.md</code>, <code>docs/*.md</code></td>
+    <td>Codifies expert practices: direct imperatives, one concept per bullet, challenge each line, front-load critical info</td>
+  </tr>
+  <tr>
+    <td><code>CLAUDE.md</code></td>
+    <td>Added <code>@docs/labscript-api.md</code> import + "Research before proposing" rule</td>
+    <td>API doc now auto-loaded. Research-first rule prevents the pattern where agents propose before checking constraints</td>
+  </tr>
+  <tr>
+    <td><code>.claude/rules/sequences.md</code></td>
+    <td>Added "Timing Safety" section</td>
+    <td>Prevents asserting timing behavior (t=0 clamping, delays) without reading source</td>
+  </tr>
+  <tr>
+    <td><code>.claude/rules/devices.md</code></td>
+    <td>Added "Hardware Change Scoping" section</td>
+    <td>NI_DAQmx DO port atomicity + scope-to-requested-channels rule</td>
+  </tr>
+  <tr>
+    <td><code>.claude/agents/blacs-expert.md</code></td>
+    <td>Added scope audit pitfall row, "Mandatory Audit Questions" section, converted paragraphs to bullets</td>
+    <td>blacs-expert now checks scope and port atomicity before proposing hardware changes</td>
+  </tr>
+  <tr>
+    <td><code>.claude/agents/labscript-amo-expert.md</code></td>
+    <td>Added "Safety Rules" section, converted paragraphs to bullets</td>
+    <td>amo-expert now reads API reference before writing connection table or sequence code</td>
+  </tr>
+</table>
+
+<h2>Key Decisions</h2>
+<div class="callout">
+<strong>API reference as @import, not inline CLAUDE.md.</strong> The labscript API doc is ~100 lines. Keeping it
+in a separate <code>docs/labscript-api.md</code> file with an <code>@docs/labscript-api.md</code> import keeps
+CLAUDE.md scannable while still auto-loading the reference into every session.
+</div>
+<div class="callout">
+<strong>Writing-style as a path-scoped rule.</strong> Rather than adding style guidance to every agent prompt,
+a single <code>.claude/rules/context-writing.md</code> auto-activates when editing any context file. This
+ensures consistent style without duplicating rules.
+</div>
+<div class="callout">
+<strong>Bullet conversion in agent prompts.</strong> Narrative paragraphs in blacs-expert and amo-expert were
+converted to bullets per the new writing-style rule. Same content, better scannability.
+</div>
+
+<h2>Patterns Observed</h2>
+<ul>
+  <li><strong>Five-gap post-mortem pattern:</strong> A single incident (shutter scoping) revealed gaps across
+  five different context layers (API reference, device rules, sequence rules, agent audit, writing style).
+  Systematic post-mortems catch more than point fixes.</li>
+  <li><strong>API guessing is the root cause:</strong> When the agent lacks an authoritative API reference,
+  it fills gaps from training data. Training data signatures can be wrong (different labscript version,
+  different device). The fix is always to provide the reference, not to add more warnings.</li>
+  <li><strong>Scoping failures compound:</strong> The shutter incident had two independent failures &mdash;
+  wrong API signature AND over-scoped DO write. Either alone would have been caught in testing; together
+  they produced a harder-to-diagnose result.</li>
+</ul>
+
+<h2>Future Work</h2>
+<ul>
+  <li>The <code>docs/labscript-api.md</code> covers core classes and NI_DAQmx. As new device drivers are
+  used, add their constructor signatures to the reference.</li>
+  <li>Consider adding a <code>/check-scope</code> skill that audits proposed hardware changes against
+  the connection table before committing &mdash; automated version of the blacs-expert audit questions.</li>
+  <li>The blacs theme <code>rgb()</code> &rarr; <code>rgba()</code> fix in <code>blacs/plugins/theme/__init__.py</code>
+  is uncommitted from a previous session. Should be committed separately.</li>
+</ul>
+
+</body>
+</html>

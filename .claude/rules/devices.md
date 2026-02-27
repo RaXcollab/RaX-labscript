@@ -17,3 +17,9 @@ paths:
 
 - Custom devices: `"user_devices.RemoteControl.blacs_workers.RemoteControlWorker"`
 - NOT `"labscript_devices.RemoteControl..."` — wrong module
+
+## Hardware Change Scoping
+
+- Scope modifications to EXACTLY the channels/lines/devices requested — never expand to "all outputs"
+- NI_DAQmx DO writes are per-port (all lines in a port written atomically) — changing one line requires re-sending all lines on that port
+- When overriding `transition_to_buffered` or `program_manual`, verify the change only affects the intended channels

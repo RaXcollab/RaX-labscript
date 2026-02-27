@@ -5,6 +5,7 @@
 - **When compacting**, always preserve: Available Tools section, conda activation command, External GUI Registry, "Do NOT Flag These" list, and `.claude/rules/` pointer.
 - **Between unrelated tasks**, use `/clear` to reset context. Mixed domains degrade performance.
 - **Always present results before acting.** Agent findings and deliverables must be reviewed before committing or taking irreversible actions.
+- **Research before proposing.** During planning, proactively search for expert guidance, existing patterns, and hard constraints before designing solutions — don't wait for the user to ask.
 
 ## Repository Structure
 
@@ -121,6 +122,10 @@ Add new external GUIs to this table.
 ### BLACS Device Patterns (RemoteControl Subclasses)
 
 @docs/blacs-device-patterns.md
+
+### Labscript DSL & Device Drivers
+
+@docs/labscript-api.md
 
 ### Other References
 

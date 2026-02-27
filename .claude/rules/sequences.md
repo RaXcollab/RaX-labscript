@@ -15,3 +15,7 @@ paths:
 
 - **RunManager globals** appearing "undefined" in sequences — injected at compile time
 - **Connection table parameters** differing from hardware maximums — reflect current experiment, not hardware limits
+
+## Timing Safety
+
+- **Never assert timing behavior without reading source.** Labscript timing (Shutter delays, t=0 clamping, ramp interpolation) has non-obvious constraints. Read the class implementation before claiming what happens at specific times
