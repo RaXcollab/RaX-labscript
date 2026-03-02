@@ -86,10 +86,3 @@ The Deliverables section of every plan must specify which agents produce which a
 3. Session introspection — what went well, what to improve, lessons
 4. CLAUDE.md / agent prompt updates — if conventions changed
 
-## BLACS Internals (Quick Reference)
-
-**Saved-State Resilience:** When the connection table changes (devices added/removed, parameters changed), BLACS handles stale saved state gracefully. `FrontPanelSettings.check_row()` silently excludes channels no longer in the connection table. No need to delete the saved state h5 file.
-
-**State Machine Event Ordering:** Events queued by `@define_state` execute in FIFO order in the mainloop thread. Base class `DeviceTab.__init__` runs: `initialise_GUI()` → `restore_save_data()` → `initialise_workers()` → `program_device()`. Events queued during `initialise_workers` (like `connect_to_reqrep`) execute before `program_device`.
-
-**NI_DAQmx Queued-Shot Lifecycle:** Between queued shots: `post_experiment → transition_to_buffered` (NO `transition_to_manual`). Per-shot cleanup goes in `post_experiment`. `transition_to_manual` only at queue end or abort. `NI_DAQmxOutputWorker` is shared by ALL NI devices — changes affect 6361 + 6535.

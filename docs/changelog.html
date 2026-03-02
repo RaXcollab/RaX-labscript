@@ -35,6 +35,21 @@
   Each entry links to the lab note with full details.
 </p>
 
+<h2>v6.0 &mdash; 2026-03-02</h2>
+<p><strong>Context optimization, path-scoped doc loading, context-auditor agent</strong></p>
+<ul>
+  <li><strong>Context optimization audit:</strong> Researched best practices from 10+ sources (official Anthropic docs, SFEIR Institute, PubNub, shanraisshan, Addy Osmani, FlorianBruniaux). Applied multi-expert-consensus findings.</li>
+  <li><strong>Path-scoped doc loading:</strong> Converted 4 always-loaded <code>@docs/</code> imports (4,748 tokens) to path-scoped rules in <code>.claude/rules/ref-*.md</code>. Docs now load only when editing matching files (BLACS patterns for <code>user_devices/</code>, labscript API for <code>labscriptlib/</code>, analysis API for <code>analysislib/</code>). Saves ~2.4% of effective budget on non-matching sessions.</li>
+  <li><strong>MEMORY.md deduplication:</strong> Removed "Design Philosophy" and "System Truth" sections that duplicated CLAUDE.md. Auto-memory now contains only session-learned lessons (25 &rarr; 17 lines).</li>
+  <li><strong>Fixed MEMORY.md @import:</strong> <code>@memory/device-internals.md</code> &rarr; <code>@device-internals.md</code> (relative paths resolve from the containing file's directory, not the repo root).</li>
+  <li><strong>Agent-workflow deduplication:</strong> Removed "BLACS Internals (Quick Reference)" section from <code>agent-workflow</code> skill &mdash; duplicated content from <code>docs/blacs-device-patterns.md</code> and <code>blacs-expert.md</code>.</li>
+  <li><strong>wrap-up agent: <code>skills: [agent-workflow]</code></strong> added to frontmatter. The wrap-up agent now gets orchestration context (dispatch table, deliverables checklist) injected at startup via the official <code>skills:</code> preloading mechanism.</li>
+  <li><strong>New agent: <span style="background:#00897B;color:white;padding:2px 8px;border-radius:10px;font-size:9pt;font-weight:bold">context-auditor</span></strong> &mdash; audits context health against a scored checklist (17 checks, weighted by multi-expert consensus level). Two modes: Audit (score + report) and Research (web search with 2+ source corroboration requirement). Uses <code>memory: project</code> to accumulate best practices over time.</li>
+  <li><strong>Agent count:</strong> 7 &rarr; 8</li>
+  <li><strong>User guide updated</strong> to v6.0.</li>
+</ul>
+<p class="meta">Lab note: <code>notes/2026-03-02_BigSky-Keep-Warm.html</code> (same session)</p>
+
 <h2>v5.0 &mdash; 2026-02-27</h2>
 <p><strong>Latched digital outputs, ZMQ socket resilience, labscript API reference, cross-audit workflow</strong></p>
 <ul>

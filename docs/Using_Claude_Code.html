@@ -32,8 +32,8 @@
 
 <h1>Using Claude Code with Labscript</h1>
 <p class="meta">
-  <strong>Last updated:</strong> 2026-02-27 &nbsp;&bull;&nbsp;
-  <strong>Version:</strong> 5.0 &nbsp;&bull;&nbsp;
+  <strong>Last updated:</strong> 2026-03-02 &nbsp;&bull;&nbsp;
+  <strong>Version:</strong> 6.0 &nbsp;&bull;&nbsp;
   <strong>Canonical reference for the RaX lab Claude Code setup</strong>
 </p>
 
@@ -60,9 +60,9 @@ Open a terminal in the <code>labscript-suite</code> folder and run <code>claude<
   <li>NI_DAQmx output worker lifecycle: queued-shot flow, latched DO pattern, three-layer merge restore</li>
   <li>Labscript DSL &amp; device driver API reference (class signatures, sequence methods, constraints)</li>
 </ul>
-<p>Detailed reference docs (BLACS device patterns, NI_SCOPE conventions, analysis API, labscript API) are in <code>docs/*.md</code> and loaded on-demand via <code>@import</code>. Path-scoped rules in <code>.claude/rules/</code> auto-activate when editing matching files (e.g., device rules for <code>user_devices/</code>, sequence rules for <code>labscriptlib/</code>).</p>
+<p>Detailed reference docs (<code>docs/*.md</code>) load conditionally via path-scoped rules in <code>.claude/rules/ref-*.md</code> &mdash; BLACS device patterns load when editing <code>user_devices/</code> or <code>blacs/</code>, labscript API loads for sequences and devices, analysis API loads for <code>analysislib/</code>. Domain rules in <code>.claude/rules/</code> auto-activate for matching file paths (Qt safety for devices, timing safety for sequences, etc.).</p>
 
-<h2>The 7 Agents</h2>
+<h2>The 8 Agents</h2>
 <p>Agents are specialized subprocesses stored in <code>.claude/agents/</code>. Claude launches them automatically based on the task type.</p>
 <table>
   <tr><th>Agent</th><th>Domain</th><th>Model</th><th>Invoke When</th></tr>
@@ -108,15 +108,22 @@ Open a terminal in the <code>labscript-suite</code> folder and run <code>claude<
     <td>Opus</td>
     <td>Writing or modifying analysis code in <code>userlib/analysislib/</code></td>
   </tr>
+  <tr>
+    <td><span class="badge blue" style="background:#00897B;color:white">context-auditor</span></td>
+    <td>Context health audits (CLAUDE.md, rules, memory, agents, skills). Scores against best-practices checklist. Research mode discovers new practices with multi-source corroboration.</td>
+    <td>Opus</td>
+    <td>After major context changes, or periodically for health checks</td>
+  </tr>
 </table>
 
 <h3>Agent Memory</h3>
-<p>Four agents have <strong>persistent memory</strong> that accumulates knowledge across sessions:</p>
+<p>Five agents have <strong>persistent memory</strong> that accumulates knowledge across sessions:</p>
 <ul>
   <li><span class="badge red">blacs-expert</span> &mdash; device quirks, crash patterns, thread safety fixes</li>
   <li><span class="badge blue">device-builder</span> &mdash; which patterns worked for which devices, integration lessons</li>
   <li><span class="badge yellow">labscript-diagnostics</span> &mdash; recurring error patterns and resolutions</li>
   <li><span class="badge orange">amo-expert</span> &mdash; timing patterns, active globals, sequence conventions</li>
+  <li><span class="badge blue" style="background:#00897B;color:white">context-auditor</span> &mdash; best practices catalog, audit history, corroborated findings from research</li>
 </ul>
 <p>Memory files are stored in <code>.claude/agent-memory/{agent-name}/</code>. When the same issue appears again, the agent can reference its memory for the resolution that worked last time.</p>
 
@@ -241,7 +248,7 @@ Open a terminal in the <code>labscript-suite</code> folder and run <code>claude<
 <table>
   <tr><th>What</th><th>Path</th></tr>
   <tr><td>Project instructions (read every session)</td><td><code>CLAUDE.md</code></td></tr>
-  <tr><td>Agent prompts (7 files)</td><td><code>.claude/agents/*.md</code></td></tr>
+  <tr><td>Agent prompts (8 files)</td><td><code>.claude/agents/*.md</code></td></tr>
   <tr><td>Skills (4 slash commands)</td><td><code>.claude/skills/*/SKILL.md</code></td></tr>
   <tr><td>Agent memory (persistent)</td><td><code>.claude/agent-memory/{agent-name}/</code></td></tr>
   <tr><td>Permission settings + hooks</td><td><code>.claude/settings.json</code></td></tr>

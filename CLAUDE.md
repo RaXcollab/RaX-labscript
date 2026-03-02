@@ -114,27 +114,14 @@ Add new external GUIs to this table.
 - `labscript-diagnostics` — log parsing, error diagnosis, recurrence analysis
 - `session-notes` — background note-taking during sessions (sonnet, lightweight)
 - `wrap-up` — end-of-session deliverables (commits, lab notes, introspection, context updates)
+- `context-auditor` — audits context health against best practices; researches new practices with multi-source corroboration
 - Orchestration rules (routing table, workflow, deliverables checklist) auto-load via `agent-workflow` skill
 
 ## Reference Documentation
 
-### Analysis Utilities
-
-@docs/analysis-api.md
-
-### NI_SCOPE Data Conventions
-
-@docs/ni-scope-conventions.md
-
-### BLACS Device Patterns (RemoteControl + NI_DAQmx)
-
-@docs/blacs-device-patterns.md
-
-### Labscript DSL & Device Drivers
-
-@docs/labscript-api.md
-
-### Other References
-
-- `Labscript-Confluence-2026-02-11.pdf` in repo root — Lab-specific Confluence docs
+Docs load via path-scoped rules (`.claude/rules/ref-*.md`) when editing matching files:
+- `docs/blacs-device-patterns.md` — RemoteControl + NI_DAQmx patterns (loads for `user_devices/`, `blacs/`)
+- `docs/labscript-api.md` — labscript DSL, device drivers, sequence functions (loads for `labscriptlib/`, `user_devices/`)
+- `docs/analysis-api.md` + `docs/ni-scope-conventions.md` — analysis utilities (loads for `analysislib/`)
+- `Labscript-Confluence-2026-02-11.pdf` — Lab-specific Confluence docs
 - Official labscript docs: https://docs.labscriptsuite.org/ (reference only — our fork code takes precedence)
