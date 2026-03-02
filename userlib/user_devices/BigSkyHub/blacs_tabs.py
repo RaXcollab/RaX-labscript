@@ -5,6 +5,7 @@ import time
 import zmq
 from qtutils.qt import QtWidgets, QtCore
 
+from blacs.device_base_class import define_state, MODE_MANUAL
 from user_devices.RemoteControl.blacs_tabs import (
     RemoteControlTab,
     DynamicStackedWidget,
@@ -139,6 +140,8 @@ class BigSkyTab(RemoteControlTab):
         self._laser_groups = {}       # {prefix: QGroupBox} — stored from _create_laser_group
         self._last_monitor_time = {}  # {prefix: float} — time.monotonic() of last PUB-SUB value
         self._laser_online = {}       # {prefix: bool} — tracks online state to avoid redundant updates
+        self._keep_warm = {}          # {prefix: bool} — Keep Warm toggle state
+        self._keep_warm_buttons = {}  # {prefix: QPushButton}
 
         laser_prefixes = sorted(set(
             m.group(1) for c in self.child_output_connections
@@ -301,6 +304,23 @@ class BigSkyTab(RemoteControlTab):
         mode_row.addStretch()
         layout.addLayout(mode_row)
 
+        # ── Keep Warm button ──
+        warmup_row = QtWidgets.QHBoxLayout()
+        warmup_row.setSpacing(8)
+        keep_warm_btn = QtWidgets.QPushButton("Keep Warm: OFF")
+        keep_warm_btn.setCheckable(True)
+        keep_warm_btn.setMinimumWidth(160)
+        keep_warm_btn.setMinimumHeight(36)
+        self._style_keep_warm_btn(keep_warm_btn, False)
+        keep_warm_btn.toggled.connect(
+            lambda checked, p=prefix: self._on_keep_warm_toggle(p, checked)
+        )
+        self._keep_warm_buttons[prefix] = keep_warm_btn
+        self._keep_warm[prefix] = False
+        warmup_row.addWidget(keep_warm_btn)
+        warmup_row.addStretch()
+        layout.addLayout(warmup_row)
+
         group.setLayout(layout)
 
         # Store ref and start offline — restored on first PUB-SUB message
@@ -323,6 +343,87 @@ class BigSkyTab(RemoteControlTab):
         """User changed a mode combo box."""
         self._recently_changed[connection] = time.monotonic()
         self._AO[connection].set_value(float(index), program=True)
+
+    # ── Keep Warm ─────────────────────────────────────────────────────
+
+    def _on_keep_warm_toggle(self, prefix, checked):
+        """User toggled Keep Warm for a laser."""
+        self._keep_warm[prefix] = checked
+        btn = self._keep_warm_buttons[prefix]
+        btn.setText("Keep Warm: ON" if checked else "Keep Warm: OFF")
+        self._style_keep_warm_btn(btn, checked)
+
+        if checked:
+            # Sync AO values to warmup state (prevents program_device undoing warmup)
+            self._AO[f"{prefix}_lamps"].set_value(1.0, program=False)
+            self._AO[f"{prefix}_shutter"].set_value(0.0, program=False)
+            self._AO[f"{prefix}_qswitch"].set_value(0.0, program=False)
+            self._AO[f"{prefix}_lamp_mode"].set_value(0.0, program=False)
+            # Update toggle button visuals to match
+            for suffix, val in [('lamps', True), ('shutter', False), ('qswitch', False)]:
+                conn = f"{prefix}_{suffix}"
+                if conn in self._toggle_buttons:
+                    b = self._toggle_buttons[conn]
+                    b.blockSignals(True)
+                    b.setChecked(val)
+                    b.blockSignals(False)
+                    self._style_toggle(conn, val)
+            # Update lamp_mode combo visual
+            lm_conn = f"{prefix}_lamp_mode"
+            if lm_conn in self._mode_combos:
+                combo = self._mode_combos[lm_conn]
+                combo.blockSignals(True)
+                combo.setCurrentIndex(0)
+                combo.blockSignals(False)
+
+        # Set recently-changed guard for all affected channels
+        now = time.monotonic()
+        for suffix in ('lamps', 'shutter', 'qswitch', 'lamp_mode', 'qswitch_mode'):
+            self._recently_changed[f"{prefix}_{suffix}"] = now
+
+        # Update interlocks
+        self._update_keep_warm_interlocks(prefix)
+
+        # Send command to worker
+        self._send_keep_warm_to_worker(prefix, checked)
+
+    @define_state(MODE_MANUAL, True)
+    def _send_keep_warm_to_worker(self, prefix, state):
+        if state:
+            yield (self.queue_work(self.primary_worker, 'enter_warmup', prefix))
+        else:
+            yield (self.queue_work(self.primary_worker, 'exit_warmup', prefix))
+
+    def _style_keep_warm_btn(self, btn, is_on):
+        """Apply amber ON / gray OFF styling to Keep Warm button."""
+        if is_on:
+            btn.setStyleSheet(
+                "QPushButton { background-color: #FF9800; color: white; "
+                "font-weight: bold; border-radius: 4px; padding: 8px; "
+                "border: 2px solid #E65100; }"
+            )
+        else:
+            btn.setStyleSheet(
+                "QPushButton { background-color: #E0E0E0; color: #555; "
+                "border-radius: 4px; padding: 8px; }"
+            )
+
+    def _update_keep_warm_interlocks(self, prefix):
+        """Disable manual controls when Keep Warm is active."""
+        kw_on = self._keep_warm.get(prefix, False)
+        for suffix in ('lamps', 'shutter', 'qswitch'):
+            conn = f"{prefix}_{suffix}"
+            if conn in self._toggle_buttons:
+                self._toggle_buttons[conn].setEnabled(
+                    self._input_enabled and not kw_on
+                )
+        for suffix in ('lamp_mode', 'qswitch_mode'):
+            conn = f"{prefix}_{suffix}"
+            if conn in self._mode_combos:
+                lamps_on = self._lamps_active.get(prefix, False)
+                self._mode_combos[conn].setEnabled(
+                    self._input_enabled and not kw_on and not lamps_on
+                )
 
     # ── Styling helpers ───────────────────────────────────────────────
 
@@ -427,13 +528,16 @@ class BigSkyTab(RemoteControlTab):
     # ── Mode combo interlocking ───────────────────────────────────────
 
     def _update_mode_combos_enabled(self, prefix):
-        """Enable/disable mode combos based on lamp state and input enabled.
-        Mode changes require the laser to be in standby."""
+        """Enable/disable mode combos based on lamp state, input enabled,
+        and Keep Warm state. Mode changes require standby."""
         lamps_on = self._lamps_active.get(prefix, False)
+        kw_on = self._keep_warm.get(prefix, False)
         for suffix in ('lamp_mode', 'qswitch_mode'):
             conn = f"{prefix}_{suffix}"
             if conn in self._mode_combos:
-                self._mode_combos[conn].setEnabled(self._input_enabled and not lamps_on)
+                self._mode_combos[conn].setEnabled(
+                    self._input_enabled and not lamps_on and not kw_on
+                )
 
     # ── Override: update monitors from PUB-SUB ────────────────────────
 
@@ -503,19 +607,49 @@ class BigSkyTab(RemoteControlTab):
         # Voltage spinbox
         for widget in self.AO_widgets.values():
             widget.setEnabled(enabled)
-        # Toggle buttons
-        for btn in self._toggle_buttons.values():
+        # Keep Warm buttons
+        for btn in self._keep_warm_buttons.values():
             btn.setEnabled(enabled)
-        # Mode combos: respect both input-enabled AND lamps-active interlock
+        # Toggle buttons: respect keep_warm interlock
+        for conn, btn in self._toggle_buttons.items():
+            m = _PREFIX_RE.match(conn)
+            if m:
+                kw_on = self._keep_warm.get(m.group(1), False)
+                btn.setEnabled(enabled and not kw_on)
+            else:
+                btn.setEnabled(enabled)
+        # Mode combos: respect input-enabled, lamps-active, AND keep_warm
         for conn, combo in self._mode_combos.items():
             m = _PREFIX_RE.match(conn)
             if m:
-                lamps_on = self._lamps_active.get(m.group(1), False)
-                combo.setEnabled(enabled and not lamps_on)
+                prefix = m.group(1)
+                lamps_on = self._lamps_active.get(prefix, False)
+                kw_on = self._keep_warm.get(prefix, False)
+                combo.setEnabled(enabled and not lamps_on and not kw_on)
             else:
                 combo.setEnabled(enabled)
 
-    # ── Worker setup (unchanged) ──────────────────────────────────────
+    # ── Persistence ──────────────────────────────────────────────────
+
+    def get_save_data(self):
+        return {'keep_warm': dict(self._keep_warm)}
+
+    def restore_save_data(self, data):
+        saved_kw = data.get('keep_warm', {})
+        for prefix, state in saved_kw.items():
+            if prefix in self._keep_warm_buttons:
+                self._keep_warm[prefix] = state
+                btn = self._keep_warm_buttons[prefix]
+                btn.blockSignals(True)
+                btn.setChecked(state)
+                btn.blockSignals(False)
+                btn.setText("Keep Warm: ON" if state else "Keep Warm: OFF")
+                self._style_keep_warm_btn(btn, state)
+                self._update_keep_warm_interlocks(prefix)
+        # NOTE: Do NOT fire lamps here — worker doesn't exist yet.
+        # User must re-toggle Keep Warm after BLACS restart.
+
+    # ── Worker setup ──────────────────────────────────────────────────
 
     def initialise_workers(self):
         self.create_worker(
@@ -527,6 +661,7 @@ class BigSkyTab(RemoteControlTab):
                 "port": self.reqrep_port,
                 "child_output_connections": self.child_output_connections,
                 "child_monitor_connections": self.child_monitor_connections,
+                "keep_warm_state": dict(self._keep_warm),
             },
         )
         self.primary_worker = "main_worker"

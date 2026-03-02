@@ -60,6 +60,12 @@ Implemented in `LaserLockTab`. Consider for any RemoteControl device where the r
 
 ---
 
+## BigSky "Keep Warm" Auto-Arm Pattern
+
+`BigSkyWorker` uses `_is_armed` per prefix to skip re-arming between queued shots (avoids lamp cycling). `program_manual` guards warmup-controlled channels (lamps/shutter/qswitch/modes) when `_keep_warm` is active—only voltage passes through. Tab syncs AO values on toggle to prevent `program_device()` from undoing warmup state.
+
+---
+
 ## BLACS Saved-State Resilience
 
 When the connection table changes (devices added/removed, parameters changed), BLACS handles stale saved state gracefully. `FrontPanelSettings.check_row()` silently excludes channels no longer in the connection table. **No need to delete the saved state h5 file** after connection table changes.
@@ -98,6 +104,8 @@ Channels in `device_properties['latched_lines']` (set via `set_property` in conn
 ### ZMQ REQ Socket Resilience
 
 REQ sockets stuck in pending-recv after abort. Pattern: `_reset_socket()` closes and re-creates. Call between `stop_task()` and `start_task()` (thread-safe window). Always use `LINGER=0`. Store context as instance variable for reuse.
+
+**Thread-safety for shared REQ sockets:** When a ZMQ REQ socket is used from multiple threads (e.g., DAQmx callback thread + BLACS worker thread), ALL send/recv pairs must be serialized with a lock. REQ enforces strict send-recv alternation; interleaved operations from two threads cause an unrecoverable EFSM error. Additionally, stop callback-producing tasks BEFORE using shared sockets from the worker thread — locking alone is not sufficient if the callback can fire between the worker's send and recv.
 
 ### Init-Order Safety
 

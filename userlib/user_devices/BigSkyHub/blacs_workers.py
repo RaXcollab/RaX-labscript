@@ -1,4 +1,5 @@
 import re
+import time
 from collections import defaultdict
 
 import labscript_utils.h5_lock  # noqa: F401 — required before h5py
@@ -26,6 +27,12 @@ _PREFIX_RE = re.compile(r'^(.+?_\d+)_(.+)$')
 # Fire-and-forget command suffixes — no readable state to poll via CHECK_VALUE
 _COMMAND_SUFFIXES = {'warmup', 'start_lasing', 'stop'}
 
+# Channels controlled by Keep Warm — program_manual must not override these
+_WARMUP_CONTROLLED_SUFFIXES = {'lamps', 'shutter', 'qswitch', 'lamp_mode', 'qswitch_mode'}
+
+# Serial command delay — wait for BigSky to process stop before mode changes
+_CMD_DELAY_S = 0.3
+
 
 class BigSkyWorker(RemoteControlWorker):
     """RemoteControlWorker subclass that enforces safe command ordering.
@@ -42,6 +49,155 @@ class BigSkyWorker(RemoteControlWorker):
         # Prevents re-sending lamps=1 when only lamp_mode changed, which
         # would cause the mode change to be rejected (requires standby).
         self._last_sent_values = {}
+        # Keep Warm state per laser prefix — set by tab via update_keep_warm
+        self._keep_warm = getattr(self, 'keep_warm_state', {})
+        # Armed state tracking — prevents re-arming between queued shots
+        self._is_armed = {}
+
+    # ── Keep Warm lifecycle ────────────────────────────────────────────
+
+    def update_keep_warm(self, prefix, state):
+        """Called by the tab when the user toggles Keep Warm."""
+        self._keep_warm[prefix] = state
+        if not state:
+            self._is_armed.pop(prefix, None)
+
+    def enter_warmup(self, prefix):
+        """Enter warmup: internal trigger, lamps on, shutter closed, qswitch off.
+
+        Sends commands directly (not through program_manual) because:
+        - Command ordering must be enforced (stop before mode change)
+        - Fire-and-forget channels (stop) are skipped by program_manual
+        """
+        if not self.remote_comms.connected:
+            raise Exception(f"Cannot enter warmup for {prefix}: not connected")
+
+        self._keep_warm[prefix] = True
+        self._is_armed.pop(prefix, None)
+
+        # Step 1: Standby (clears lamps/shutter/qswitch on hardware)
+        self._send_cmd(f"{prefix}_stop", 1.0, f"enter_warmup: stop {prefix}")
+        time.sleep(_CMD_DELAY_S)
+
+        # Step 2: Switch to internal lamp mode (requires standby)
+        self._send_cmd(f"{prefix}_lamp_mode", 0.0, f"enter_warmup: lamp_mode=0")
+        self._last_sent_values[f"{prefix}_lamp_mode"] = 0.0
+
+        # Step 3: Activate lamps (fires internally)
+        self._send_cmd(f"{prefix}_lamps", 1.0, f"enter_warmup: lamps=1")
+        self._last_sent_values[f"{prefix}_lamps"] = 1.0
+
+        # Update tracking for channels cleared by stop
+        self._last_sent_values[f"{prefix}_shutter"] = 0.0
+        self._last_sent_values[f"{prefix}_qswitch"] = 0.0
+
+        self.logger.info(
+            f"enter_warmup: {prefix} warming (internal trigger, lamps on, "
+            f"shutter closed, qswitch off)"
+        )
+
+    def exit_warmup(self, prefix):
+        """Exit warmup: go to standby."""
+        if not self.remote_comms.connected:
+            self.logger.warning(f"Cannot exit warmup for {prefix}: not connected")
+            return
+
+        self._keep_warm[prefix] = False
+        self._is_armed.pop(prefix, None)
+
+        self._send_cmd(f"{prefix}_stop", 1.0, f"exit_warmup: stop {prefix}")
+
+        # Clear tracked state so next program_manual re-sends everything
+        for suffix in _WARMUP_CONTROLLED_SUFFIXES | {'lamps'}:
+            self._last_sent_values.pop(f"{prefix}_{suffix}", None)
+
+        self.logger.info(f"exit_warmup: {prefix} in standby")
+
+    def _arm_laser(self, prefix):
+        """Arm laser for experiment: external trigger, lamps/shutter/qswitch on.
+
+        Called by transition_to_buffered when _is_armed is False.
+        Voltage persists through stop — no re-send needed.
+        """
+        self.logger.info(f"_arm_laser: arming {prefix} from warmup")
+
+        # Step 1: Standby
+        self._send_cmd(f"{prefix}_stop", 1.0, f"arm: stop {prefix}")
+        time.sleep(_CMD_DELAY_S)
+
+        # Step 2: External modes (require standby)
+        self._send_cmd(f"{prefix}_lamp_mode", 1.0, f"arm: lamp_mode=1")
+        self._send_cmd(f"{prefix}_qswitch_mode", 2.0, f"arm: qswitch_mode=2")
+
+        # Step 3: Activate
+        self._send_cmd(f"{prefix}_lamps", 1.0, f"arm: lamps=1")
+        time.sleep(_CMD_DELAY_S)
+
+        # Step 4: Open shutter, arm qswitch
+        self._send_cmd(f"{prefix}_shutter", 1.0, f"arm: shutter=1")
+        self._send_cmd(f"{prefix}_qswitch", 1.0, f"arm: qswitch=1")
+
+        # Update tracking
+        self._last_sent_values.update({
+            f"{prefix}_lamp_mode": 1.0,
+            f"{prefix}_qswitch_mode": 2.0,
+            f"{prefix}_lamps": 1.0,
+            f"{prefix}_shutter": 1.0,
+            f"{prefix}_qswitch": 1.0,
+        })
+
+        self._is_armed[prefix] = True
+        self.logger.info(
+            f"_arm_laser: {prefix} armed (external trigger, shutter open, qswitch on)"
+        )
+
+    def _restore_warmup(self, prefix):
+        """Restore warmup after shot queue ends or abort.
+
+        Wrapped in try/except — must not raise or it blocks other devices.
+        """
+        try:
+            if not self.remote_comms.connected:
+                self.logger.warning(
+                    f"_restore_warmup: skipping {prefix} (not connected)"
+                )
+                return
+
+            self.logger.info(f"_restore_warmup: restoring {prefix} to warmup")
+
+            # Step 1: Standby
+            self._send_cmd(f"{prefix}_stop", 1.0, f"restore: stop {prefix}")
+            time.sleep(_CMD_DELAY_S)
+
+            # Step 2: Switch to internal lamp mode
+            self._send_cmd(f"{prefix}_lamp_mode", 0.0, f"restore: lamp_mode=0")
+
+            # Step 3: Activate lamps (internal firing)
+            self._send_cmd(f"{prefix}_lamps", 1.0, f"restore: lamps=1")
+
+            # Update tracking
+            self._last_sent_values.update({
+                f"{prefix}_lamp_mode": 0.0,
+                f"{prefix}_lamps": 1.0,
+                f"{prefix}_shutter": 0.0,
+                f"{prefix}_qswitch": 0.0,
+            })
+
+            self._is_armed[prefix] = False
+            self.logger.info(f"_restore_warmup: {prefix} back in warmup")
+
+        except Exception as e:
+            self.logger.error(f"_restore_warmup: failed for {prefix}: {e}")
+            self._is_armed[prefix] = False
+
+    def _send_cmd(self, connection, value, context):
+        """Send a single command to the BigSky GUI. Raises on failure."""
+        response = self.remote_comms.program_value(
+            connection, value, wait_for_lock=False
+        )
+        self._check_response(response, context)
+
+    # ── Overrides ──────────────────────────────────────────────────────
 
     def check_remote_values(self):
         """Override to skip fire-and-forget command channels and handle unregistered lasers.
@@ -116,11 +272,11 @@ class BigSkyWorker(RemoteControlWorker):
 
     def program_manual(self, front_panel_values):
         """Override to skip command channels, handle unregistered lasers,
-        and only send values that actually changed.
+        only send changed values, and guard warmup-controlled channels.
 
-        Sending only changed values prevents re-activating the laser when
-        the user only changed lamp_mode or qswitch_mode (mode changes
-        require the laser to be in standby).
+        When Keep Warm is active for a laser prefix, only voltage changes
+        are sent.  Lamps/shutter/qswitch/modes are managed by the warmup
+        lifecycle and must not be overridden by program_device().
         """
         if not self.remote_comms.connected:
             return {}
@@ -129,8 +285,18 @@ class BigSkyWorker(RemoteControlWorker):
 
         for connection in self.child_output_connections:
             m = _PREFIX_RE.match(connection)
-            if m and m.group(2) in _COMMAND_SUFFIXES:
+            if not m:
                 continue
+            prefix, suffix = m.group(1), m.group(2)
+
+            # Skip fire-and-forget command channels
+            if suffix in _COMMAND_SUFFIXES:
+                continue
+
+            # Guard: skip warmup-controlled channels when Keep Warm is active
+            if self._keep_warm.get(prefix) and suffix in _WARMUP_CONTROLLED_SUFFIXES:
+                continue
+
             value = front_panel_values[connection]
             # Only send if value actually changed from last known state
             if self._last_sent_values.get(connection) == value:
@@ -165,6 +331,9 @@ class BigSkyWorker(RemoteControlWorker):
             group = f['devices'][self.device_name]
 
             if 'remote_device_operation' not in group:
+                # No BigSky channels in this shot — still auto-arm if needed
+                self._auto_arm_if_needed()
+                self.initial_monitor_values = self.check_all_remote_values()
                 return {}
 
             if not self.remote_comms.connected:
@@ -206,8 +375,48 @@ class BigSkyWorker(RemoteControlWorker):
                     self._check_response(
                         response, f"buffered_program({col}={value})"
                     )
+                    # Fix pre-existing staleness: track all sent values
+                    self._last_sent_values[col] = value
+
+            # Auto-arm keep-warm lasers after h5 programming
+            self._auto_arm_if_needed()
 
             # Snapshot monitor values before shot
             self.initial_monitor_values = self.check_all_remote_values()
 
         return {}
+
+    def _auto_arm_if_needed(self):
+        """Arm any keep-warm lasers that aren't already armed."""
+        for prefix, keep_warm in self._keep_warm.items():
+            if not keep_warm:
+                continue
+            if self._is_armed.get(prefix):
+                self.logger.debug(
+                    f"transition_to_buffered: {prefix} already armed, skipping"
+                )
+                continue
+            self._arm_laser(prefix)
+
+    def transition_to_manual(self):
+        """Restore warmup state for keep-warm lasers after queue ends."""
+        for prefix, keep_warm in self._keep_warm.items():
+            if keep_warm:
+                self._restore_warmup(prefix)
+        return True
+
+    def abort_transition_to_buffered(self):
+        for prefix, keep_warm in self._keep_warm.items():
+            if keep_warm:
+                self._restore_warmup(prefix)
+        self.initial_monitor_values = {}
+        self.final_monitor_values = {}
+        return True
+
+    def abort_buffered(self):
+        for prefix, keep_warm in self._keep_warm.items():
+            if keep_warm:
+                self._restore_warmup(prefix)
+        self.initial_monitor_values = {}
+        self.final_monitor_values = {}
+        return True

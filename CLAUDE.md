@@ -78,6 +78,7 @@ source ~/miniconda/etc/profile.d/conda.sh && conda activate labscript && python 
 - **External GUI changes**: restart the GUI, verify ZMQ with `/check-guis`
 - **After any BLACS change**: run a test shot, check h5 output in HDFView
 - **Connection table property changes**: recompile → BLACS auto-loads new properties (no need to delete saved state)
+- **BigSky Keep Warm**: toggle in manual mode → verify lamps fire; queue shots → verify auto-arm/restore in BLACS.log; queue 3+ → verify no re-arm between shots
 
 ## External GUI Registry
 

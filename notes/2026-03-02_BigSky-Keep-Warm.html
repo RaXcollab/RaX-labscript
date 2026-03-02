@@ -1,0 +1,218 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<style>
+  body { font-family: Calibri, Segoe UI, sans-serif; font-size: 11pt; color: #333; max-width: 900px; margin: 20px auto; }
+  h1 { font-size: 20pt; border-bottom: 2px solid #0078d4; padding-bottom: 6px; color: #0078d4; }
+  h2 { font-size: 14pt; color: #0078d4; margin-top: 24px; }
+  h3 { font-size: 12pt; color: #444; }
+  table { border-collapse: collapse; width: 100%; margin: 10px 0; }
+  th, td { border: 1px solid #ccc; padding: 6px 10px; text-align: left; vertical-align: top; }
+  th { background: #f0f0f0; font-weight: bold; }
+  code { font-family: Consolas, monospace; font-size: 10pt; background: #f4f4f4; padding: 1px 4px; border-radius: 3px; }
+  pre { background: #f4f4f4; border: 1px solid #ddd; border-radius: 4px; padding: 10px; font-family: Consolas, monospace; font-size: 10pt; overflow-x: auto; white-space: pre; }
+  .badge { display: inline-block; padding: 2px 8px; border-radius: 10px; color: white; font-size: 9pt; font-weight: bold; }
+  .green { background: #4CAF50; }
+  .orange { background: #F57C00; }
+  .yellow { background: #FFC107; color: #333; }
+  .blue { background: #0078d4; }
+  .purple { background: #9C27B0; }
+  .gray { background: #9E9E9E; }
+  .red { background: #f44336; }
+  .meta { color: #888; font-size: 10pt; }
+  ol, ul { margin: 6px 0; padding-left: 24px; }
+  li { margin: 3px 0; }
+  strong { color: #222; }
+  .callout { background: #e8f4fd; border-left: 4px solid #0078d4; padding: 8px 12px; margin: 10px 0; }
+  .warn { background: #fff3cd; border-left: 4px solid #ffc107; padding: 8px 12px; margin: 10px 0; }
+</style>
+</head>
+<body>
+
+<h1>BigSky YAG "Keep Warm" Feature + GUI Trigger Mode Fixes</h1>
+<p class="meta">
+  <strong>Date:</strong> 2026-03-02 &nbsp;&bull;&nbsp;
+  <strong>Commit:</strong> <code>pending</code> &nbsp;&bull;&nbsp;
+  <strong>Context:</strong> Add BLACS-managed lamp warmup lifecycle for BigSky YAGs with auto-arm/restore between queued shots
+</p>
+
+<h2>What Changed</h2>
+<p>
+Added a "Keep Warm" feature to the BigSky YAG BLACS integration. When enabled, the laser fires its flashlamps
+on <strong>internal trigger</strong> (no Q-switch, no shutter) to maintain thermal equilibrium between experiment shots.
+On <code>transition_to_buffered</code>, the worker automatically arms the laser (external trigger, shutter open, Q-switch armed);
+on <code>transition_to_manual</code>, it restores warmup state. The <code>_is_armed</code> flag prevents lamp cycling between queued shots.
+</p>
+<p>
+The external BigSky GUI (<code>BigSkyControllerAmbitious.py</code>) was also fixed: <code>startWarmup()</code> now correctly
+switches to internal trigger before activating lamps, and <code>startLaser()</code> was rewritten as "Arm External" with
+proper mode sequencing. Temperature polling is now always-on.
+</p>
+
+<h2>Files Changed</h2>
+<table>
+  <tr><th>File</th><th>Change</th><th>Why</th></tr>
+  <tr>
+    <td><code>userlib/user_devices/BigSkyHub/blacs_workers.py</code></td>
+    <td>+219 lines: Keep Warm lifecycle (<code>enter_warmup</code>, <code>exit_warmup</code>, <code>_arm_laser</code>,
+      <code>_restore_warmup</code>), <code>program_manual</code> guard, <code>_auto_arm_if_needed</code>,
+      <code>transition_to_manual</code>/<code>abort</code> overrides, <code>_last_sent_values</code> staleness fix</td>
+    <td>Core feature: BLACS-managed warmup with safe auto-arm between queued shots</td>
+  </tr>
+  <tr>
+    <td><code>userlib/user_devices/BigSkyHub/blacs_tabs.py</code></td>
+    <td>+153 lines: Keep Warm toggle button (amber/gold), AO sync on toggle, interlock logic,
+      <code>get_save_data</code>/<code>restore_save_data</code>, <code>keep_warm_state</code> passed to worker</td>
+    <td>UI for warmup control with proper interlocking and persistence</td>
+  </tr>
+  <tr>
+    <td><code>GUIs/BigSkyControl/BigSkyControllerAmbitious.py</code></td>
+    <td>Rewrite <code>startWarmup()</code> (internal trigger switch), rewrite <code>startLaser()</code>
+      (external arm sequence), always-on temp polling, hide <code>keepWarmCheckBox</code></td>
+    <td>Fix: warmup was not switching to internal trigger; startLaser did not enforce external modes.
+      Keep Warm ownership moved to BLACS.</td>
+  </tr>
+  <tr>
+    <td><code>docs/blacs-device-patterns.md</code></td>
+    <td>+8 lines: Keep Warm auto-arm pattern note, ZMQ thread-safety for shared REQ sockets</td>
+    <td>Document new pattern for context reuse</td>
+  </tr>
+  <tr>
+    <td><code>CLAUDE.md</code></td>
+    <td>+1 line: Keep Warm verification checklist entry</td>
+    <td>Verification protocol for future sessions</td>
+  </tr>
+</table>
+
+<h2>Key Decisions</h2>
+
+<div class="callout">
+<strong>Option A (internal trigger warmup) over Option B (external trigger + DO line):</strong>
+Option B would require a dedicated digital output line on the NI card to fire lamps externally at ~10 Hz,
+introducing a cross-device timing dependency and consuming a DO resource. Option A uses the BigSky's
+built-in internal trigger mode, requiring only serial commands. The tradeoff is a brief lamp interruption
+during the stop-switch-activate sequence when arming/restoring (~0.3s), but this is acceptable for warmup.
+</div>
+
+<div class="callout">
+<strong>Q-switch mode = External (2) during armed state:</strong>
+The BigSky has three Q-switch modes: Off (0), Internal (1), External (2). During armed state, External mode
+means the Q-switch fires only when it receives the external trigger from the PrawnBlaster DO line.
+This is correct for experiment operation.
+</div>
+
+<div class="callout">
+<strong>Remember-only on BLACS restart (no auto-fire):</strong>
+<code>restore_save_data</code> restores the toggle button visual state but does NOT call <code>enter_warmup</code>,
+because the worker does not exist yet during <code>restore_save_data</code>. The user must re-toggle Keep Warm
+after restarting BLACS. This is the safe choice: auto-firing lamps on startup without user intent would be dangerous.
+</div>
+
+<div class="callout">
+<strong><code>_is_armed</code> prevents lamp cycling between queued shots:</strong>
+Without this flag, every <code>transition_to_buffered</code> would call stop-switch-activate on the laser.
+With queued shots (no <code>transition_to_manual</code> between them), the laser stays armed throughout the queue.
+Only <code>transition_to_manual</code> (queue end) or abort restores warmup.
+</div>
+
+<h2>Bugs Found &amp; Fixed</h2>
+
+<div class="warn">
+<strong>Bug: <code>startWarmup()</code> did not switch to internal trigger.</strong>
+The BigSky GUI's warmup function activated lamps without checking/switching the trigger mode.
+If the laser was previously in external mode (from a shot), lamps would activate in external mode
+and wait for an external trigger that never comes. Fixed by adding standby-if-needed and
+<code>setFlashLampInternal()</code> before <code>>a</code>.
+</div>
+
+<div class="warn">
+<strong>Bug: <code>startLaser()</code> did not enforce external modes.</strong>
+The original function sent <code>>a</code>, <code>>r1</code>, <code>>pq</code> without checking modes.
+If lamps were in internal mode (from warmup), the laser would fire internally at full rate
+with Q-switch and shutter open. Rewritten with explicit mode enforcement and standby sequencing.
+</div>
+
+<div class="warn">
+<strong>Bug: Temperature polling stopped on stopLaser/warmup completion.</strong>
+<code>tempPollTimer.stop()</code> was called in <code>stopLaser()</code>, <code>pollTemperature()</code> (when warm),
+and <code>toggleKeepWarm(False)</code>. This caused loss of temperature monitoring any time the laser
+was stopped. Fixed: timer starts once on serial connect and never stops.
+</div>
+
+<div class="warn">
+<strong>Bug: <code>_last_sent_values</code> staleness in <code>transition_to_buffered</code>.</strong>
+Values sent during the buffered programming loop were not tracked in <code>_last_sent_values</code>,
+so subsequent <code>program_manual</code> calls would re-send them. Fixed by updating tracking after each send.
+</div>
+
+<h2>Architecture</h2>
+
+<h3>Keep Warm State Machine</h3>
+<pre>
+                    User toggles ON
+  [Idle] ──────────────────────────────> [Warming]
+                                          lamp_mode=internal
+                                          lamps=on
+                                          shutter=closed
+                                          qswitch=off
+                                              |
+                              transition_to_buffered
+                              (_auto_arm_if_needed)
+                                              v
+                                         [Armed]
+                                          lamp_mode=external
+                                          qswitch_mode=external
+                                          lamps=on
+                                          shutter=open
+                                          qswitch=on
+                                              |
+               +-----------+------ queued shot ------+
+               |           |                         |
+               v           v                         v
+          [Armed]     [Armed]            transition_to_manual
+          (skip)      (skip)             (_restore_warmup)
+                                              |
+                                              v
+                                         [Warming]
+                                          (back to internal)
+                                              |
+                                     User toggles OFF
+                                              v
+                                          [Idle]
+                                          (stop, clear tracking)
+</pre>
+
+<h3>program_manual Guard Logic</h3>
+<pre>
+for connection in child_output_connections:
+    prefix, suffix = parse(connection)
+
+    if suffix in _COMMAND_SUFFIXES:     skip (fire-and-forget)
+    if _keep_warm[prefix] and
+       suffix in _WARMUP_CONTROLLED:    skip (managed by lifecycle)
+    if _last_sent_values[conn] == val:  skip (delta tracking)
+
+    send value
+</pre>
+
+<h2>How to Use</h2>
+<ol>
+  <li>Ensure BigSky GUI is running and connected (verify with <code>/check-guis</code>)</li>
+  <li>In the BigSky BLACS tab, click <strong>Keep Warm: OFF</strong> for the desired laser. Button turns amber, lamps begin firing on internal trigger.</li>
+  <li>Queue experiment shots normally. The worker auto-arms (external trigger) on first <code>transition_to_buffered</code> and skips re-arm for subsequent queued shots.</li>
+  <li>After the queue completes (<code>transition_to_manual</code>), the worker restores warmup (internal trigger, lamps on, shutter closed).</li>
+  <li>Click <strong>Keep Warm: ON</strong> to toggle off. Laser goes to standby.</li>
+  <li>After BLACS restart: Keep Warm toggle is visually restored but lamps are NOT auto-fired. Re-toggle to resume warming.</li>
+</ol>
+
+<h2>Future Work</h2>
+<ul>
+  <li>Auto-fire on BLACS restart after worker init (requires careful event ordering with <code>initialise_workers</code>)</li>
+  <li>Temperature threshold integration: auto-disable Keep Warm if temperature exceeds safe limit</li>
+  <li>PUB-SUB monitoring: show real-time temperature in BLACS tab when Keep Warm is active</li>
+  <li>Multi-laser coordination: if both lasers are Keep Warm, arm/restore ordering may matter for shared power supply</li>
+</ul>
+
+</body>
+</html>
