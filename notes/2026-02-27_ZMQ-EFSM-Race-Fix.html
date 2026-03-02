@@ -1,0 +1,153 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<style>
+  body { font-family: Calibri, Segoe UI, sans-serif; font-size: 11pt; color: #333; max-width: 900px; margin: 20px auto; }
+  h1 { font-size: 20pt; border-bottom: 2px solid #0078d4; padding-bottom: 6px; color: #0078d4; }
+  h2 { font-size: 14pt; color: #0078d4; margin-top: 24px; }
+  h3 { font-size: 12pt; color: #444; }
+  table { border-collapse: collapse; width: 100%; margin: 10px 0; }
+  th, td { border: 1px solid #ccc; padding: 6px 10px; text-align: left; vertical-align: top; }
+  th { background: #f0f0f0; font-weight: bold; }
+  code { font-family: Consolas, monospace; font-size: 10pt; background: #f4f4f4; padding: 1px 4px; border-radius: 3px; }
+  pre { background: #f4f4f4; border: 1px solid #ddd; border-radius: 4px; padding: 10px; font-family: Consolas, monospace; font-size: 10pt; overflow-x: auto; white-space: pre; }
+  .badge { display: inline-block; padding: 2px 8px; border-radius: 10px; color: white; font-size: 9pt; font-weight: bold; }
+  .green { background: #4CAF50; }
+  .orange { background: #F57C00; }
+  .yellow { background: #FFC107; color: #333; }
+  .blue { background: #0078d4; }
+  .purple { background: #9C27B0; }
+  .gray { background: #9E9E9E; }
+  .red { background: #f44336; }
+  .meta { color: #888; font-size: 10pt; }
+  ol, ul { margin: 6px 0; padding-left: 24px; }
+  li { margin: 3px 0; }
+  strong { color: #222; }
+  .callout { background: #e8f4fd; border-left: 4px solid #0078d4; padding: 8px 12px; margin: 10px 0; }
+  .warn { background: #fff3cd; border-left: 4px solid #ffc107; padding: 8px 12px; margin: 10px 0; }
+</style>
+</head>
+<body>
+
+<h1>Fix ZMQ EFSM Race in NI_DAQmx Acquisition Worker</h1>
+<p class="meta">
+  <strong>Date:</strong> 2026-02-27 &nbsp;&bull;&nbsp;
+  <strong>Commit:</strong> <code>pending</code> &nbsp;&bull;&nbsp;
+  <strong>Context:</strong> Fix intermittent ZMQ "Operation cannot be accomplished in current state" crash in 6361 acquisition worker
+</p>
+
+<h2>What Changed</h2>
+<p>
+  The <span class="badge blue">NI_DAQmx</span> acquisition worker's real-time plotting code shares a ZMQ REQ socket
+  (<code>data_socket</code>) between the BLACS worker thread and a DAQmx read callback thread. The callback thread
+  (<code>read()</code>, line 590) sends manual-mode data on this socket inside <code>tasklock</code>. However,
+  the worker thread's <code>transition_to_buffered</code> used the same socket <em>before</em> stopping the
+  manual-mode task, creating a window where both threads could interleave REQ send/recv pairs. ZMQ REQ sockets
+  are strict state machines (send-recv-send-recv); any interleaving puts the socket into an unrecoverable EFSM
+  error state.
+</p>
+<p>
+  The fix has two parts: (1) move <code>stop_task()</code> before any socket usage so the callback thread is
+  guaranteed stopped, and (2) wrap all remaining <code>data_socket</code> operations with <code>tasklock</code>
+  for defense-in-depth.
+</p>
+
+<h2>Files Changed</h2>
+<table>
+  <tr><th>File</th><th>Change</th><th>Why</th></tr>
+  <tr>
+    <td><code>labscript_devices/NI_DAQmx/blacs_workers.py</code></td>
+    <td>Moved <code>stop_task()</code> before <code>data_socket</code> usage in <code>transition_to_buffered</code></td>
+    <td>Eliminates the race window: callback thread cannot run after task is stopped</td>
+  </tr>
+  <tr>
+    <td><code>labscript_devices/NI_DAQmx/blacs_workers.py</code></td>
+    <td>Added <code>with self.tasklock:</code> around <code>data_socket</code> send/recv in <code>transition_to_buffered</code>, <code>post_experiment</code>, <code>transition_to_manual</code> (non-abort)</td>
+    <td>Defense-in-depth: serializes socket access even if a future code path re-introduces concurrent access</td>
+  </tr>
+</table>
+
+<h2>Bugs Found &amp; Fixed</h2>
+
+<div class="warn">
+  <strong>ZMQ EFSM race condition (intermittent crash)</strong><br>
+  <strong>Symptom:</strong> <code>zmq.error.ZMQError: Operation cannot be accomplished in current state</code>
+  during <code>transition_to_buffered</code> on the 6361 acquisition worker. Intermittent &mdash; depends on
+  callback timing.<br>
+  <strong>Root cause:</strong> <code>data_socket</code> (ZMQ REQ) shared between two threads without
+  synchronization. The DAQmx <code>read()</code> callback (line 590) sends manual-mode plotting data on the
+  socket inside <code>tasklock</code>, but <code>transition_to_buffered</code> used the socket <em>before</em>
+  calling <code>stop_task()</code> and <em>without</em> holding <code>tasklock</code>. If the callback fires
+  between the worker's <code>send</code> and <code>recv</code>, the REQ state machine breaks.<br>
+  <strong>Fix:</strong> (1) Call <code>stop_task()</code> first to guarantee the callback thread is dead.
+  (2) Wrap socket operations with <code>tasklock</code> for defense-in-depth.
+</div>
+
+<div class="warn">
+  <strong>Latent bug in transition_to_manual non-abort path</strong><br>
+  The non-abort branch of <code>transition_to_manual</code> also used <code>data_socket</code> without holding
+  <code>tasklock</code>. While less likely to trigger (manual-mode task is already stopped by
+  <code>post_experiment</code>), it was still unprotected. Now wrapped with <code>tasklock</code>.
+</div>
+
+<h2>Key Decisions</h2>
+<div class="callout">
+  <strong>Why both stop_task() reorder AND tasklock?</strong>
+  Stopping the task first is the primary fix &mdash; it eliminates the race by ensuring the callback thread
+  is not running. The <code>tasklock</code> wrapping is defense-in-depth: if a future change introduces
+  another concurrent path, the lock prevents socket corruption. Belt and suspenders for a Heisenbug that
+  would otherwise be very difficult to reproduce and diagnose.
+</div>
+
+<h2>Before / After</h2>
+<table>
+  <tr><th>Aspect</th><th>Before</th><th>After</th></tr>
+  <tr>
+    <td><code>transition_to_buffered</code> order</td>
+    <td><code>data_socket.send</code> &rarr; <code>data_socket.recv</code> &rarr; <code>stop_task()</code></td>
+    <td><code>stop_task()</code> &rarr; <code>with tasklock: data_socket.send/recv</code></td>
+  </tr>
+  <tr>
+    <td><code>post_experiment</code> socket access</td>
+    <td>Unprotected <code>data_socket.send/recv</code></td>
+    <td><code>with tasklock: data_socket.send/recv</code></td>
+  </tr>
+  <tr>
+    <td><code>transition_to_manual</code> (non-abort)</td>
+    <td>Unprotected <code>data_socket.send/recv</code></td>
+    <td><code>with tasklock: data_socket.send/recv</code></td>
+  </tr>
+  <tr>
+    <td>Thread safety of <code>data_socket</code></td>
+    <td>Only protected inside <code>read()</code> callback</td>
+    <td>Protected everywhere &mdash; 4 sites total</td>
+  </tr>
+</table>
+
+<h2>Patterns Observed</h2>
+<div class="callout">
+  <strong>ZMQ REQ socket state machine fragility:</strong> REQ sockets enforce strict send-recv alternation.
+  Any shared usage across threads without serialization will eventually hit EFSM. This is a known ZMQ footgun.
+  The existing <code>_reset_data_socket()</code> pattern (used in the abort path) destroys and recreates the
+  socket as a recovery mechanism, but prevention via locking is preferable to recovery via reset.
+</div>
+<div class="callout">
+  <strong>DAQmx callback threading:</strong> NI DAQmx <code>EveryNSamplesEvent</code> callbacks run in a
+  separate thread managed by the DAQmx driver, not a Python thread. Any shared state accessed by these
+  callbacks must be explicitly synchronized. The existing <code>tasklock</code> was already used for
+  <code>self.task</code> and <code>self.read_array</code> access in the callback but was missing for
+  <code>data_socket</code> outside the callback.
+</div>
+
+<h2>Future Work</h2>
+<ul>
+  <li>The <code>read()</code> callback's manual-mode socket send (line 620) is inside <code>tasklock</code>
+      but could block if the real-time plotting server is slow to respond. Consider a non-blocking send
+      pattern or DEALER socket if this becomes a bottleneck.</li>
+  <li>The abort path uses <code>_reset_data_socket()</code> which destroys/recreates the socket. This is
+      correct for abort recovery but could be unified with the locking pattern for consistency.</li>
+</ul>
+
+</body>
+</html>
