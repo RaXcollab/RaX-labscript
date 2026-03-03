@@ -32,8 +32,8 @@
 
 <h1>Using Claude Code with Labscript</h1>
 <p class="meta">
-  <strong>Last updated:</strong> 2026-03-02 &nbsp;&bull;&nbsp;
-  <strong>Version:</strong> 6.0 &nbsp;&bull;&nbsp;
+  <strong>Last updated:</strong> 2026-03-03 &nbsp;&bull;&nbsp;
+  <strong>Version:</strong> 6.1 &nbsp;&bull;&nbsp;
   <strong>Canonical reference for the RaX lab Claude Code setup</strong>
 </p>
 
@@ -126,6 +126,9 @@ Open a terminal in the <code>labscript-suite</code> folder and run <code>claude<
   <li><span class="badge blue" style="background:#00897B;color:white">context-auditor</span> &mdash; best practices catalog, audit history, corroborated findings from research</li>
 </ul>
 <p>Memory files are stored in <code>.claude/agent-memory/{agent-name}/</code>. When the same issue appears again, the agent can reference its memory for the resolution that worked last time.</p>
+
+<h3>Skills Preloading</h3>
+<p>All 8 agents have <code>skills:</code> frontmatter that injects shared context at launch. Every agent gets the <code>agent-workflow</code> skill (routing table, orchestration rules, deliverables checklist). <span class="badge blue">device-builder</span> also gets <code>check-guis</code> for ZMQ port validation when scaffolding external GUI integrations.</p>
 
 <h2>Skills (Slash Commands)</h2>
 <p>Skills are reusable workflows invoked with <code>/skill-name</code>. They run in the main conversation.</p>
@@ -251,6 +254,7 @@ Open a terminal in the <code>labscript-suite</code> folder and run <code>claude<
   <tr><td>Agent prompts (8 files)</td><td><code>.claude/agents/*.md</code></td></tr>
   <tr><td>Skills (4 slash commands)</td><td><code>.claude/skills/*/SKILL.md</code></td></tr>
   <tr><td>Agent memory (persistent)</td><td><code>.claude/agent-memory/{agent-name}/</code></td></tr>
+  <tr><td>Shared templates (HTML lab note, etc.)</td><td><code>.claude/templates/</code></td></tr>
   <tr><td>Permission settings + hooks</td><td><code>.claude/settings.json</code></td></tr>
   <tr><td>Path-scoped rules (auto-activate per file type)</td><td><code>.claude/rules/*.md</code></td></tr>
   <tr><td>Imported docs (BLACS patterns, NI_SCOPE, analysis API, labscript API)</td><td><code>docs/*.md</code></td></tr>

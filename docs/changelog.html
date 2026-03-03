@@ -35,6 +35,17 @@
   Each entry links to the lab note with full details.
 </p>
 
+<h2>v6.1 &mdash; 2026-03-03</h2>
+<p><strong>Context health remediation: skills preloading, template extraction, deduplication</strong></p>
+<ul>
+  <li><strong>Context audit:</strong> Ran <span class="badge" style="background:#00897B;color:white">context-auditor</span> for the first full audit &mdash; scored 33/39 (85%). Addressed all 5 failed/warned checks.</li>
+  <li><strong>Skills preloading on all agents:</strong> Added <code>skills:</code> frontmatter to all 7 agents that lacked it. Every agent now gets <code>agent-workflow</code> (routing table, orchestration rules). <span class="badge blue">device-builder</span> also gets <code>check-guis</code> for ZMQ port validation.</li>
+  <li><strong>HTML template extraction:</strong> Moved 70-line lab note HTML/CSS template from <code>wrap-up.md</code> to <code>.claude/templates/lab-note.html</code>, referenced via <code>@</code> import. Agent drops from 198 &rarr; 125 lines.</li>
+  <li><strong>Port table deduplication:</strong> Removed redundant External GUI Registry table from <code>check-guis</code> skill &mdash; skills run in parent context where CLAUDE.md is already loaded.</li>
+  <li><strong>Token budget guideline:</strong> Added to <code>.claude/rules/context-writing.md</code> &mdash; always-loaded context should stay under 8k tokens (~4% of 200k).</li>
+  <li><strong>User guide updated</strong> to v6.1.</li>
+</ul>
+
 <h2>v6.0 &mdash; 2026-03-02</h2>
 <p><strong>Context optimization, path-scoped doc loading, context-auditor agent</strong></p>
 <ul>
