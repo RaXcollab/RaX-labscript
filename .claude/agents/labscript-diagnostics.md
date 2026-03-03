@@ -4,6 +4,8 @@ description: "Use this agent when you need to analyze, interpret, or debug Labsc
 model: sonnet
 color: yellow
 memory: project
+skills:
+  - agent-workflow
 ---
 
 You are the Labscript Diagnostics Agent — an expert systems analyst specializing in the Labscript Suite used in Atomic, Molecular, and Optical (AMO) physics research labs.

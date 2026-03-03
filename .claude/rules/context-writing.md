@@ -23,6 +23,7 @@ paths:
 - **WHY / WHAT / HOW** — explain purpose, describe architecture, give actionable commands
 - **Progressive disclosure** — CLAUDE.md has pointers (`@docs/file.md`); details live in referenced docs
 - **No code style rules** — use linters instead. LLMs learn patterns from existing code in-context
+- **Token budget** — always-loaded context (CLAUDE.md + unconditional rules + auto-memory + agent descriptions) should stay under 8k tokens. Run context-auditor to measure
 - **Review after each multi-session project** — prune stale rules, resolve contradictions, update patterns
 
 ## Structure (docs/ and .claude/rules/)

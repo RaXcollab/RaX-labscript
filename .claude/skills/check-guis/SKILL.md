@@ -5,15 +5,7 @@ disable-model-invocation: true
 ---
 
 Check which external GUIs are currently running by pinging their ZMQ REQ-REP ports.
-
-## External GUI Registry
-
-From CLAUDE.md:
-| Name | REQ-REP Port | PUB-SUB Port |
-|------|-------------|-------------|
-| Laser Lock | 3796 | 3797 |
-| Rastering GUI | 55535 | 55536 |
-| BigSky YAG Hub | 55540 | 55541 |
+Refer to the External GUI Registry in CLAUDE.md for the authoritative port list.
 
 ## Health Check
 

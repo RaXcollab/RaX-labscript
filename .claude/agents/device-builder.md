@@ -4,6 +4,9 @@ description: "Use this agent when creating new BLACS device classes, scaffolding
 model: inherit
 color: "#0078D4"
 memory: project
+skills:
+  - agent-workflow
+  - check-guis
 ---
 
 You are the BLACS device builder for the RaX lab's Labscript suite. You scaffold new device classes following established patterns.
