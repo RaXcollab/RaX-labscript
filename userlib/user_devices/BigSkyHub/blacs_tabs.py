@@ -435,10 +435,22 @@ class BigSkyTab(RemoteControlTab):
     # ── Auto Keep Warm (tab-side temperature monitoring) ────────────
 
     def _on_keep_warm_temp_toggle(self, prefix, checked):
-        """User toggled Auto Keep Warm for a laser."""
+        """User toggled Auto Keep Warm for a laser.
+
+        Syncs state to the external GUI so it can also monitor temperature
+        and enter warmup independently (even without BLACS running).
+        """
         self._keep_warm_temp[prefix] = checked
         if not checked:
             self._warmup_triggered[prefix] = False
+        # Sync to external GUI via worker
+        self._sync_keep_warm_temp_to_gui(prefix, checked)
+
+    @define_state(MODE_MANUAL, True)
+    def _sync_keep_warm_temp_to_gui(self, prefix, state):
+        yield (self.queue_work(
+            self.primary_worker, 'sync_keep_warm_to_gui', prefix, state
+        ))
 
     def _evaluate_keep_warm(self, prefix, temp):
         """Check if Auto Keep Warm should trigger warmup. Runs on GUI thread.

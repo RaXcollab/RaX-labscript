@@ -203,6 +203,21 @@ class BigSkyWorker(RemoteControlWorker):
         feature via queue_work when temperature drops below threshold."""
         self._restore_warmup(prefix)
 
+    def sync_keep_warm_to_gui(self, prefix, state):
+        """Sync the Auto Keep Warm checkbox state to the external GUI.
+
+        Sends keep_warm=0/1 so the GUI can also auto-warmup independently.
+        Non-critical — logs warning on failure instead of raising.
+        """
+        conn = f"{prefix}_keep_warm"
+        value = 1.0 if state else 0.0
+        response = self.remote_comms.program_value(conn, value, wait_for_lock=False)
+        if response is None:
+            self.logger.warning(f"sync_keep_warm_to_gui: timeout for {conn}")
+        elif response.get("status") != "SUCCESS":
+            msg = response.get("message", "")
+            self.logger.warning(f"sync_keep_warm_to_gui: {conn} failed: {msg}")
+
     def send_action(self, prefix, action):
         """Send a fire-and-forget action (stop/warmup/start_lasing) from the tab.
 
