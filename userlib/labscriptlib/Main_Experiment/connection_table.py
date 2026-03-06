@@ -132,7 +132,7 @@ def connection_table():
     )
 
     # === BigSky YAG Laser Communication === #
-    BigSkyHub(name='BigSkyLasers',num_lasers=1, laser_prefix="YAG", host="127.0.0.1")
+    BigSkyHub(name='BigSkyLasers', num_lasers=2, laser_prefix="YAG", host="127.0.0.1")
     # All channels auto-created
 
     # Define digital output lines on PXIe-6535

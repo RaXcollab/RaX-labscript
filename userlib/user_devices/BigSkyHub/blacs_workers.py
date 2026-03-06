@@ -31,7 +31,7 @@ _COMMAND_SUFFIXES = {'warmup', 'start_lasing', 'stop'}
 _WARMUP_CONTROLLED_SUFFIXES = {'lamps', 'shutter', 'qswitch', 'lamp_mode', 'qswitch_mode'}
 
 # Serial command delay — wait for BigSky to process stop before mode changes
-_CMD_DELAY_S = 0.3
+_CMD_DELAY_S = 0.2
 
 
 class BigSkyWorker(RemoteControlWorker):
@@ -125,9 +125,10 @@ class BigSkyWorker(RemoteControlWorker):
         self._send_cmd(f"{prefix}_stop", 1.0, f"arm: stop {prefix}")
         time.sleep(_CMD_DELAY_S)
 
-        # Step 2: External modes (require standby)
+        # Step 2: External lamp mode (requires standby)
         self._send_cmd(f"{prefix}_lamp_mode", 1.0, f"arm: lamp_mode=1")
-        self._send_cmd(f"{prefix}_qswitch_mode", 2.0, f"arm: qswitch_mode=2")
+        # Safety: ensure Q-switch stays internal (always qsm0 in our setup)
+        self._send_cmd(f"{prefix}_qswitch_mode", 0.0, f"arm: qswitch_mode=0 (safety)")
 
         # Step 3: Activate
         self._send_cmd(f"{prefix}_lamps", 1.0, f"arm: lamps=1")
@@ -140,7 +141,7 @@ class BigSkyWorker(RemoteControlWorker):
         # Update tracking
         self._last_sent_values.update({
             f"{prefix}_lamp_mode": 1.0,
-            f"{prefix}_qswitch_mode": 2.0,
+            f"{prefix}_qswitch_mode": 0.0,
             f"{prefix}_lamps": 1.0,
             f"{prefix}_shutter": 1.0,
             f"{prefix}_qswitch": 1.0,
@@ -148,7 +149,7 @@ class BigSkyWorker(RemoteControlWorker):
 
         self._is_armed[prefix] = True
         self.logger.info(
-            f"_arm_laser: {prefix} armed (external trigger, shutter open, qswitch on)"
+            f"_arm_laser: {prefix} armed (lamp external, QS internal, shutter open, qswitch on)"
         )
 
     def _restore_warmup(self, prefix):
@@ -196,6 +197,12 @@ class BigSkyWorker(RemoteControlWorker):
             connection, value, wait_for_lock=False
         )
         self._check_response(response, context)
+
+    def send_action(self, prefix, action):
+        """Send a fire-and-forget action (stop/warmup/start_lasing) from the tab."""
+        conn = f"{prefix}_{action}"
+        self.logger.info(f"send_action: {conn}")
+        self._send_cmd(conn, 1.0, f"action: {conn}")
 
     # ── Overrides ──────────────────────────────────────────────────────
 
@@ -387,16 +394,82 @@ class BigSkyWorker(RemoteControlWorker):
         return {}
 
     def _auto_arm_if_needed(self):
-        """Arm any keep-warm lasers that aren't already armed."""
+        """Arm any keep-warm lasers that aren't already armed.
+
+        Uses two-tier check:
+        1. If _is_armed flag is True, verify against hardware via CHECK_VALUE.
+           If hardware matches, skip. If not, re-arm.
+        2. If _is_armed flag is False, also check hardware — user may have
+           manually armed from the GUI. If hardware shows armed, update flag
+           and skip. Otherwise, arm.
+        """
         for prefix, keep_warm in self._keep_warm.items():
             if not keep_warm:
                 continue
+
             if self._is_armed.get(prefix):
-                self.logger.debug(
-                    f"transition_to_buffered: {prefix} already armed, skipping"
-                )
-                continue
+                # Flag says armed — verify hardware agrees
+                if self._verify_armed_state(prefix):
+                    self.logger.debug(
+                        f"_auto_arm_if_needed: {prefix} verified armed, skipping"
+                    )
+                    continue
+                else:
+                    self.logger.info(
+                        f"_auto_arm_if_needed: {prefix} flag=armed but hardware "
+                        f"disagrees, re-arming"
+                    )
+            else:
+                # Flag says not armed — check if user armed from GUI
+                if self._verify_armed_state(prefix):
+                    self.logger.info(
+                        f"_auto_arm_if_needed: {prefix} already armed externally, "
+                        f"skipping"
+                    )
+                    self._is_armed[prefix] = True
+                    continue
+
             self._arm_laser(prefix)
+
+    def _verify_armed_state(self, prefix):
+        """Check hardware state via CHECK_VALUE to confirm laser is armed.
+
+        Returns True if lamp_mode=1, lamps=1, shutter=1, qswitch=1,
+        qswitch_mode=0. Returns False if any check fails or mismatches.
+        """
+        expected = {
+            f"{prefix}_lamp_mode": 1.0,
+            f"{prefix}_lamps": 1.0,
+            f"{prefix}_shutter": 1.0,
+            f"{prefix}_qswitch": 1.0,
+            f"{prefix}_qswitch_mode": 0.0,
+        }
+        for connection, expected_val in expected.items():
+            response = self.remote_comms.check_remote_value(connection)
+            if response is None:
+                self.logger.warning(
+                    f"_verify_armed_state: timeout checking {connection}"
+                )
+                return False
+            if response.get("status") != "SUCCESS":
+                msg = response.get("message", "")
+                if "unknown connection" in msg or "laser disconnected" in msg:
+                    self.logger.debug(
+                        f"_verify_armed_state: {connection} unavailable ({msg})"
+                    )
+                    return False
+                self.logger.warning(
+                    f"_verify_armed_state: failed to check {connection}: {msg}"
+                )
+                return False
+            actual = float(response["value"])
+            if actual != expected_val:
+                self.logger.info(
+                    f"_verify_armed_state: {connection} = {actual}, "
+                    f"expected {expected_val}"
+                )
+                return False
+        return True
 
     def transition_to_manual(self):
         """Restore warmup state for keep-warm lasers after queue ends."""

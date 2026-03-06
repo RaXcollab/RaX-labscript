@@ -124,6 +124,10 @@ class BigSkyTab(RemoteControlTab):
             if m and m.group(2) == 'voltage':
                 voltage_props[conn] = {}
         self.AO_widgets = self.create_analog_widgets(voltage_props)
+        # Hide the built-in label from each voltage widget — redundant inside group box
+        for widget in self.AO_widgets.values():
+            if hasattr(widget, '_label'):
+                widget._label.hide()
 
         # No standard monitor widgets — we use custom labels
         self.AM_widgets = {}
@@ -140,8 +144,9 @@ class BigSkyTab(RemoteControlTab):
         self._laser_groups = {}       # {prefix: QGroupBox} — stored from _create_laser_group
         self._last_monitor_time = {}  # {prefix: float} — time.monotonic() of last PUB-SUB value
         self._laser_online = {}       # {prefix: bool} — tracks online state to avoid redundant updates
+        self._action_buttons = {}     # {prefix: {'stop': btn, 'warmup': btn, 'arm': btn}}
         self._keep_warm = {}          # {prefix: bool} — Keep Warm toggle state
-        self._keep_warm_buttons = {}  # {prefix: QPushButton}
+        self._keep_warm_buttons = {}  # {prefix: QCheckBox}
 
         laser_prefixes = sorted(set(
             m.group(1) for c in self.child_output_connections
@@ -231,11 +236,12 @@ class BigSkyTab(RemoteControlTab):
             self._temp_labels[temp_conn] = temp_label
             layout.addWidget(temp_label)
 
-        # ── Voltage row: spinbox + monitor ──
+        # ── Voltage row: label + spinbox + monitor ──
         voltage_conn = f"{prefix}_voltage"
         voltage_mon = f"{prefix}_voltage_monitor"
         voltage_row = QtWidgets.QHBoxLayout()
 
+        voltage_row.addWidget(QtWidgets.QLabel("Voltage:"))
         if voltage_conn in self.AO_widgets:
             voltage_row.addWidget(self.AO_widgets[voltage_conn])
 
@@ -304,22 +310,59 @@ class BigSkyTab(RemoteControlTab):
         mode_row.addStretch()
         layout.addLayout(mode_row)
 
-        # ── Keep Warm button ──
-        warmup_row = QtWidgets.QHBoxLayout()
-        warmup_row.setSpacing(8)
-        keep_warm_btn = QtWidgets.QPushButton("Keep Warm: OFF")
-        keep_warm_btn.setCheckable(True)
-        keep_warm_btn.setMinimumWidth(160)
-        keep_warm_btn.setMinimumHeight(36)
-        self._style_keep_warm_btn(keep_warm_btn, False)
-        keep_warm_btn.toggled.connect(
+        # ── Action buttons row: Stop, Warmup, Arm External, Auto Re-Arm ──
+        action_row = QtWidgets.QHBoxLayout()
+        action_row.setSpacing(8)
+
+        stop_btn = QtWidgets.QPushButton("STOP")
+        stop_btn.setMinimumWidth(70)
+        stop_btn.setMinimumHeight(36)
+        stop_btn.setStyleSheet(
+            "QPushButton { background-color: #D32F2F; color: white; "
+            "font-weight: bold; border-radius: 4px; padding: 8px; }"
+        )
+        stop_btn.clicked.connect(
+            lambda _, p=prefix: self._on_stop_clicked(p)
+        )
+        action_row.addWidget(stop_btn)
+
+        warmup_btn = QtWidgets.QPushButton("Warmup")
+        warmup_btn.setMinimumWidth(90)
+        warmup_btn.setMinimumHeight(36)
+        warmup_btn.clicked.connect(
+            lambda _, p=prefix: self._on_warmup_clicked(p)
+        )
+        action_row.addWidget(warmup_btn)
+
+        arm_btn = QtWidgets.QPushButton("Arm Ext")
+        arm_btn.setMinimumWidth(90)
+        arm_btn.setMinimumHeight(36)
+        arm_btn.clicked.connect(
+            lambda _, p=prefix: self._on_arm_external_clicked(p)
+        )
+        action_row.addWidget(arm_btn)
+
+        # Store refs and set initial (inactive) styles
+        self._action_buttons[prefix] = {
+            'stop': stop_btn, 'warmup': warmup_btn, 'arm': arm_btn,
+        }
+        self._style_action_buttons(prefix, warming=False, armed=False)
+
+        auto_arm_cb = QtWidgets.QCheckBox("Auto Re-Arm Ext")
+        auto_arm_cb.setToolTip(
+            "When checked, BLACS will auto-arm this laser to external\n"
+            "trigger before each shot queue and restore warmup after."
+        )
+        auto_arm_cb.setStyleSheet("font-weight: bold; padding: 4px;")
+        auto_arm_cb.toggled.connect(
             lambda checked, p=prefix: self._on_keep_warm_toggle(p, checked)
         )
-        self._keep_warm_buttons[prefix] = keep_warm_btn
+        self._keep_warm_buttons[prefix] = auto_arm_cb
         self._keep_warm[prefix] = False
-        warmup_row.addWidget(keep_warm_btn)
-        warmup_row.addStretch()
-        layout.addLayout(warmup_row)
+        action_row.addWidget(auto_arm_cb)
+
+        action_row.addStretch()
+        layout.addLayout(action_row)
 
         group.setLayout(layout)
 
@@ -344,69 +387,89 @@ class BigSkyTab(RemoteControlTab):
         self._recently_changed[connection] = time.monotonic()
         self._AO[connection].set_value(float(index), program=True)
 
-    # ── Keep Warm ─────────────────────────────────────────────────────
+    # ── Auto Re-Arm Ext ────────────────────────────────────────────────
 
     def _on_keep_warm_toggle(self, prefix, checked):
-        """User toggled Keep Warm for a laser."""
+        """User toggled Auto Re-Arm Ext for a laser.
+
+        Only sets the flag and updates interlocks. Does NOT send hardware
+        commands — use the Warmup/Arm Ext/Stop buttons for that.
+        """
         self._keep_warm[prefix] = checked
-        btn = self._keep_warm_buttons[prefix]
-        btn.setText("Keep Warm: ON" if checked else "Keep Warm: OFF")
-        self._style_keep_warm_btn(btn, checked)
-
-        if checked:
-            # Sync AO values to warmup state (prevents program_device undoing warmup)
-            self._AO[f"{prefix}_lamps"].set_value(1.0, program=False)
-            self._AO[f"{prefix}_shutter"].set_value(0.0, program=False)
-            self._AO[f"{prefix}_qswitch"].set_value(0.0, program=False)
-            self._AO[f"{prefix}_lamp_mode"].set_value(0.0, program=False)
-            # Update toggle button visuals to match
-            for suffix, val in [('lamps', True), ('shutter', False), ('qswitch', False)]:
-                conn = f"{prefix}_{suffix}"
-                if conn in self._toggle_buttons:
-                    b = self._toggle_buttons[conn]
-                    b.blockSignals(True)
-                    b.setChecked(val)
-                    b.blockSignals(False)
-                    self._style_toggle(conn, val)
-            # Update lamp_mode combo visual
-            lm_conn = f"{prefix}_lamp_mode"
-            if lm_conn in self._mode_combos:
-                combo = self._mode_combos[lm_conn]
-                combo.blockSignals(True)
-                combo.setCurrentIndex(0)
-                combo.blockSignals(False)
-
-        # Set recently-changed guard for all affected channels
-        now = time.monotonic()
-        for suffix in ('lamps', 'shutter', 'qswitch', 'lamp_mode', 'qswitch_mode'):
-            self._recently_changed[f"{prefix}_{suffix}"] = now
-
-        # Update interlocks
         self._update_keep_warm_interlocks(prefix)
-
-        # Send command to worker
-        self._send_keep_warm_to_worker(prefix, checked)
+        # Sync the flag to the worker so transition_to_buffered knows
+        self._sync_keep_warm_to_worker(prefix, checked)
 
     @define_state(MODE_MANUAL, True)
-    def _send_keep_warm_to_worker(self, prefix, state):
-        if state:
-            yield (self.queue_work(self.primary_worker, 'enter_warmup', prefix))
-        else:
-            yield (self.queue_work(self.primary_worker, 'exit_warmup', prefix))
+    def _sync_keep_warm_to_worker(self, prefix, state):
+        yield (self.queue_work(
+            self.primary_worker, 'update_keep_warm', prefix, state
+        ))
 
-    def _style_keep_warm_btn(self, btn, is_on):
-        """Apply amber ON / gray OFF styling to Keep Warm button."""
-        if is_on:
-            btn.setStyleSheet(
+    # ── Action buttons: Stop / Warmup / Arm Ext ─────────────────────
+    # These use fire-and-forget channels which are skipped by program_manual,
+    # so we send them directly via the worker's _send_cmd method.
+
+    def _on_stop_clicked(self, prefix):
+        """Send stop (standby) command directly to the worker."""
+        self._send_action_to_worker(prefix, 'stop')
+
+    def _on_warmup_clicked(self, prefix):
+        """Send warmup command directly to the worker."""
+        self._send_action_to_worker(prefix, 'warmup')
+
+    def _on_arm_external_clicked(self, prefix):
+        """Send arm-external (start_lasing) command directly to the worker."""
+        self._send_action_to_worker(prefix, 'start_lasing')
+
+    @define_state(MODE_MANUAL, True)
+    def _send_action_to_worker(self, prefix, action):
+        yield (self.queue_work(
+            self.primary_worker, 'send_action', prefix, action
+        ))
+
+    def _style_action_buttons(self, prefix, warming, armed):
+        """Update Warmup and Arm Ext button colors based on laser state."""
+        btns = self._action_buttons.get(prefix)
+        if not btns:
+            return
+        # Warmup: blue (cold/inactive) -> orange (warming)
+        if warming:
+            btns['warmup'].setStyleSheet(
                 "QPushButton { background-color: #FF9800; color: white; "
-                "font-weight: bold; border-radius: 4px; padding: 8px; "
-                "border: 2px solid #E65100; }"
+                "font-weight: bold; border-radius: 4px; padding: 8px; }"
             )
         else:
-            btn.setStyleSheet(
-                "QPushButton { background-color: #E0E0E0; color: #555; "
-                "border-radius: 4px; padding: 8px; }"
+            btns['warmup'].setStyleSheet(
+                "QPushButton { background-color: #64B5F6; color: white; "
+                "font-weight: bold; border-radius: 4px; padding: 8px; }"
             )
+        # Arm Ext: gray (not armed) -> green (armed)
+        if armed:
+            btns['arm'].setStyleSheet(
+                "QPushButton { background-color: #4CAF50; color: white; "
+                "font-weight: bold; border-radius: 4px; padding: 8px; }"
+            )
+        else:
+            btns['arm'].setStyleSheet(
+                "QPushButton { background-color: #BDBDBD; color: #333; "
+                "font-weight: bold; border-radius: 4px; padding: 8px; }"
+            )
+
+    def _update_action_button_state(self, prefix):
+        """Determine laser state from cached monitor values and style buttons."""
+        lamps = self._lamps_active.get(prefix, False)
+        # Check shutter and qswitch from toggle button state
+        shutter_conn = f"{prefix}_shutter"
+        qswitch_conn = f"{prefix}_qswitch"
+        shutter_on = (shutter_conn in self._toggle_buttons and
+                      self._toggle_buttons[shutter_conn].isChecked())
+        qswitch_on = (qswitch_conn in self._toggle_buttons and
+                      self._toggle_buttons[qswitch_conn].isChecked())
+
+        armed = lamps and shutter_on and qswitch_on
+        warming = lamps and not shutter_on and not qswitch_on
+        self._style_action_buttons(prefix, warming=warming, armed=armed)
 
     def _update_keep_warm_interlocks(self, prefix):
         """Disable manual controls when Keep Warm is active."""
@@ -572,11 +635,17 @@ class BigSkyTab(RemoteControlTab):
         # Binary monitor indicators
         if connection in self._monitor_labels:
             self._style_monitor(connection, value)
-            # Track lamps state for mode combo interlocking
             m = _PREFIX_RE.match(connection)
-            if m and m.group(2) == 'lamps_monitor':
-                self._lamps_active[m.group(1)] = value > 0.5
-                self._update_mode_combos_enabled(m.group(1))
+            if m:
+                suffix = m.group(2)
+                prefix = m.group(1)
+                # Track lamps state for mode combo interlocking
+                if suffix == 'lamps_monitor':
+                    self._lamps_active[prefix] = value > 0.5
+                    self._update_mode_combos_enabled(prefix)
+                # Update action button colors on any binary monitor change
+                if suffix in ('lamps_monitor', 'shutter_monitor', 'qswitch_monitor'):
+                    self._update_action_button_state(prefix)
             return
 
         # Fallback: update AO object if it exists (e.g. standard AM widgets)
@@ -639,15 +708,13 @@ class BigSkyTab(RemoteControlTab):
         for prefix, state in saved_kw.items():
             if prefix in self._keep_warm_buttons:
                 self._keep_warm[prefix] = state
-                btn = self._keep_warm_buttons[prefix]
-                btn.blockSignals(True)
-                btn.setChecked(state)
-                btn.blockSignals(False)
-                btn.setText("Keep Warm: ON" if state else "Keep Warm: OFF")
-                self._style_keep_warm_btn(btn, state)
+                cb = self._keep_warm_buttons[prefix]
+                cb.blockSignals(True)
+                cb.setChecked(state)
+                cb.blockSignals(False)
                 self._update_keep_warm_interlocks(prefix)
         # NOTE: Do NOT fire lamps here — worker doesn't exist yet.
-        # User must re-toggle Keep Warm after BLACS restart.
+        # User must re-toggle after BLACS restart.
 
     # ── Worker setup ──────────────────────────────────────────────────
 
