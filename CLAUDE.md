@@ -78,7 +78,7 @@ source ~/miniconda/etc/profile.d/conda.sh && conda activate labscript && python 
 - **External GUI changes**: restart the GUI, verify ZMQ with `/check-guis`
 - **After any BLACS change**: run a test shot, check h5 output in HDFView
 - **Connection table property changes**: recompile → BLACS auto-loads new properties (no need to delete saved state)
-- **BigSky Keep Warm**: toggle in manual mode → verify lamps fire; queue shots → verify auto-arm/restore in BLACS.log; queue 3+ → verify no re-arm between shots
+- **BigSky Auto Re-Arm**: click Warmup/Arm Ext buttons → verify hardware responds; check "Auto Re-Arm Ext" → queue shots → verify auto-arm/restore in BLACS.log; queue 3+ → verify no re-arm between shots
 
 ## External GUI Registry
 
@@ -123,5 +123,6 @@ Docs load via path-scoped rules (`.claude/rules/ref-*.md`) when editing matching
 - `docs/blacs-device-patterns.md` — RemoteControl + NI_DAQmx patterns (loads for `user_devices/`, `blacs/`)
 - `docs/labscript-api.md` — labscript DSL, device drivers, sequence functions (loads for `labscriptlib/`, `user_devices/`)
 - `docs/analysis-api.md` + `docs/ni-scope-conventions.md` — analysis utilities (loads for `analysislib/`)
+- `docs/yag-laser-physics.md` — Nd:YAG laser physics, trigger modes, serial commands (loads for `user_devices/BigSky*`, `GUIs/BigSkyControl/`)
 - `Labscript-Confluence-2026-02-11.pdf` — Lab-specific Confluence docs
 - Official labscript docs: https://docs.labscriptsuite.org/ (reference only — our fork code takes precedence)
