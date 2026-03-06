@@ -145,8 +145,10 @@ class BigSkyTab(RemoteControlTab):
         self._last_monitor_time = {}  # {prefix: float} — time.monotonic() of last PUB-SUB value
         self._laser_online = {}       # {prefix: bool} — tracks online state to avoid redundant updates
         self._action_buttons = {}     # {prefix: {'stop': btn, 'warmup': btn, 'arm': btn}}
-        self._keep_warm = {}          # {prefix: bool} — Keep Warm toggle state
+        self._keep_warm = {}          # {prefix: bool} — Auto Re-Arm Ext state
         self._keep_warm_buttons = {}  # {prefix: QCheckBox}
+        self._auto_warmup_cold = {}   # {prefix: bool} — Auto Warmup if Cold state
+        self._auto_warmup_cold_buttons = {}  # {prefix: QCheckBox}
 
         laser_prefixes = sorted(set(
             m.group(1) for c in self.child_output_connections
@@ -350,8 +352,7 @@ class BigSkyTab(RemoteControlTab):
 
         auto_arm_cb = QtWidgets.QCheckBox("Auto Re-Arm Ext")
         auto_arm_cb.setToolTip(
-            "When checked, BLACS will auto-arm this laser to external\n"
-            "trigger before each shot queue and restore warmup after."
+            "Auto-arm this laser to external trigger before each shot queue."
         )
         auto_arm_cb.setStyleSheet("font-weight: bold; padding: 4px;")
         auto_arm_cb.toggled.connect(
@@ -360,6 +361,19 @@ class BigSkyTab(RemoteControlTab):
         self._keep_warm_buttons[prefix] = auto_arm_cb
         self._keep_warm[prefix] = False
         action_row.addWidget(auto_arm_cb)
+
+        auto_warmup_cb = QtWidgets.QCheckBox("Auto Warmup if Cold")
+        auto_warmup_cb.setToolTip(
+            "After shot queue ends, restore warmup only if\n"
+            "temperature drops below 37C. Otherwise stay armed."
+        )
+        auto_warmup_cb.setStyleSheet("padding: 4px;")
+        auto_warmup_cb.toggled.connect(
+            lambda checked, p=prefix: self._on_auto_warmup_cold_toggle(p, checked)
+        )
+        self._auto_warmup_cold_buttons[prefix] = auto_warmup_cb
+        self._auto_warmup_cold[prefix] = False
+        action_row.addWidget(auto_warmup_cb)
 
         action_row.addStretch()
         layout.addLayout(action_row)
@@ -404,6 +418,19 @@ class BigSkyTab(RemoteControlTab):
     def _sync_keep_warm_to_worker(self, prefix, state):
         yield (self.queue_work(
             self.primary_worker, 'update_keep_warm', prefix, state
+        ))
+
+    # ── Auto Warmup if Cold ─────────────────────────────────────────
+
+    def _on_auto_warmup_cold_toggle(self, prefix, checked):
+        """User toggled Auto Warmup if Cold for a laser."""
+        self._auto_warmup_cold[prefix] = checked
+        self._sync_auto_warmup_cold_to_worker(prefix, checked)
+
+    @define_state(MODE_MANUAL, True)
+    def _sync_auto_warmup_cold_to_worker(self, prefix, state):
+        yield (self.queue_work(
+            self.primary_worker, 'update_auto_warmup_cold', prefix, state
         ))
 
     # ── Action buttons: Stop / Warmup / Arm Ext ─────────────────────
@@ -701,7 +728,10 @@ class BigSkyTab(RemoteControlTab):
     # ── Persistence ──────────────────────────────────────────────────
 
     def get_save_data(self):
-        return {'keep_warm': dict(self._keep_warm)}
+        return {
+            'keep_warm': dict(self._keep_warm),
+            'auto_warmup_cold': dict(self._auto_warmup_cold),
+        }
 
     def restore_save_data(self, data):
         saved_kw = data.get('keep_warm', {})
@@ -713,8 +743,15 @@ class BigSkyTab(RemoteControlTab):
                 cb.setChecked(state)
                 cb.blockSignals(False)
                 self._update_keep_warm_interlocks(prefix)
+        saved_awc = data.get('auto_warmup_cold', {})
+        for prefix, state in saved_awc.items():
+            if prefix in self._auto_warmup_cold_buttons:
+                self._auto_warmup_cold[prefix] = state
+                cb = self._auto_warmup_cold_buttons[prefix]
+                cb.blockSignals(True)
+                cb.setChecked(state)
+                cb.blockSignals(False)
         # NOTE: Do NOT fire lamps here — worker doesn't exist yet.
-        # User must re-toggle after BLACS restart.
 
     # ── Worker setup ──────────────────────────────────────────────────
 
@@ -729,6 +766,7 @@ class BigSkyTab(RemoteControlTab):
                 "child_output_connections": self.child_output_connections,
                 "child_monitor_connections": self.child_monitor_connections,
                 "keep_warm_state": dict(self._keep_warm),
+                "auto_warmup_cold_state": dict(self._auto_warmup_cold),
             },
         )
         self.primary_worker = "main_worker"

@@ -53,14 +53,20 @@ class BigSkyWorker(RemoteControlWorker):
         self._keep_warm = getattr(self, 'keep_warm_state', {})
         # Armed state tracking — prevents re-arming between queued shots
         self._is_armed = {}
+        # Auto warmup if cold — restore warmup only when temp < threshold
+        self._auto_warmup_cold = getattr(self, 'auto_warmup_cold_state', {})
 
     # ── Keep Warm lifecycle ────────────────────────────────────────────
 
     def update_keep_warm(self, prefix, state):
-        """Called by the tab when the user toggles Keep Warm."""
+        """Called by the tab when the user toggles Auto Re-Arm Ext."""
         self._keep_warm[prefix] = state
         if not state:
             self._is_armed.pop(prefix, None)
+
+    def update_auto_warmup_cold(self, prefix, state):
+        """Called by the tab when the user toggles Auto Warmup if Cold."""
+        self._auto_warmup_cold[prefix] = state
 
     def enter_warmup(self, prefix):
         """Enter warmup: internal trigger, lamps on, shutter closed, qswitch off.
@@ -197,6 +203,17 @@ class BigSkyWorker(RemoteControlWorker):
             connection, value, wait_for_lock=False
         )
         self._check_response(response, context)
+
+    def _check_temperature(self, prefix):
+        """Check cached temperature via ZMQ CHECK_VALUE. Returns float or None."""
+        conn = f"{prefix}_temperature_monitor"
+        response = self.remote_comms.check_remote_value(conn)
+        if response is None or response.get("status") != "SUCCESS":
+            return None
+        try:
+            return float(response["value"])
+        except (ValueError, KeyError):
+            return None
 
     def send_action(self, prefix, action):
         """Send a fire-and-forget action (stop/warmup/start_lasing) from the tab.
@@ -483,24 +500,46 @@ class BigSkyWorker(RemoteControlWorker):
         return True
 
     def transition_to_manual(self):
-        """Restore warmup state for keep-warm lasers after queue ends."""
+        """Conditionally restore warmup for keep-warm lasers after queue/pause.
+
+        If 'Auto Warmup if Cold' is enabled, checks cached temperature via
+        ZMQ CHECK_VALUE (no serial). Only restores warmup if temp < 37C.
+        Otherwise laser stays armed for fast resume.
+        """
         for prefix, keep_warm in self._keep_warm.items():
-            if keep_warm:
-                self._restore_warmup(prefix)
+            if not keep_warm:
+                continue
+            if self._auto_warmup_cold.get(prefix):
+                temp = self._check_temperature(prefix)
+                if temp is not None and temp < 37.0:
+                    self.logger.info(
+                        f"transition_to_manual: {prefix} cold ({temp:.1f}C), "
+                        f"restoring warmup"
+                    )
+                    self._restore_warmup(prefix)
+                    continue
+            # Warm enough or auto-warmup-cold not enabled — stay armed
+            self.logger.info(
+                f"transition_to_manual: {prefix} staying armed"
+            )
+            self._is_armed[prefix] = False
         return True
 
     def abort_transition_to_buffered(self):
         for prefix, keep_warm in self._keep_warm.items():
-            if keep_warm:
-                self._restore_warmup(prefix)
+            if not keep_warm:
+                continue
+            # On abort, just reset armed flag — don't cycle hardware
+            self._is_armed[prefix] = False
         self.initial_monitor_values = {}
         self.final_monitor_values = {}
         return True
 
     def abort_buffered(self):
         for prefix, keep_warm in self._keep_warm.items():
-            if keep_warm:
-                self._restore_warmup(prefix)
+            if not keep_warm:
+                continue
+            self._is_armed[prefix] = False
         self.initial_monitor_values = {}
         self.final_monitor_values = {}
         return True
