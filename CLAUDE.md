@@ -82,11 +82,11 @@ source ~/miniconda/etc/profile.d/conda.sh && conda activate labscript && python 
 
 ## External GUI Registry
 
-| Name | BLACS Device Class | GUI Codebase | REQ-REP Port | PUB-SUB Port | Connection Table Name |
-|------|-------------------|--------------|-------------|-------------|----------------------|
-| Laser Lock | `LaserLockDevice` | `GUIs\HF_Locking` | 3796 | 3797 | `LaserLockGUI` |
-| Rastering GUI | `RasteringDevice` | `GUIs\rastering` | 55535 | 55536 | `RasteringGUI` |
-| BigSky YAG Hub | `BigSkyHub` | `GUIs\BigSkyControl` | 55540 | 55541 | `BigSkyLasers` |
+| Name | BLACS Device Class | GUI Codebase | BLACS Device Path | REQ-REP Port | PUB-SUB Port | Connection Table Name |
+|------|-------------------|--------------|-------------------|-------------|-------------|----------------------|
+| Laser Lock | `LaserLockDevice` | `GUIs\HF_Locking` | `userlib/user_devices/LaserLockDevice/` | 3796 | 3797 | `LaserLockGUI` |
+| Rastering GUI | `RasteringDevice` | `GUIs\rastering` | `userlib/user_devices/RasteringDevice/` | 55535 | 55536 | `RasteringGUI` |
+| BigSky YAG Hub | `BigSkyHub` | `GUIs\BigSkyControl` | `userlib/user_devices/BigSkyHub/` | 55540 | 55541 | `BigSkyLasers` |
 
 Add new external GUIs to this table.
 

@@ -26,7 +26,7 @@ class RasteringWorker(RemoteControlWorker):
 
         self.h5_filepath = h5_filepath
 
-        # Step 1: Advance raster if enabled
+        # Step 1: Advance raster if enabled.
         if self.raster_mode:
             if not self.remote_comms.connected:
                 raise Exception(
@@ -78,7 +78,27 @@ class RasteringWorker(RemoteControlWorker):
                         response, f"buffered_program({connection}={value})"
                     )
 
-        # Step 3: Always capture X/Y position snapshot for the shot record
-        self.initial_monitor_values = self.check_all_remote_values()
+        # Step 3: Capture X/Y position snapshot for the shot record.
+        # Use PUB-SUB cached values (updated at ~4 Hz by the tab's subscriber
+        # thread) instead of REQ-REP CHECK_VALUE round-trips. The motor has
+        # already settled by this point, so the cache reflects the final position.
+        self.initial_monitor_values = dict(self.pubsub_monitor_cache)
 
         return {}
+
+    def post_experiment(self):
+        if self.initial_monitor_values:
+            # Final values from PUB-SUB cache (no REQ-REP round-trip)
+            self.final_monitor_values = dict(self.pubsub_monitor_cache)
+
+            with h5py.File(self.h5_filepath, 'a') as f:
+                self._save_monitor_values_to_hdf5(
+                    f, 'initial_monitor_values', self.initial_monitor_values
+                )
+                self._save_monitor_values_to_hdf5(
+                    f, 'final_monitor_values', self.final_monitor_values
+                )
+
+        self.initial_monitor_values = {}
+        self.final_monitor_values = {}
+        return True

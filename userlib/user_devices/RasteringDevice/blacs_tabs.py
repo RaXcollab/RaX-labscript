@@ -91,6 +91,11 @@ class RasteringTab(RemoteControlTab):
         self.reqrep_connected = False
         self.pubsub_connected = False
 
+        # PUB-SUB monitor cache: shared with worker for shot snapshots.
+        # Updated at ~4 Hz by the subscriber thread. Worker reads from
+        # this instead of making REQ-REP CHECK_VALUE round-trips.
+        self._pubsub_monitor_cache = {}
+
         # ── 2. PubSub signal bridge ──
         self._pubsub_bridge = _PubSubSignalBridge()
         self._pubsub_bridge.pubsub_status_changed.connect(self._on_pubsub_status_changed)
@@ -277,11 +282,13 @@ class RasteringTab(RemoteControlTab):
     # ── Override: update monitors from PUB-SUB ────────────────────────
 
     def _on_monitor_value_received(self, connection, value_str):
-        """Update monitor labels with formatted position values."""
+        """Update monitor labels and PUB-SUB cache with position values."""
         try:
             value = float(value_str)
         except (ValueError, TypeError):
             return
+
+        self._pubsub_monitor_cache[connection] = value
 
         if connection in self._monitor_labels:
             self._monitor_labels[connection].setText(
@@ -307,6 +314,7 @@ class RasteringTab(RemoteControlTab):
                 "port": self.reqrep_port,
                 "child_output_connections": self.child_output_connections,
                 "child_monitor_connections": self.child_monitor_connections,
+                "pubsub_monitor_cache": self._pubsub_monitor_cache,
             },
         )
         self.primary_worker = "main_worker"
