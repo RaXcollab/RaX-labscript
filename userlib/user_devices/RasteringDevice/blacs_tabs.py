@@ -129,6 +129,7 @@ class RasteringTab(RemoteControlTab):
         self.create_analog_outputs(AO_prop)
 
         AM_prop = {}
+        self._monitor_format = {}  # {connection: (decimals, units)}
         for dev in self.child_monitor_devices:
             cp = dev._properties
             lo, hi = cp["limits"]
@@ -138,6 +139,7 @@ class RasteringTab(RemoteControlTab):
                 'step': cp["step_size"],
                 'decimals': cp["decimals"],
             }
+            self._monitor_format[dev.parent_port] = (cp["decimals"], cp["units"])
         self.create_analog_outputs(AM_prop)
 
         # ── 5. Create spinbox widgets for outputs only ──
@@ -174,7 +176,8 @@ class RasteringTab(RemoteControlTab):
             if conn in self.AO_widgets:
                 row.addWidget(self.AO_widgets[conn])
 
-            monitor_label = QtWidgets.QLabel("(monitor: -- mm)")
+            mon_decimals, mon_units = self._monitor_format.get(mon_conn, (4, "mm"))
+            monitor_label = QtWidgets.QLabel(f"(monitor: -- {mon_units})")
             monitor_label.setStyleSheet("color: #666; padding-left: 8px;")
             self._monitor_labels[mon_conn] = monitor_label
             row.addWidget(monitor_label)
@@ -291,8 +294,9 @@ class RasteringTab(RemoteControlTab):
         self._pubsub_monitor_cache[connection] = value
 
         if connection in self._monitor_labels:
+            decimals, units = self._monitor_format.get(connection, (4, "mm"))
             self._monitor_labels[connection].setText(
-                f"(monitor: {value:.4f} mm)"
+                f"(monitor: {value:.{decimals}f} {units})"
             )
 
     # ── Override: enable/disable controls ──────────────────────────────

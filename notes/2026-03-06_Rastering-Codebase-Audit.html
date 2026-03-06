@@ -1,0 +1,169 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<style>
+  body { font-family: Calibri, Segoe UI, sans-serif; font-size: 11pt; color: #333; max-width: 900px; margin: 20px auto; }
+  h1 { font-size: 20pt; border-bottom: 2px solid #0078d4; padding-bottom: 6px; color: #0078d4; }
+  h2 { font-size: 14pt; color: #0078d4; margin-top: 24px; }
+  h3 { font-size: 12pt; color: #444; }
+  table { border-collapse: collapse; width: 100%; margin: 10px 0; }
+  th, td { border: 1px solid #ccc; padding: 6px 10px; text-align: left; vertical-align: top; }
+  th { background: #f0f0f0; font-weight: bold; }
+  code { font-family: Consolas, monospace; font-size: 10pt; background: #f4f4f4; padding: 1px 4px; border-radius: 3px; }
+  pre { background: #f4f4f4; border: 1px solid #ddd; border-radius: 4px; padding: 10px; font-family: Consolas, monospace; font-size: 10pt; overflow-x: auto; white-space: pre; }
+  .badge { display: inline-block; padding: 2px 8px; border-radius: 10px; color: white; font-size: 9pt; font-weight: bold; }
+  .green { background: #4CAF50; }
+  .orange { background: #F57C00; }
+  .yellow { background: #FFC107; color: #333; }
+  .blue { background: #0078d4; }
+  .purple { background: #9C27B0; }
+  .gray { background: #9E9E9E; }
+  .red { background: #f44336; }
+  .meta { color: #888; font-size: 10pt; }
+  ol, ul { margin: 6px 0; padding-left: 24px; }
+  li { margin: 3px 0; }
+  strong { color: #222; }
+  .callout { background: #e8f4fd; border-left: 4px solid #0078d4; padding: 8px 12px; margin: 10px 0; }
+  .warn { background: #fff3cd; border-left: 4px solid #ffc107; padding: 8px 12px; margin: 10px 0; }
+</style>
+</head>
+<body>
+
+<h1>Rastering Codebase Architectural Audit</h1>
+<p class="meta">
+  <strong>Date:</strong> 2026-03-06 &nbsp;&bull;&nbsp;
+  <strong>Commit:</strong> <code>pending</code> &nbsp;&bull;&nbsp;
+  <strong>Context:</strong> Full audit of rastering GUI + BLACS device, research, cross-audit, implementation of surviving fixes
+</p>
+
+<h2>What Changed</h2>
+<p>
+Conducted a full architectural audit of the rastering codebase (~4,000 lines GUI + ~536 lines BLACS device).
+Researched galvo/laser scanning patterns, PyQt hardware control, and ZMQ instrument patterns.
+Cross-audited all findings with blacs-expert, which rejected 3 recommendations (ZMQ extraction, discoverable topics, QThread modernization).
+Implemented 7 fixes across 4 files + 1 new file, spanning both <span class="badge blue">rastering-gui</span> and <span class="badge green">labscript-suite</span> repos.
+</p>
+
+<div class="callout">
+<strong>Key finding:</strong> The architecture is fundamentally sound. Single-owner motor thread, priority queue, PUB-SUB cache, affine calibration with degeneracy checks -- all validated. No major rewrites needed.
+</div>
+
+<h2>Files Changed</h2>
+<table>
+  <tr><th>File</th><th>Change</th><th>Why</th></tr>
+  <tr>
+    <td><code>camera.py</code></td>
+    <td>Add <code>request_ini_extras()</code> + run-loop handler</td>
+    <td><strong>H1:</strong> Thread-safety bug -- <code>_apply_extras</code> called uEye API from GUI thread while camera thread grabbed frames</td>
+  </tr>
+  <tr>
+    <td><code>ui.py</code></td>
+    <td>Replace 55x <code>_building</code> flag with <code>blockSignals()</code>; remove attribute + lambda guards</td>
+    <td><strong>H2:</strong> Flag pattern was not exception-safe; <code>blockSignals()</code> is the standard Qt solution</td>
+  </tr>
+  <tr>
+    <td><code>ui.py</code></td>
+    <td>Replace direct <code>apply_ini_to_camera()</code> call with <code>request_ini_extras()</code> via QTimer</td>
+    <td><strong>H1:</strong> Routes .ini extras through camera thread's pending-params mechanism</td>
+  </tr>
+  <tr>
+    <td><code>camera_settings_dock.py</code></td>
+    <td><strong>NEW</strong> -- extracted <code>CameraSettingsDock</code> class (~630 lines)</td>
+    <td><strong>M1:</strong> ui.py reduced from ~1,795 to ~1,165 lines. Self-contained with clean signal interfaces</td>
+  </tr>
+  <tr>
+    <td><code>raster_controller.py</code></td>
+    <td>Extract <code>_read_and_cache_position()</code> helper</td>
+    <td><strong>H3:</strong> Eliminated 3x duplicated 12-line readback blocks. MOVE intentionally excluded (uses commanded target)</td>
+  </tr>
+  <tr>
+    <td><code>raster_controller.py</code></td>
+    <td>Add 0.5s join for ZMQ thread in <code>shutdown()</code></td>
+    <td><strong>M3:</strong> Graceful cleanup; prevents orphaned thread on exit</td>
+  </tr>
+  <tr>
+    <td><code>raster_controller.py</code></td>
+    <td>Move <code>self.calibration</code> read inside <code>_state_lock</code></td>
+    <td><strong>M6:</strong> Consistency -- all state reads in ZMQ status loop now under lock</td>
+  </tr>
+  <tr>
+    <td><code>blacs_tabs.py</code></td>
+    <td>Monitor labels use <code>decimals</code> and <code>units</code> from connection table properties</td>
+    <td><strong>M5:</strong> Labels adapt per-channel instead of hardcoded <code>.4f mm</code></td>
+  </tr>
+</table>
+
+<h2>Key Decisions</h2>
+<ul>
+  <li><strong>Rejected ZMQ server extraction</strong> -- ZMQ is only 15% of SystemController. Extraction would require passing controller reference back (defeating the purpose) or building a formal status-snapshot API. "God class" label was overstated.</li>
+  <li><strong>Rejected discoverable STATUS_TOPICS</strong> -- subscribing to <code>""</code> receives heartbeat + monitor messages, causing spurious processing. Each topic requires its own handler code anyway.</li>
+  <li><strong>Rejected QThread modernization</strong> -- current QThread subclass is correct for single-loop workers like the camera thread. moveToThread is preferred for event-driven QObjects, not run-loops.</li>
+  <li><strong>MOVE excluded from _read_and_cache_position()</strong> -- MOVE intentionally sets <code>_last_target_xy</code> to the commanded target, not readback position. Helper only applies to READ_POS and HOME commands.</li>
+  <li><strong>blockSignals() over _building flag</strong> -- Qt's native mechanism, exception-safe, scoped per-widget. No try/finally needed since setValue() doesn't raise.</li>
+</ul>
+
+<h2>Bugs Found & Fixed</h2>
+
+<div class="warn">
+<strong>H1: Camera thread-safety bug.</strong> <code>QTimer.singleShot(2000, _apply_extras)</code> in <code>_load_ini_file()</code> called <code>apply_ini_to_camera(cam, path)</code> directly from the GUI thread while the camera thread was actively calling <code>cam.grab()</code>. The uEye API is not thread-safe. Fixed by routing through the camera thread's existing <code>_pending</code> dict + <code>QMutex</code> pattern.
+</div>
+
+<div class="warn">
+<strong>M6: Calibration read outside lock.</strong> <code>self.calibration</code> was read outside <code>_state_lock</code> in the ZMQ status publishing loop while the GUI thread could be updating it. Moved inside the existing lock scope.
+</div>
+
+<h2>Audit Validated Architecture</h2>
+<p>The following design choices were explicitly confirmed correct by blacs-expert:</p>
+<ul>
+  <li><strong>Sequential motor moves (X then Y)</strong> -- correct for independent KCube USB devices; simultaneous would require two threads</li>
+  <li><strong>QTimer.singleShot() raster chaining</strong> -- standard Qt pattern, already hardened with <code>_state_lock</code> covering check + next(it) + enqueue</li>
+  <li><strong>Shared pubsub_monitor_cache dict</strong> -- safe under GIL; written by GUI thread signal slot, read by worker via <code>dict()</code> copy</li>
+  <li><strong>@define_state(MODE_MANUAL, True) on raster checkbox</strong> -- toggles during buffered mode are queued correctly</li>
+  <li><strong>Pure raster_paths.py</strong> -- no Qt/hardware imports, deterministic, testable</li>
+  <li><strong>Frozen dataclass config</strong> -- single source of truth, immutable</li>
+</ul>
+
+<h2>Before / After</h2>
+<table>
+  <tr><th>Aspect</th><th>Before</th><th>After</th></tr>
+  <tr>
+    <td>Camera .ini extras</td>
+    <td>GUI thread calls uEye API directly via QTimer callback</td>
+    <td>Routed through camera thread's pending-params mechanism</td>
+  </tr>
+  <tr>
+    <td>Signal suppression</td>
+    <td>55x <code>_building</code> bool flag, lambda guards</td>
+    <td>Per-widget <code>blockSignals()</code>, no lambdas needed</td>
+  </tr>
+  <tr>
+    <td>ui.py size</td>
+    <td>~1,795 lines</td>
+    <td>~1,165 lines (+ 624 in camera_settings_dock.py)</td>
+  </tr>
+  <tr>
+    <td>Readback duplication</td>
+    <td>3x identical 12-line blocks in _execute</td>
+    <td>Single <code>_read_and_cache_position()</code> helper</td>
+  </tr>
+  <tr>
+    <td>Monitor labels</td>
+    <td>Hardcoded <code>.4f mm</code></td>
+    <td>Dynamic from connection table properties</td>
+  </tr>
+</table>
+
+<h2>Future Work</h2>
+<table>
+  <tr><th>ID</th><th>Item</th><th>Priority</th></tr>
+  <tr><td>M2</td><td>Slider-spinbox sync helper (less critical after blockSignals refactor)</td><td>Medium</td></tr>
+  <tr><td>M4</td><td>Per-frame np.rot90() to ImageItem transform (not a current bottleneck)</td><td>Medium</td></tr>
+  <tr><td>L1</td><td>Unit tests for raster_paths.py (serpentine, spiral, hull fill)</td><td>Low</td></tr>
+  <tr><td>L2</td><td>Unit tests for AffineCalibration (round-trips, singular matrices)</td><td>Low</td></tr>
+  <tr><td>L3</td><td>Type annotations on SystemController.request_* methods</td><td>Low</td></tr>
+  <tr><td>L4</td><td>Logging-only abort_transition_to_buffered override</td><td>Low</td></tr>
+</table>
+
+</body>
+</html>
