@@ -199,10 +199,21 @@ class BigSkyWorker(RemoteControlWorker):
         self._check_response(response, context)
 
     def send_action(self, prefix, action):
-        """Send a fire-and-forget action (stop/warmup/start_lasing) from the tab."""
+        """Send a fire-and-forget action (stop/warmup/start_lasing) from the tab.
+
+        Handles timeouts and errors gracefully — logs warning instead of raising,
+        since these are user-initiated manual actions (not shot-critical).
+        """
         conn = f"{prefix}_{action}"
         self.logger.info(f"send_action: {conn}")
-        self._send_cmd(conn, 1.0, f"action: {conn}")
+        response = self.remote_comms.program_value(conn, 1.0, wait_for_lock=False)
+        if response is None:
+            self.logger.warning(f"send_action: timeout for {conn} (GUI may be busy)")
+            return
+        if response.get("status") != "SUCCESS":
+            msg = response.get("message", "")
+            self.logger.warning(f"send_action: {conn} failed: {msg}")
+            return
 
     # ── Overrides ──────────────────────────────────────────────────────
 
