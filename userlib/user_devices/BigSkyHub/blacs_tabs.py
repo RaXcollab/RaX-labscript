@@ -145,10 +145,11 @@ class BigSkyTab(RemoteControlTab):
         self._last_monitor_time = {}  # {prefix: float} — time.monotonic() of last PUB-SUB value
         self._laser_online = {}       # {prefix: bool} — tracks online state to avoid redundant updates
         self._action_buttons = {}     # {prefix: {'stop': btn, 'warmup': btn, 'arm': btn}}
-        self._keep_warm = {}          # {prefix: bool} — Auto Re-Arm Ext state
+        self._keep_warm = {}          # {prefix: bool} — Auto Arm Ext state
         self._keep_warm_buttons = {}  # {prefix: QCheckBox}
-        self._auto_warmup_cold = {}   # {prefix: bool} — Auto Warmup if Cold state
-        self._auto_warmup_cold_buttons = {}  # {prefix: QCheckBox}
+        self._keep_warm_temp = {}     # {prefix: bool} — Auto Keep Warm state
+        self._keep_warm_temp_buttons = {}  # {prefix: QCheckBox}
+        self._warmup_triggered = {}   # {prefix: bool} — True while warmup active for cold episode
 
         laser_prefixes = sorted(set(
             m.group(1) for c in self.child_output_connections
@@ -312,7 +313,9 @@ class BigSkyTab(RemoteControlTab):
         mode_row.addStretch()
         layout.addLayout(mode_row)
 
-        # ── Action buttons row: Stop, Warmup, Arm External, Auto Re-Arm ──
+        # ── Action buttons + auto checkboxes row ──
+        # Buttons on the left, two checkboxes stacked vertically on the right,
+        # sized to match the button row height.
         action_row = QtWidgets.QHBoxLayout()
         action_row.setSpacing(8)
 
@@ -350,31 +353,40 @@ class BigSkyTab(RemoteControlTab):
         }
         self._style_action_buttons(prefix, warming=False, armed=False)
 
-        auto_arm_cb = QtWidgets.QCheckBox("Auto Re-Arm Ext")
+        # Checkboxes stacked vertically to match button row height
+        cb_col = QtWidgets.QVBoxLayout()
+        cb_col.setContentsMargins(0, 0, 0, 0)
+        cb_col.setSpacing(0)
+
+        auto_arm_cb = QtWidgets.QCheckBox("Auto Arm Ext")
         auto_arm_cb.setToolTip(
             "Auto-arm this laser to external trigger before each shot queue."
         )
-        auto_arm_cb.setStyleSheet("font-weight: bold; padding: 4px;")
+        auto_arm_cb.setStyleSheet(
+            "font-weight: bold; font-size: 10px; padding: 1px;"
+        )
         auto_arm_cb.toggled.connect(
             lambda checked, p=prefix: self._on_keep_warm_toggle(p, checked)
         )
         self._keep_warm_buttons[prefix] = auto_arm_cb
         self._keep_warm[prefix] = False
-        action_row.addWidget(auto_arm_cb)
+        cb_col.addWidget(auto_arm_cb)
 
-        auto_warmup_cb = QtWidgets.QCheckBox("Auto Warmup if Cold")
-        auto_warmup_cb.setToolTip(
-            "After shot queue ends, restore warmup only if\n"
-            "temperature drops below 37C. Otherwise stay armed."
+        auto_keep_warm_cb = QtWidgets.QCheckBox("Auto Keep Warm")
+        auto_keep_warm_cb.setToolTip(
+            "While in manual mode, automatically enter warmup\n"
+            "if temperature drops below 37°C."
         )
-        auto_warmup_cb.setStyleSheet("padding: 4px;")
-        auto_warmup_cb.toggled.connect(
-            lambda checked, p=prefix: self._on_auto_warmup_cold_toggle(p, checked)
+        auto_keep_warm_cb.setStyleSheet("font-size: 10px; padding: 1px;")
+        auto_keep_warm_cb.toggled.connect(
+            lambda checked, p=prefix: self._on_keep_warm_temp_toggle(p, checked)
         )
-        self._auto_warmup_cold_buttons[prefix] = auto_warmup_cb
-        self._auto_warmup_cold[prefix] = False
-        action_row.addWidget(auto_warmup_cb)
+        self._keep_warm_temp_buttons[prefix] = auto_keep_warm_cb
+        self._keep_warm_temp[prefix] = False
+        self._warmup_triggered[prefix] = False
+        cb_col.addWidget(auto_keep_warm_cb)
 
+        action_row.addLayout(cb_col)
         action_row.addStretch()
         layout.addLayout(action_row)
 
@@ -420,17 +432,61 @@ class BigSkyTab(RemoteControlTab):
             self.primary_worker, 'update_keep_warm', prefix, state
         ))
 
-    # ── Auto Warmup if Cold ─────────────────────────────────────────
+    # ── Auto Keep Warm (tab-side temperature monitoring) ────────────
 
-    def _on_auto_warmup_cold_toggle(self, prefix, checked):
-        """User toggled Auto Warmup if Cold for a laser."""
-        self._auto_warmup_cold[prefix] = checked
-        self._sync_auto_warmup_cold_to_worker(prefix, checked)
+    def _on_keep_warm_temp_toggle(self, prefix, checked):
+        """User toggled Auto Keep Warm for a laser."""
+        self._keep_warm_temp[prefix] = checked
+        if not checked:
+            self._warmup_triggered[prefix] = False
+
+    def _evaluate_keep_warm(self, prefix, temp):
+        """Check if Auto Keep Warm should trigger warmup. Runs on GUI thread.
+
+        Uses hysteresis to prevent oscillation:
+        - Triggers warmup when temp drops below _TEMP_COLD (37°C)
+        - Resets trigger flag when temp rises to _TEMP_WARM (39°C)
+
+        The self.mode check is GIL-atomic (single LOAD_ATTR on an int) and
+        safe to read from the GUI thread without locking.
+        """
+        if not self._keep_warm_temp.get(prefix, False):
+            return
+        if not self._laser_online.get(prefix, False):
+            return
+        # Only act in manual mode — during buffered shots, let the shot run
+        if self.mode != MODE_MANUAL:
+            return
+
+        if temp < _TEMP_COLD and not self._warmup_triggered.get(prefix, False):
+            self._warmup_triggered[prefix] = True
+            self.logger.info(
+                "Auto Keep Warm: %s cold (%.1fC), triggering warmup", prefix, temp
+            )
+            self._send_keep_warm_warmup(prefix)
+        elif temp >= _TEMP_WARM:
+            # Hysteresis: reset trigger only when fully warm
+            if self._warmup_triggered.get(prefix, False):
+                self._warmup_triggered[prefix] = False
+                self.logger.debug(
+                    "Auto Keep Warm: %s warm (%.1fC), trigger reset", prefix, temp
+                )
 
     @define_state(MODE_MANUAL, True)
-    def _sync_auto_warmup_cold_to_worker(self, prefix, state):
+    def _send_keep_warm_warmup(self, prefix):
+        """Queue warmup command to worker for Auto Keep Warm.
+
+        Decorated with @define_state(MODE_MANUAL, True) so it only executes
+        in manual mode. If queued during a mode transition (e.g., a shot just
+        started), the event stays queued and fires when returning to manual.
+        The stale-event guard below prevents firing if the user unchecked
+        Auto Keep Warm while the event was waiting.
+        """
+        # Stale-event guard: user may have unchecked while event was queued
+        if not self._keep_warm_temp.get(prefix, False):
+            return
         yield (self.queue_work(
-            self.primary_worker, 'update_auto_warmup_cold', prefix, state
+            self.primary_worker, 'restore_warmup_from_tab', prefix
         ))
 
     # ── Action buttons: Stop / Warmup / Arm Ext ─────────────────────
@@ -652,6 +708,9 @@ class BigSkyTab(RemoteControlTab):
         # Temperature monitor
         if connection in self._temp_labels:
             self._style_temp(self._temp_labels[connection], value)
+            # Evaluate Auto Keep Warm (prefix was extracted above at line 644)
+            if m:
+                self._evaluate_keep_warm(prefix, value)
             return
 
         # Voltage monitor
@@ -703,8 +762,10 @@ class BigSkyTab(RemoteControlTab):
         # Voltage spinbox
         for widget in self.AO_widgets.values():
             widget.setEnabled(enabled)
-        # Keep Warm buttons
+        # Auto checkbox buttons
         for btn in self._keep_warm_buttons.values():
+            btn.setEnabled(enabled)
+        for btn in self._keep_warm_temp_buttons.values():
             btn.setEnabled(enabled)
         # Toggle buttons: respect keep_warm interlock
         for conn, btn in self._toggle_buttons.items():
@@ -730,7 +791,7 @@ class BigSkyTab(RemoteControlTab):
     def get_save_data(self):
         return {
             'keep_warm': dict(self._keep_warm),
-            'auto_warmup_cold': dict(self._auto_warmup_cold),
+            'keep_warm_temp': dict(self._keep_warm_temp),
         }
 
     def restore_save_data(self, data):
@@ -743,11 +804,13 @@ class BigSkyTab(RemoteControlTab):
                 cb.setChecked(state)
                 cb.blockSignals(False)
                 self._update_keep_warm_interlocks(prefix)
-        saved_awc = data.get('auto_warmup_cold', {})
-        for prefix, state in saved_awc.items():
-            if prefix in self._auto_warmup_cold_buttons:
-                self._auto_warmup_cold[prefix] = state
-                cb = self._auto_warmup_cold_buttons[prefix]
+        # Support both old key ('auto_warmup_cold') and new key ('keep_warm_temp')
+        saved_kwt = data.get('keep_warm_temp', data.get('auto_warmup_cold', {}))
+        for prefix, state in saved_kwt.items():
+            if prefix in self._keep_warm_temp_buttons:
+                self._keep_warm_temp[prefix] = state
+                self._warmup_triggered[prefix] = False
+                cb = self._keep_warm_temp_buttons[prefix]
                 cb.blockSignals(True)
                 cb.setChecked(state)
                 cb.blockSignals(False)
@@ -766,7 +829,6 @@ class BigSkyTab(RemoteControlTab):
                 "child_output_connections": self.child_output_connections,
                 "child_monitor_connections": self.child_monitor_connections,
                 "keep_warm_state": dict(self._keep_warm),
-                "auto_warmup_cold_state": dict(self._auto_warmup_cold),
             },
         )
         self.primary_worker = "main_worker"
