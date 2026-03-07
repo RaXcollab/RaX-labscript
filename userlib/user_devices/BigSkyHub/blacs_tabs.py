@@ -459,6 +459,10 @@ class BigSkyTab(RemoteControlTab):
         - Triggers warmup when temp drops below _TEMP_COLD (37°C)
         - Resets trigger flag when temp rises to _TEMP_WARM (39°C)
 
+        The hysteresis reset runs in ALL modes so the flag is correctly
+        cleared when temp is high during buffered shots. Only the warmup
+        trigger is gated on MANUAL mode.
+
         The self.mode check is GIL-atomic (single LOAD_ATTR on an int) and
         safe to read from the GUI thread without locking.
         """
@@ -466,7 +470,17 @@ class BigSkyTab(RemoteControlTab):
             return
         if not self._laser_online.get(prefix, False):
             return
-        # Only act in manual mode — during buffered shots, let the shot run
+
+        # Hysteresis reset runs in ALL modes (including buffered) so the
+        # flag is correctly cleared when temp is high during shots
+        if temp >= _TEMP_WARM:
+            if self._warmup_triggered.get(prefix, False):
+                self._warmup_triggered[prefix] = False
+                self.logger.debug(
+                    "Auto Keep Warm: %s warm (%.1fC), trigger reset", prefix, temp
+                )
+
+        # Only trigger warmup in manual mode
         if self.mode != MODE_MANUAL:
             return
 
@@ -476,13 +490,6 @@ class BigSkyTab(RemoteControlTab):
                 "Auto Keep Warm: %s cold (%.1fC), triggering warmup", prefix, temp
             )
             self._send_keep_warm_warmup(prefix)
-        elif temp >= _TEMP_WARM:
-            # Hysteresis: reset trigger only when fully warm
-            if self._warmup_triggered.get(prefix, False):
-                self._warmup_triggered[prefix] = False
-                self.logger.debug(
-                    "Auto Keep Warm: %s warm (%.1fC), trigger reset", prefix, temp
-                )
 
     @define_state(MODE_MANUAL, True)
     def _send_keep_warm_warmup(self, prefix):
