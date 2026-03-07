@@ -118,39 +118,49 @@ class BigSkyWorker(RemoteControlWorker):
 
         Called by transition_to_buffered when _is_armed is False.
         Voltage persists through stop — no re-send needed.
+        Wrapped in try/except — must not raise for unavailable lasers.
         """
-        self.logger.info(f"_arm_laser: arming {prefix} from warmup")
+        try:
+            self.logger.info(f"_arm_laser: arming {prefix} from warmup")
 
-        # Step 1: Standby
-        self._send_cmd(f"{prefix}_stop", 1.0, f"arm: stop {prefix}")
-        time.sleep(_CMD_DELAY_S)
+            # Step 1: Standby
+            self._send_cmd(f"{prefix}_stop", 1.0, f"arm: stop {prefix}")
+            time.sleep(_CMD_DELAY_S)
 
-        # Step 2: External lamp mode (requires standby)
-        self._send_cmd(f"{prefix}_lamp_mode", 1.0, f"arm: lamp_mode=1")
-        # Safety: ensure Q-switch stays internal (always qsm0 in our setup)
-        self._send_cmd(f"{prefix}_qswitch_mode", 0.0, f"arm: qswitch_mode=0 (safety)")
+            # Step 2: External lamp mode (requires standby)
+            self._send_cmd(f"{prefix}_lamp_mode", 1.0, f"arm: lamp_mode=1")
+            # Safety: ensure Q-switch stays internal (always qsm0 in our setup)
+            self._send_cmd(f"{prefix}_qswitch_mode", 0.0, f"arm: qswitch_mode=0 (safety)")
 
-        # Step 3: Activate
-        self._send_cmd(f"{prefix}_lamps", 1.0, f"arm: lamps=1")
-        time.sleep(_CMD_DELAY_S)
+            # Step 3: Activate
+            self._send_cmd(f"{prefix}_lamps", 1.0, f"arm: lamps=1")
+            time.sleep(_CMD_DELAY_S)
 
-        # Step 4: Open shutter, arm qswitch
-        self._send_cmd(f"{prefix}_shutter", 1.0, f"arm: shutter=1")
-        self._send_cmd(f"{prefix}_qswitch", 1.0, f"arm: qswitch=1")
+            # Step 4: Open shutter, arm qswitch
+            self._send_cmd(f"{prefix}_shutter", 1.0, f"arm: shutter=1")
+            self._send_cmd(f"{prefix}_qswitch", 1.0, f"arm: qswitch=1")
 
-        # Update tracking
-        self._last_sent_values.update({
-            f"{prefix}_lamp_mode": 1.0,
-            f"{prefix}_qswitch_mode": 0.0,
-            f"{prefix}_lamps": 1.0,
-            f"{prefix}_shutter": 1.0,
-            f"{prefix}_qswitch": 1.0,
-        })
+            # Update tracking
+            self._last_sent_values.update({
+                f"{prefix}_lamp_mode": 1.0,
+                f"{prefix}_qswitch_mode": 0.0,
+                f"{prefix}_lamps": 1.0,
+                f"{prefix}_shutter": 1.0,
+                f"{prefix}_qswitch": 1.0,
+            })
 
-        self._is_armed[prefix] = True
-        self.logger.info(
-            f"_arm_laser: {prefix} armed (lamp external, QS internal, shutter open, qswitch on)"
-        )
+            self._is_armed[prefix] = True
+            self.logger.info(
+                f"_arm_laser: {prefix} armed (lamp external, QS internal, shutter open, qswitch on)"
+            )
+
+        except Exception as e:
+            msg = str(e)
+            if "unknown connection" in msg or "laser disconnected" in msg:
+                self.logger.warning(f"_arm_laser: {prefix} unavailable ({msg}), skipping")
+            else:
+                self.logger.error(f"_arm_laser: failed for {prefix}: {e}")
+            self._is_armed[prefix] = False
 
     def _restore_warmup(self, prefix):
         """Restore warmup after shot queue ends or abort.
@@ -367,60 +377,71 @@ class BigSkyWorker(RemoteControlWorker):
 
         with h5py.File(h5_filepath, 'r') as f:
             group = f['devices'][self.device_name]
+            has_operation = 'remote_device_operation' in group
+            table = group['remote_device_operation'][:] if has_operation else None
 
-            if 'remote_device_operation' not in group:
-                # No BigSky channels in this shot — still auto-arm if needed
-                self._auto_arm_if_needed()
-                self.initial_monitor_values = self.check_all_remote_values()
-                return {}
-
-            if not self.remote_comms.connected:
-                raise Exception(
-                    "Cannot program BigSky lasers: connection not established.\n"
-                    "Please check that the BigSky GUI is running."
-                )
-
-            self.h5_filepath = h5_filepath
-            table = group['remote_device_operation'][:]
-
-            # Group columns by laser prefix (e.g. YAG_1, YAG_2)
-            grouped = defaultdict(list)
-            for col in table.dtype.names:
-                m = _PREFIX_RE.match(col)
-                if m:
-                    laser_prefix = m.group(1)
-                    suffix = m.group(2)
-                    grouped[laser_prefix].append((suffix, col))
-                else:
-                    # Unrecognised column — send at the end
-                    grouped["_unknown"].append((col, col))
-
-            # Program each laser's channels in safe order
-            for laser_prefix in sorted(grouped.keys()):
-                commands = grouped[laser_prefix]
-                commands.sort(key=lambda x: COMMAND_ORDER.get(x[0], 99))
-
-                for suffix, col in commands:
-                    value = float(table[0][col])
-                    self.logger.debug(
-                        f"transition_to_buffered: programming {col} = {value} "
-                        f"(laser={laser_prefix}, order={COMMAND_ORDER.get(suffix, 99)})"
-                    )
-                    wait = getattr(self, 'wait_for_lock', False)
-                    response = self.remote_comms.program_value(
-                        col, value, wait_for_lock=wait
-                    )
-                    self._check_response(
-                        response, f"buffered_program({col}={value})"
-                    )
-                    # Fix pre-existing staleness: track all sent values
-                    self._last_sent_values[col] = value
-
-            # Auto-arm keep-warm lasers after h5 programming
+        # All h5 access done — program outside the zlock so that exceptions
+        # (e.g. lock-wait timeout) don't trigger "lock not held" on cleanup.
+        if not has_operation:
+            # No BigSky channels in this shot — still auto-arm if needed
             self._auto_arm_if_needed()
-
-            # Snapshot monitor values before shot
             self.initial_monitor_values = self.check_all_remote_values()
+            return {}
+
+        if not self.remote_comms.connected:
+            raise Exception(
+                "Cannot program BigSky lasers: connection not established.\n"
+                "Please check that the BigSky GUI is running."
+            )
+
+        self.h5_filepath = h5_filepath
+
+        # Group columns by laser prefix (e.g. YAG_1, YAG_2)
+        grouped = defaultdict(list)
+        for col in table.dtype.names:
+            m = _PREFIX_RE.match(col)
+            if m:
+                laser_prefix = m.group(1)
+                suffix = m.group(2)
+                grouped[laser_prefix].append((suffix, col))
+            else:
+                # Unrecognised column — send at the end
+                grouped["_unknown"].append((col, col))
+
+        # Program each laser's channels in safe order
+        for laser_prefix in sorted(grouped.keys()):
+            commands = grouped[laser_prefix]
+            commands.sort(key=lambda x: COMMAND_ORDER.get(x[0], 99))
+
+            for suffix, col in commands:
+                value = float(table[0][col])
+                self.logger.debug(
+                    f"transition_to_buffered: programming {col} = {value} "
+                    f"(laser={laser_prefix}, order={COMMAND_ORDER.get(suffix, 99)})"
+                )
+                wait = getattr(self, 'wait_for_lock', False)
+                response = self.remote_comms.program_value(
+                    col, value, wait_for_lock=wait
+                )
+                # Gracefully skip lasers not registered in GUI
+                if response and response.get("status") == "ERROR":
+                    msg = response.get("message", "")
+                    if "unknown connection" in msg or "laser disconnected" in msg:
+                        self.logger.warning(
+                            f"transition_to_buffered: skipping {col} ({msg})"
+                        )
+                        continue
+                self._check_response(
+                    response, f"buffered_program({col}={value})"
+                )
+                # Fix pre-existing staleness: track all sent values
+                self._last_sent_values[col] = value
+
+        # Auto-arm keep-warm lasers after h5 programming
+        self._auto_arm_if_needed()
+
+        # Snapshot monitor values before shot
+        self.initial_monitor_values = self.check_all_remote_values()
 
         return {}
 

@@ -325,27 +325,29 @@ class RemoteControlWorker(Worker):
             group = f['devices'][self.device_name]
             if 'remote_device_operation' not in group:
                 return {}
-
-            if not self.remote_comms.connected:
-                raise Exception(
-                    "Cannot program remote device: connection not established.\n"
-                    "Please check connection and try again."
-                )
-
-            self.h5_filepath = h5_filepath
             table = group['remote_device_operation'][:]
 
-            for connection in table.dtype.names:
-                value = float(table[0][connection])
-                self.logger.debug(f"transition_to_buffered: programming {connection} = {value}")
-                wait = getattr(self, 'wait_for_lock', False)
-                response = self.remote_comms.program_value(
-                    connection, value, wait_for_lock=wait
-                )
-                self._check_response(response, f"buffered_program({connection}={value})")
+        # All h5 access done — program outside the zlock so that exceptions
+        # (e.g. lock-wait timeout) don't trigger "lock not held" on cleanup.
+        if not self.remote_comms.connected:
+            raise Exception(
+                "Cannot program remote device: connection not established.\n"
+                "Please check connection and try again."
+            )
 
-            # Snapshot monitor values before shot
-            self.initial_monitor_values = self.check_all_remote_values()
+        self.h5_filepath = h5_filepath
+
+        for connection in table.dtype.names:
+            value = float(table[0][connection])
+            self.logger.debug(f"transition_to_buffered: programming {connection} = {value}")
+            wait = getattr(self, 'wait_for_lock', False)
+            response = self.remote_comms.program_value(
+                connection, value, wait_for_lock=wait
+            )
+            self._check_response(response, f"buffered_program({connection}={value})")
+
+        # Snapshot monitor values before shot
+        self.initial_monitor_values = self.check_all_remote_values()
 
         return {}
 
