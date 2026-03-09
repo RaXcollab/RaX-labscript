@@ -63,7 +63,7 @@ def _status_html(lines):
     return f'<pre style="{_PRE_STYLE}">{text}</pre>'
 
 
-def _load_summary_html(sa, raw_lines):
+def _load_summary_html(sa, source='h5'):
     """Build a compact, grouped HTML summary after loading a ScanAnalysis."""
     import numpy as np
     n = len(sa.df)
@@ -84,8 +84,27 @@ def _load_summary_html(sa, raw_lines):
     peak_idx = np.argmax(avg_fl[sc_trig:]) + sc_trig
     fl_peak = sa.scope_time_ms[peak_idx]
 
+    # Source tag
+    if source == 'cache':
+        source_tag = '<span style="color: #080;">from cache</span>'
+        meta = getattr(sa, '_cache_meta', {})
+        extras = []
+        if meta.get('downsample_scope'):
+            extras.append(f'scope {meta["downsample_scope"]}x')
+        tw = meta.get('time_window')
+        if tw:
+            extras.append(f'{tw[0]}-{tw[1]} ms window')
+        if meta.get('abs_int'):
+            extras.append(f'abs_int={tuple(meta["abs_int"])}')
+        if meta.get('fl_int'):
+            extras.append(f'fl_int={tuple(meta["fl_int"])}')
+        if extras:
+            source_tag += f' <span style="color: #666;">({", ".join(extras)})</span>'
+    else:
+        source_tag = '<span style="color: #c60;">from h5</span>'
+
     html = f'''<div style="font-family: monospace; font-size: 12px; line-height: 1.4;">
-<b>Loaded {n} shots</b> &nbsp;|&nbsp; tYAG = {tYAG:.1f} ms
+<b>Loaded {n} shots</b> &nbsp;|&nbsp; tYAG = {tYAG:.1f} ms &nbsp;|&nbsp; {source_tag}
 <table style="margin: 2px 0; border-spacing: 8px 0;">
 <tr><td style="color: #666;">Scan:</td><td><b>{scan}</b> ({n_scan} values)</td></tr>
 <tr><td style="color: #666;">Secondary:</td><td><b>{sec}</b> = {sec_vals}</td></tr>
@@ -142,32 +161,61 @@ def setup_explorer(experiment='Closed_cell', base=None):
     # Widgets (created once, reused on re-run)
     if not _state['widgets_created']:
         log.debug("Creating new widgets + handlers")
+        _dw = {'description_width': '100px'}
         _state['w_exp'] = widgets.Text(
-            value=experiment, description='Experiment:',
-            style={'description_width': '100px'})
+            value=experiment, description='Experiment:', style=_dw)
         _state['w_date'] = widgets.Text(
-            value='2026/03/06', description='Date (Y/M/D):',
-            style={'description_width': '100px'})
+            value='2026/03/06', description='Date (Y/M/D):', style=_dw)
         _state['w_seq'] = widgets.IntText(
-            value=2, description='Sequence #:',
-            style={'description_width': '100px'})
+            value=2, description='Sequence #:', style=_dw)
         _state['w_scan'] = widgets.Dropdown(
-            options=['(auto-detect)'], description='Scan col:',
-            style={'description_width': '100px'})
+            options=['(auto-detect)'], description='Scan col:', style=_dw)
         _state['w_sec'] = widgets.Dropdown(
-            options=['(auto-detect)'], description='Secondary:',
-            style={'description_width': '100px'})
+            options=['(auto-detect)'], description='Secondary:', style=_dw)
         _state['w_detect'] = widgets.Button(
             description='Detect Scan', button_style='info')
+        _state['w_force_reimport'] = widgets.Checkbox(
+            value=False, description='Force reimport',
+            style={'description_width': 'auto'},
+            layout=widgets.Layout(width='160px'))
         _state['w_load'] = widgets.Button(
             description='Load & Process', button_style='primary')
         # HTML widget instead of Output widget to avoid VSCode duplicate
         # rendering bug (microsoft/vscode-jupyter#11540)
         _state['w_out'] = widgets.HTML(value='')
 
+        # Cache controls
+        cache_dir = os.path.join(_state['base'], experiment, '.scan_cache')
+        _state['w_cache_dir'] = widgets.Text(
+            value=cache_dir, description='Cache folder:',
+            style={'description_width': '100px'},
+            layout=widgets.Layout(width='600px'))
+        _state['w_auto_cache'] = widgets.Checkbox(
+            value=True, description='Auto-save on import',
+            style={'description_width': 'auto'},
+            layout=widgets.Layout(width='180px'))
+        _state['w_downsample'] = widgets.Dropdown(
+            options=[('Full', None), ('5x', 5), ('10x', 10), ('20x', 20), ('100x', 100)],
+            value=10, description='Scope downsample:',
+            style={'description_width': 'auto'},
+            layout=widgets.Layout(width='200px'))
+        _state['w_exclude_raw'] = widgets.Checkbox(
+            value=True, description='Skip raw abs',
+            style={'description_width': 'auto'},
+            layout=widgets.Layout(width='140px'))
+        _state['w_time_end'] = widgets.FloatText(
+            value=50.0, description='Time end (ms):',
+            style={'description_width': 'auto'},
+            layout=widgets.Layout(width='170px'), step=10)
+        _state['w_save_cache'] = widgets.Button(
+            description='Save Cache', button_style='success',
+            layout=widgets.Layout(width='120px'))
+        _state['w_cache_info'] = widgets.HTML(value='')
+
         # Attach handlers ONCE
         _state['w_detect'].on_click(_on_detect)
         _state['w_load'].on_click(_on_load)
+        _state['w_save_cache'].on_click(_on_save_cache)
         _state['widgets_created'] = True
     else:
         log.debug("Reusing existing widgets (skipping handler registration)")
@@ -181,7 +229,12 @@ def setup_explorer(experiment='Closed_cell', base=None):
     if 'container' not in w:
         w['container'] = widgets.VBox([
             widgets.HBox([w['w_exp'], w['w_date'], w['w_seq'], w['w_detect']]),
-            widgets.HBox([w['w_scan'], w['w_sec'], w['w_load']]),
+            widgets.HBox([w['w_scan'], w['w_sec'], w['w_force_reimport'],
+                          w['w_load']]),
+            w['w_cache_dir'],
+            widgets.HBox([w['w_auto_cache'], w['w_downsample'],
+                          w['w_time_end'], w['w_exclude_raw'],
+                          w['w_save_cache'], w['w_cache_info']]),
             w['w_out'],
         ])
     clear_output(wait=True)
@@ -197,6 +250,69 @@ def _get_folder():
     """Build the sequence folder path from current widget values."""
     w = _get_state()
     return os.path.join(w['base'], w['w_exp'].value, w['w_date'].value, f"{w['w_seq'].value:04d}")
+
+
+def _get_cache_path():
+    """Build the cache file path from current widget values."""
+    w = _get_state()
+    cache_dir = w['w_cache_dir'].value
+    date_str = w['w_date'].value.replace('/', '-')
+    seq_num = w['w_seq'].value
+    return os.path.join(cache_dir, f'{date_str}_{seq_num:04d}.npz')
+
+
+def _get_cache_options(w):
+    """Parse downsample, exclude, and time_window settings from widgets."""
+    ds_val = w['w_downsample'].value
+    downsample = {'scope': ds_val} if ds_val else None
+    exclude = ['_abs_raw'] if w['w_exclude_raw'].value else None
+    t_end = w['w_time_end'].value
+    time_window = (0, t_end) if t_end and t_end > 0 else None
+    return downsample, exclude, time_window
+
+
+def _update_cache_info(w):
+    """Refresh the cache info HTML widget."""
+    try:
+        cache_path = _get_cache_path()
+        folder = _get_folder()
+        status = ScanAnalysis.cache_status(cache_path, seq_folder=folder)
+    except Exception:
+        w['w_cache_info'].value = ''
+        return
+
+    if not status['exists']:
+        w['w_cache_info'].value = (
+            '<span style="font-size: 11px; color: #999;">No cache</span>')
+        return
+
+    meta = status.get('meta') or {}
+    size = status['size_mb']
+    parts = [f'{size:.1f} MB']
+    if meta.get('downsample_scope'):
+        parts.append(f'scope {meta["downsample_scope"]}x')
+    tw = meta.get('time_window')
+    if tw:
+        parts.append(f'{tw[0]}-{tw[1]} ms')
+    if status['valid']:
+        color = '#080'
+        parts.append('valid')
+    else:
+        color = '#c60'
+        parts.append('stale')
+    text = ' | '.join(parts)
+    w['w_cache_info'].value = (
+        f'<span style="font-size: 11px; color: {color};">{text}</span>')
+
+
+def _inject_sa(new_sa, w, source='h5'):
+    """Inject ScanAnalysis into notebook namespace and update status display."""
+    ip = get_ipython()
+    if ip:
+        ip.user_ns['sa'] = new_sa
+    w['sa'] = new_sa
+    w['w_out'].value = _load_summary_html(new_sa, source=source)
+    _update_cache_info(w)
 
 
 def _on_detect(b=None):
@@ -227,32 +343,70 @@ def _on_detect(b=None):
     for k in scanned:
         lines.append(f'  {k}: {counts[k]} unique (scanned)')
     w['w_out'].value = _status_html(lines)
+    _update_cache_info(w)
 
 
 def _on_load(b=None):
-    """Load button callback. Creates a ScanAnalysis and injects it as ``sa``
-    into the notebook's global namespace so all subsequent cells can use it
-    directly — no need to call get_sa() or re-run any cell after clicking Load.
+    """Load button callback. Tries cache first, falls back to h5 import.
+
+    After loading, injects ``sa`` into the notebook namespace. If auto-save
+    is enabled and data was loaded from h5, saves a cache file automatically.
     """
     w = _get_state()
     folder = _get_folder()
-    w['w_out'].value = _status_html([f'Loading {folder}...'])
+    cache_path = _get_cache_path()
+    force = w['w_force_reimport'].value
 
-    # ScanAnalysis prints progress to stdout — capture it for the HTML widget
+    # Try cache first (unless force reimport)
+    if not force:
+        try:
+            status = ScanAnalysis.cache_status(cache_path, seq_folder=folder)
+            if status['exists'] and status['valid']:
+                w['w_out'].value = _status_html(['Loading from cache...'])
+                import io, contextlib
+                buf = io.StringIO()
+                with contextlib.redirect_stdout(buf):
+                    new_sa = ScanAnalysis.from_cache(cache_path,
+                                                     seq_folder=folder)
+                _inject_sa(new_sa, w, source='cache')
+                return
+        except Exception as e:
+            log.warning("Cache load failed, falling back to h5: %s", e)
+
+    # Import from h5 files
+    w['w_out'].value = _status_html([f'Loading from h5: {folder}...'])
     import io, contextlib
     buf = io.StringIO()
     with contextlib.redirect_stdout(buf):
         new_sa = ScanAnalysis(folder, scan_col=w['w_scan'].value,
                               secondary_col=w['w_sec'].value)
 
-    # Inject 'sa' into the notebook's namespace
-    ip = get_ipython()
-    if ip:
-        ip.user_ns['sa'] = new_sa
-    w['sa'] = new_sa
+    # Auto-save cache after successful h5 import
+    if w['w_auto_cache'].value:
+        try:
+            downsample, exclude, time_window = _get_cache_options(w)
+            with contextlib.redirect_stdout(io.StringIO()):
+                new_sa.save_cache(path=cache_path, downsample=downsample,
+                                  exclude=exclude, time_window=time_window)
+        except Exception as e:
+            log.warning("Auto-save cache failed: %s", e)
 
-    # Parse captured stdout into structured HTML
-    raw = buf.getvalue().rstrip()
-    # Strip blank lines and redundant detail (keep it compact)
-    raw_lines = [ln for ln in raw.split('\n') if ln.strip()]
-    w['w_out'].value = _load_summary_html(new_sa, raw_lines)
+    _inject_sa(new_sa, w, source='h5')
+
+
+def _on_save_cache(b=None):
+    """Manual Save Cache button handler."""
+    w = _get_state()
+    sa = w.get('sa')
+    if sa is None:
+        w['w_cache_info'].value = (
+            '<span style="font-size: 11px; color: #c00;">No data loaded</span>')
+        return
+    cache_path = _get_cache_path()
+    downsample, exclude, time_window = _get_cache_options(w)
+    import io, contextlib
+    buf = io.StringIO()
+    with contextlib.redirect_stdout(buf):
+        sa.save_cache(path=cache_path, downsample=downsample, exclude=exclude,
+                      time_window=time_window)
+    _update_cache_info(w)

@@ -10,12 +10,28 @@ Usage:
 """
 
 import os
+import hashlib
+import json
+import logging
+from datetime import datetime, timezone
+
 import numpy as np
 import matplotlib.pyplot as plt
 from scipy.optimize import curve_fit
 
 from scan_analysis import load_scan_globals, load_scan_traces, load_scan_scope, integrate_window
 from filtering import line_func
+
+log = logging.getLogger(__name__)
+
+CACHE_VERSION = 1
+
+
+def _h5_folder_fingerprint(seq_folder):
+    """Return (n_files, md5_hex) for cache validation."""
+    names = sorted(f for f in os.listdir(seq_folder) if f.endswith('.h5'))
+    h = hashlib.md5('|'.join(names).encode()).hexdigest()
+    return len(names), h
 
 
 class ScanAnalysis:
@@ -161,6 +177,288 @@ class ScanAnalysis:
         fl_peak_ms = self.scope_time_ms[peak_idx]
         print(f"  Fluorescence peak at {fl_peak_ms:.2f} ms "
               f"(tYAG={self.tYAG_ms:.1f}, offset={fl_peak_ms - self.tYAG_ms:.2f} ms)")
+
+    # ---- caching ----
+
+    def save_cache(self, path=None, downsample=None, exclude=None,
+                   time_window=None):
+        """Save processed data to a portable .npz cache.
+
+        Parameters
+        ----------
+        path : str, optional
+            Explicit file path for the cache. If None, saves to
+            ``{seq_folder}/.scan_cache.npz``.
+        downsample : dict, optional
+            Decimation factors. Keys: 'scope' and/or 'abs', values: int.
+            E.g. ``{'scope': 10}`` decimates scope from 1 MHz to 100 kHz.
+            Uses simple slicing (every Nth sample), not anti-alias filtering.
+        exclude : list of str, optional
+            Attribute names to exclude. E.g. ``['_abs_raw']``.
+        time_window : tuple of (float, float), optional
+            Time window in ms (absolute experiment time) to keep.
+            E.g. ``(0, 50)`` trims both abs and scope to 0–50 ms.
+            Applied before downsampling. Significantly reduces cache size
+            when the recording window is much longer than the signal.
+        """
+        if path is None:
+            path = os.path.join(self.seq_folder, '.scan_cache.npz')
+        exclude = set(exclude or [])
+        downsample = downsample or {}
+
+        # Build metadata dict (scalars + DataFrame schema)
+        df = self.df
+        # Separate numeric and non-numeric columns
+        import pandas as pd
+        str_cols = {}
+        num_cols = []
+        for col in df.columns:
+            if pd.api.types.is_numeric_dtype(df[col]) or pd.api.types.is_bool_dtype(df[col]):
+                num_cols.append(col)
+            else:
+                # Convert to Python strings for JSON serialization
+                str_cols[col] = [str(v) for v in df[col].tolist()]
+        df_numeric = df[num_cols].values.astype(np.float64) if num_cols else np.array([])
+
+        # Fingerprint for staleness detection
+        try:
+            n_h5, h5_hash = _h5_folder_fingerprint(self.seq_folder)
+        except FileNotFoundError:
+            n_h5, h5_hash = 0, ''
+
+        meta = {
+            'cache_version': CACHE_VERSION,
+            'created_utc': datetime.now(timezone.utc).isoformat(),
+            'seq_folder': self.seq_folder,
+            'n_shots': len(df),
+            'h5_names_hash': h5_hash,
+            'n_h5_files': n_h5,
+            'scan_col': self.scan_col,
+            'secondary_col': self.secondary_col,
+            'shutter_col': self.shutter_col,
+            'tYAG_ms': self.tYAG_ms,
+            'tstart_ms': self.tstart_ms,
+            'scan_ref_THz': self.scan_ref_THz,
+            'scan_label': self.scan_label,
+            'sec_vals': [v.item() if hasattr(v, 'item') else v
+                        for v in self.sec_vals],
+            'df_num_cols': num_cols,
+            'df_str_cols': str_cols,
+            'downsample_scope': downsample.get('scope'),
+            'downsample_abs': downsample.get('abs'),
+            'time_window': list(time_window) if time_window else None,
+            'abs_int': list(self.abs_int) if self.abs_int else None,
+            'fl_int': list(self.fl_int) if self.fl_int else None,
+        }
+
+        # Apply time window (trim before downsampling)
+        abs_time = self.abs_time_ms
+        abs_od = self.abs_OD
+        scope_time = self.scope_time_ms
+        scope_data = self.scope_corrected
+        abs_raw_data = self._abs_raw
+
+        if time_window is not None:
+            t0, t1 = time_window
+            # Absorption
+            a_mask = (abs_time >= t0) & (abs_time <= t1)
+            abs_time = abs_time[a_mask]
+            abs_od = abs_od[:, a_mask]
+            if abs_raw_data is not None:
+                abs_raw_data = abs_raw_data[:, a_mask]
+            # Scope
+            s_mask = (scope_time >= t0) & (scope_time <= t1)
+            scope_time = scope_time[s_mask]
+            scope_data = scope_data[:, s_mask]
+
+        # Build arrays dict
+        arrays = {}
+        arrays['abs_time_ms'] = abs_time
+        arrays['abs_OD'] = abs_od
+        arrays['scan_vals_raw'] = np.array(self._scan_vals_raw)
+        arrays['scan_vals'] = np.array(self.scan_vals)
+        if len(num_cols):
+            arrays['df_numeric'] = df_numeric
+
+        if '_abs_raw' not in exclude and abs_raw_data is not None:
+            if 'abs' in downsample and downsample['abs'] > 1:
+                f = downsample['abs']
+                abs_raw_data = abs_raw_data[:, ::f]
+                arrays['abs_time_ms'] = abs_time[::f][:abs_raw_data.shape[1]]
+            arrays['abs_raw'] = abs_raw_data
+
+        if 'scope' in downsample and downsample['scope'] > 1:
+            f = downsample['scope']
+            scope_data = scope_data[:, ::f]
+            scope_time = scope_time[::f][:scope_data.shape[1]]
+        arrays['scope_corrected'] = scope_data
+        arrays['scope_time_ms'] = scope_time
+
+        # Encode metadata as JSON bytes stored as a numpy array
+        meta_bytes = json.dumps(meta).encode('utf-8')
+        arrays['_metadata'] = np.frombuffer(meta_bytes, dtype=np.uint8)
+
+        # Use uncompressed npz — float64 experiment data has high entropy
+        # and doesn't compress meaningfully (~1.04x ratio), but compression
+        # adds significant I/O time.
+        os.makedirs(os.path.dirname(path) or '.', exist_ok=True)
+        np.savez(path, **arrays)
+        size_mb = os.path.getsize(path) / 1e6
+        print(f"Cache saved: {path} ({size_mb:.2f} MB)")
+        return path
+
+    @classmethod
+    def from_cache(cls, path, seq_folder=None, validate=True):
+        """Load a ScanAnalysis from a cached .npz file.
+
+        Parameters
+        ----------
+        path : str
+            Path to the ``.npz`` cache file.
+        seq_folder : str, optional
+            Original sequence folder for validation. If None, uses the
+            path stored in cache metadata.
+        validate : bool
+            If True (default), verify cache matches current h5 file list.
+            Set False for portable use on a PC without h5 files.
+
+        Returns
+        -------
+        ScanAnalysis
+
+        Raises
+        ------
+        FileNotFoundError
+            If cache file doesn't exist.
+        ValueError
+            If cache is stale or incompatible.
+        """
+        data = np.load(path, allow_pickle=False)
+        meta = json.loads(bytes(data['_metadata']))
+
+        if meta['cache_version'] != CACHE_VERSION:
+            raise ValueError(
+                f"Cache version {meta['cache_version']} != expected {CACHE_VERSION}")
+
+        if seq_folder is None:
+            seq_folder = meta['seq_folder']
+
+        if validate and os.path.isdir(seq_folder):
+            n_h5, h5_hash = _h5_folder_fingerprint(seq_folder)
+            if h5_hash != meta['h5_names_hash']:
+                raise ValueError(
+                    f"Cache stale: h5 files changed "
+                    f"(cached {meta['n_h5_files']} files, folder has {n_h5})")
+
+        # Construct instance without __init__
+        sa = cls.__new__(cls)
+        sa.seq_folder = seq_folder
+        sa.scan_col = meta['scan_col']
+        sa.secondary_col = meta['secondary_col']
+        sa.shutter_col = meta['shutter_col']
+        sa.tYAG_ms = float(meta['tYAG_ms'])
+        sa.tstart_ms = float(meta['tstart_ms'])
+        sa.scan_ref_THz = meta['scan_ref_THz']
+        sa.scan_label = meta['scan_label']
+        sa._scan_vals_raw = data['scan_vals_raw'].tolist()
+        sa.scan_vals = data['scan_vals']
+        sa.sec_vals = [float(v) if isinstance(v, (int, float)) else v
+                       for v in meta['sec_vals']]
+
+        # Reconstruct DataFrame
+        import pandas as pd
+        num_cols = meta['df_num_cols']
+        str_cols = meta['df_str_cols']
+        if num_cols and 'df_numeric' in data:
+            df = pd.DataFrame(data['df_numeric'], columns=num_cols)
+        else:
+            df = pd.DataFrame()
+        for col, vals in str_cols.items():
+            df[col] = vals
+        sa.df = df
+
+        # Arrays
+        sa.abs_time_ms = data['abs_time_ms']
+        sa.abs_OD = data['abs_OD']
+        sa._abs_raw = data['abs_raw'] if 'abs_raw' in data else None
+        sa.scope_time_ms = data['scope_time_ms']
+        sa.scope_corrected = data['scope_corrected']
+
+        # Integration bounds — restore if saved, else None
+        sa.abs_int = tuple(meta['abs_int']) if meta.get('abs_int') else None
+        sa.fl_int = tuple(meta['fl_int']) if meta.get('fl_int') else None
+
+        # Store cache metadata for display
+        sa._cache_meta = meta
+
+        source_parts = ['from cache']
+        if meta.get('downsample_scope'):
+            source_parts.append(f"scope {meta['downsample_scope']}x downsampled")
+        if 'abs_raw' not in data:
+            source_parts.append('raw abs excluded')
+        log.info("Loaded %s", ', '.join(source_parts))
+
+        sa._print_summary()
+        return sa
+
+    @staticmethod
+    def cache_status(path, seq_folder=None):
+        """Check if a valid cache exists without loading full arrays.
+
+        Parameters
+        ----------
+        path : str
+            Path to the ``.npz`` cache file.
+        seq_folder : str, optional
+            Sequence folder for validation.
+
+        Returns
+        -------
+        dict
+            Keys: 'exists', 'valid', 'meta', 'reason', 'size_mb'.
+        """
+        result = {'exists': False, 'valid': False, 'meta': None,
+                  'reason': '', 'size_mb': 0}
+        if not os.path.isfile(path):
+            result['reason'] = 'No cache file'
+            return result
+
+        result['exists'] = True
+        result['size_mb'] = os.path.getsize(path) / 1e6
+
+        try:
+            data = np.load(path, mmap_mode='r', allow_pickle=False)
+            meta = json.loads(bytes(data['_metadata']))
+            result['meta'] = meta
+        except Exception as e:
+            result['reason'] = f'Corrupt cache: {e}'
+            return result
+
+        if meta.get('cache_version') != CACHE_VERSION:
+            result['reason'] = (f"Version mismatch: "
+                                f"cache v{meta.get('cache_version')} != v{CACHE_VERSION}")
+            return result
+
+        if seq_folder is None:
+            seq_folder = meta.get('seq_folder', '')
+
+        if os.path.isdir(seq_folder):
+            try:
+                n_h5, h5_hash = _h5_folder_fingerprint(seq_folder)
+                if h5_hash != meta.get('h5_names_hash'):
+                    result['reason'] = (
+                        f"Stale: h5 files changed "
+                        f"(cached {meta.get('n_h5_files')} files, folder has {n_h5})")
+                    return result
+            except Exception as e:
+                result['reason'] = f'Validation error: {e}'
+                return result
+        else:
+            # Can't validate — no h5 folder (portable mode)
+            result['reason'] = 'Portable mode (h5 folder not found)'
+
+        result['valid'] = True
+        return result
 
     # ---- helpers ----
 

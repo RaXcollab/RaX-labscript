@@ -95,6 +95,8 @@ target/
 # Jupyter Notebook
 .ipynb_checkpoints
 *.ipynb
+# Exception: track analysis explorer notebooks
+!userlib/analysislib/Main_Experiment/Jupyter notebooks/Closed_cell_explorer.ipynb
 
 # IPython
 profile_default/
