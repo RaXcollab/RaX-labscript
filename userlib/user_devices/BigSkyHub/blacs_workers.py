@@ -278,7 +278,7 @@ class BigSkyWorker(RemoteControlWorker):
                         f"check_remote_values: skipping {connection} (laser disconnected)"
                     )
                     continue
-                if "rejected" in msg:
+                if "rejected:" in msg:
                     self.logger.warning(
                         f"check_remote_values: {connection} rejected by GUI ({msg}), skipping"
                     )
@@ -319,7 +319,7 @@ class BigSkyWorker(RemoteControlWorker):
                         f"check_all_remote_values: skipping {connection} (laser disconnected)"
                     )
                     continue
-                if "rejected" in msg:
+                if "rejected:" in msg:
                     self.logger.warning(
                         f"check_all_remote_values: {connection} rejected by GUI ({msg}), skipping"
                     )
@@ -377,7 +377,7 @@ class BigSkyWorker(RemoteControlWorker):
                         f"program_manual: skipping {connection} (laser disconnected)"
                     )
                     continue
-                if "rejected" in msg:
+                if "rejected:" in msg:
                     self.logger.warning(
                         f"program_manual: {connection}={value} rejected by GUI ({msg}), skipping"
                     )
@@ -441,7 +441,7 @@ class BigSkyWorker(RemoteControlWorker):
                 # Gracefully skip lasers not registered in GUI
                 if response and response.get("status") == "ERROR":
                     msg = response.get("message", "")
-                    if "unknown connection" in msg or "laser disconnected" in msg or "rejected" in msg:
+                    if "unknown connection" in msg or "laser disconnected" in msg or "rejected:" in msg:
                         self.logger.warning(
                             f"transition_to_buffered: skipping {col} ({msg})"
                         )
@@ -520,7 +520,7 @@ class BigSkyWorker(RemoteControlWorker):
                 return False
             if response.get("status") != "SUCCESS":
                 msg = response.get("message", "")
-                if "unknown connection" in msg or "laser disconnected" in msg or "rejected" in msg:
+                if "unknown connection" in msg or "laser disconnected" in msg or "rejected:" in msg:
                     self.logger.debug(
                         f"_verify_armed_state: {connection} unavailable ({msg})"
                     )
