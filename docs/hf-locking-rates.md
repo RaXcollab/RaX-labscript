@@ -28,7 +28,7 @@ measurements, not just repeated cache hits).
 |---|---|---|---|---|
 | Worker hardware poll, fast | 20 ms | 50 Hz | DLL frequency reads, all 8 channels | `workers.py:13`, `PreciseTimer` |
 | Worker hardware poll, slow | 1000 ms | 1 Hz | T, P, bounds, setpoints | `workers.py:14`, `CoarseTimer` |
-| GUI render, fast | 33 ms | ~30 Hz | plots + frequency labels | `main_wlm.py:72`, `PreciseTimer` |
+| GUI render, fast | 33 ms | ~30 Hz | plots + frequency labels | `main_wlm.py:72`, `CoarseTimer` |
 | GUI render, slow | 1000 ms | 1 Hz | status panel, T/P labels | `main_wlm.py:73`, `CoarseTimer` |
 | ZMQ PUB broadcast | 100 ms | 10 Hz | frequency + heartbeat to BLACS | `workers.py:19` |
 
@@ -71,9 +71,21 @@ human-ish timescales. 1 Hz is the right physical match.
 the cycle-shift plot scroll feels choppy. Going faster (60 Hz) would
 double CPU with no perceptual benefit — data only arrives at ~5 Hz/channel
 so 60 Hz frames are mostly redrawing the same staircase. Uses
-`PreciseTimer` (since 2026-05-05) so frame interval jitter is ±1 ms
-instead of the ±5-15 ms `CoarseTimer` produces; this matters most at the
-cycle-shift wrap boundary and under system load.
+**`CoarseTimer`**, not `PreciseTimer`. Briefly switched to `PreciseTimer`
+on 2026-05-05 to tighten the cycle-shift wrap-boundary stutter; this caused
+a complete GUI freeze at launch (Windows "Not Responding") and was reverted
+2026-05-06. On Windows, `PreciseTimer` uses the Multimedia Timer API
+(`timeSetEvent` + `timeBeginPeriod(1)`), which posts events from a separate
+kernel thread without the natural rate-limiting that `WM_TIMER` has;
+combined with heavy per-frame work (8 channels × pyqtgraph `setData`,
+plausibly >33 ms total) and the unthrottled (EcoQoS-off, ABOVE_NORMAL)
+worker thread contending the GIL at 50 Hz, the GUI message queue starves
+paint/input events. **Rule of thumb**: on Windows, default `CoarseTimer`
+for any QTimer driving work on the main GUI thread; reserve `PreciseTimer`
+for worker QThreads and hardware-sync loops. If wrap-boundary smoothness
+ever actually matters, the right knob is per-frame work (decimate plot
+buffers to ~100 visible points, only `setData` on changed channels,
+`useOpenGL=True`) — not timer precision.
 
 **GUI slow — 1 Hz**: matched to its producer (worker slow, 1 Hz). Was
 2 Hz prior to 2026-05-05; that meant every other GUI-slow tick redrew the

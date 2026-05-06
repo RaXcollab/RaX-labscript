@@ -1,7 +1,7 @@
 # HF_Locking Refresh Rate Audit & Rebalance
 
 **Date:** 2026-05-05
-**Status:** Design — pending implementation
+**Status:** Implemented 2026-05-05; **GUI fast PreciseTimer reverted 2026-05-06** (see Follow-up).
 **Scope:** `GUIs/HF_Locking/` only
 
 ## Context
@@ -75,3 +75,58 @@ Rates explicitly *not* changing, with rationale recorded in the doc:
 - `main_wlm_wide.py` (incomplete variant, not production).
 - Auto-load rule for the new reference doc (`.claude/rules/ref-*.md`) — can
   be added later if it proves useful when editing `GUIs/HF_Locking/`.
+
+## Follow-up — 2026-05-06: GUI fast PreciseTimer reverted
+
+Decision (2) above was **wrong**. After landing on 2026-05-05, the GUI froze
+at launch on Win11 — main window painted via `show()` but the main thread
+never pumped events; clicking surfaced "Not Responding". User-confirmed
+evidence: both `[PRIORITY]` and `[POWER]` startup lines printed (so the
+EcoQoS opt-out and priority change ran fine), no `_RestoreDialog` appeared
+(rules out the modal hypothesis), regression appeared immediately after the
+commit.
+
+**Bisection:** reverted only the `Qt::CoarseTimer → Qt::PreciseTimer`
+change at `main_wlm.py:236`. GUI launched and responded normally.
+Decisions (1) and (3) — `GUI_SLOW_MS` 500 → 1000 and the rate-inventory
+doc — kept; the EcoQoS opt-out and priority demotion from the parent
+focus-throttling commit also kept.
+
+**Mechanism (best-supported, not bench-verified):** on Windows, Qt's
+`PreciseTimer` uses the Multimedia Timer API (`timeSetEvent`) which fires
+events from a separate kernel thread on a 1 ms-resolution heartbeat
+(`timeBeginPeriod(1)`), posting into the GUI message queue without the
+natural rate-limiting that `WM_TIMER`/`SetTimer` has. The GUI's
+`_refresh_gui_fast` triggers 8 channels of `pyqtgraph.setData` updates per
+frame (16-48k point updates), plausibly >33 ms per call. Combined with
+the unthrottled (EcoQoS-off, ABOVE_NORMAL) worker thread contending the
+GIL at 50 Hz, paint/input events get starved enough for Windows to mark
+the window unresponsive. (Note: Qt docs assert both timer types coalesce
+late `timeout()` emissions, so coalescing-failure is not the mechanism;
+the message-pump backpressure differs by backend.)
+
+**Lesson — GUI-thread timer-type rule (Windows):**
+- Default `CoarseTimer` for any QTimer that triggers heavy work on the
+  Qt main thread.
+- Reserve `PreciseTimer` for worker QThreads and hardware-sync loops
+  where missing a tick has hardware consequences.
+- The PreciseTimer benefit (cycle-shift wrap stutter at ±1 ms vs ±5-15 ms
+  jitter) is a one-shot ~14 ms visual hiccup once per sweep period — not
+  worth the multimedia-timer fragility.
+- If plot smoothness ever actually matters: tune per-frame work
+  (decimate buffer, partial updates, `useOpenGL=True`), not timer
+  precision.
+
+**Untested sub-hypotheses (left open):**
+- Whether `PreciseTimer` alone (without the EcoQoS opt-out / priority
+  demotion) would also freeze. The Win11 fix was correct and shipped; the
+  PreciseTimer revert is independently the right architectural choice
+  regardless.
+
+**Files touched in revert:**
+- `GUIs/HF_Locking/main_wlm.py` — 4-line block (rationale comment +
+  `setTimerType` call) collapsed back to single `CoarseTimer` line.
+- `docs/hf-locking-rates.md` — table row flipped, rationale paragraph
+  rewritten with the lesson.
+- `notes/2026-05-05_HF-Locking-Focus-Throttling-and-Rate-Audit.html` —
+  appended a "Regression & Resolution" section.
