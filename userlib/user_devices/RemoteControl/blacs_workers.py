@@ -237,6 +237,42 @@ class RemoteControlWorker(Worker):
         self.initial_monitor_values = {}
         self.final_monitor_values = {}
 
+        # PUB-SUB monitor cache — populated by daemon drain thread.
+        # All 4 tab classes (base + 3 subclasses) pass child_monitor_connections
+        # via init_kwargs (verified by grep). Empty list is falsy, so devices
+        # without monitor children skip the drain thread entirely.
+        self._pubsub_cache = {}
+        self._pubsub_stop = threading.Event()
+        self._monitor_event = None
+        self._pubsub_thread = None
+        if self.child_monitor_connections:
+            try:
+                self._monitor_event = Event(
+                    f'{self.device_name}_pubsub_monitor',
+                    role='wait',
+                )
+            except TimeoutError as e:
+                # Event() raises TimeoutError if it can't connect to the broker
+                # within 5 seconds (zprocess.process_tree:334). Should not happen
+                # in practice — broker is local and check_broker() ran at module
+                # import time. If it does, log and continue without the cache;
+                # the worker is still functional, monitor_values just stay empty.
+                self.logger.error(
+                    f"PUB-SUB drain init failed (broker unreachable): {e}. "
+                    f"monitor_values will be empty for this worker session."
+                )
+                return
+            self._pubsub_thread = threading.Thread(
+                target=self._pubsub_drain_loop,
+                daemon=True,
+                name=f'{self.device_name}_pubsub_drain',
+            )
+            self._pubsub_thread.start()
+            self.logger.info(
+                f"PUB-SUB drain thread started for "
+                f"{len(self.child_monitor_connections)} monitor channels"
+            )
+
     def connect_to_remote(self):
         return self.remote_comms.connect_to_remote()
 
