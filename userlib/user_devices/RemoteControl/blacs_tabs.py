@@ -14,6 +14,14 @@ import threading
 import zmq
 import time
 
+from labscript_utils.ls_zprocess import ProcessTree, Event
+
+# Ensure the BLACS-internal EventBroker is up before any worker subprocess
+# spawns. check_broker() is idempotent (guards on broker_in_port is None),
+# so this is safe to call from module-top across multiple import sites
+# (LaserLock/BigSky/Rastering all import this module).
+ProcessTree.instance().check_broker()
+
 
 # ── Helper widgets ───────────────────────────────────────────────────
 
@@ -98,6 +106,12 @@ class RemoteControlTab(DeviceTab):
 
         self.reqrep_connected = False
         self.pubsub_connected = False
+
+        # PUB-SUB monitor cache: shared with worker for shot snapshots.
+        # Updated at ~4 Hz by the subscriber thread. Worker reads from this
+        # for initial/final monitor values instead of issuing REQ-REP
+        # CHECK_VALUE round-trips during transition_to_buffered/post_experiment.
+        self._pubsub_monitor_cache = {}
 
         # Signal bridge for thread-safe GUI updates from subscriber threads
         self._pubsub_bridge = _PubSubSignalBridge()
@@ -213,6 +227,7 @@ class RemoteControlTab(DeviceTab):
                 "port": self.reqrep_port,
                 "child_output_connections": self.child_output_connections,
                 "child_monitor_connections": self.child_monitor_connections,
+                "pubsub_monitor_cache": self._pubsub_monitor_cache,
             },
         )
         self.primary_worker = "main_worker"
@@ -477,12 +492,18 @@ class RemoteControlTab(DeviceTab):
 
     def _on_monitor_value_received(self, connection, value_str):
         """Called on the GUI thread when a PUB-SUB monitor value arrives."""
+        try:
+            value = float(value_str)
+        except (ValueError, TypeError):
+            return
+        # Update shared PUB-SUB cache (worker reads for shot snapshots).
+        self._pubsub_monitor_cache[connection] = value
         if connection in self.AM_widgets:
             try:
                 self._AO[connection].set_value(
-                    float(value_str), program=False, update_gui=True
+                    value, program=False, update_gui=True
                 )
-            except (ValueError, KeyError) as e:
+            except KeyError as e:
                 self.logger.debug(f"Monitor update error for {connection}: {e}")
 
     # ── GUI status management ────────────────────────────────────────
