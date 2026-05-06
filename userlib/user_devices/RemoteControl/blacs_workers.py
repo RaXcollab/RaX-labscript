@@ -433,7 +433,13 @@ class RemoteControlWorker(Worker):
             # slow physical quantities these devices monitor (motor positions,
             # laser temperatures, lock setpoints), this is far fresher than needed.
             # Mirrors the pattern proven in RasteringDevice/blacs_workers.py:85.
-            self.initial_monitor_values = dict(getattr(self, 'pubsub_monitor_cache', {}))
+            # dict() copy is atomic under the GIL; thread-safe vs the drain
+            # thread's per-key writes. No lock needed.
+            self.initial_monitor_values = dict(self._pubsub_cache)
+            self.logger.info(
+                f"initial_monitor_values: "
+                f"{len(self.initial_monitor_values)} channels"
+            )
 
             return {}
         finally:
@@ -445,7 +451,8 @@ class RemoteControlWorker(Worker):
         try:
             if self.initial_monitor_values:
                 # Final values from PUB-SUB cache (no REQ-REP round-trip).
-                self.final_monitor_values = dict(getattr(self, 'pubsub_monitor_cache', {}))
+                # dict() copy is atomic under the GIL; thread-safe vs the drain thread.
+                self.final_monitor_values = dict(self._pubsub_cache)
 
                 with h5py.File(self.h5_filepath, 'a') as hdf5_file:
                     self._save_monitor_values_to_hdf5(
