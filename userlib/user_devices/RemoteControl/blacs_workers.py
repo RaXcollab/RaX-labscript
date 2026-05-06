@@ -453,6 +453,10 @@ class RemoteControlWorker(Worker):
                 # Final values from PUB-SUB cache (no REQ-REP round-trip).
                 # dict() copy is atomic under the GIL; thread-safe vs the drain thread.
                 self.final_monitor_values = dict(self._pubsub_cache)
+                self.logger.info(
+                    f"final_monitor_values: "
+                    f"{len(self.final_monitor_values)} channels"
+                )
 
                 with h5py.File(self.h5_filepath, 'a') as hdf5_file:
                     self._save_monitor_values_to_hdf5(
