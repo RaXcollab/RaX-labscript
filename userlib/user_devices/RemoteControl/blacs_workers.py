@@ -1,9 +1,19 @@
+import time
+import threading
+import pickle
+
 from blacs.tab_base_classes import Worker
 import numpy as np
 import labscript_utils.h5_lock
 import h5py
 import zmq
 import json
+
+from labscript_utils.ls_zprocess import Event
+
+# PUB-SUB monitor cache constants (see design spec Tasks 1, 2, 3, 6).
+PUBSUB_DRAIN_POLL_TIMEOUT_MS = 500   # max idle shutdown latency
+PUBSUB_SHUTDOWN_JOIN_TIMEOUT = 1.0   # seconds; daemon=True is the safety net
 
 
 # Default timeouts (ms)
@@ -321,57 +331,72 @@ class RemoteControlWorker(Worker):
         if not self.enable_comms:
             return {}
 
-        with h5py.File(h5_filepath, 'r') as f:
-            group = f['devices'][self.device_name]
-            if 'remote_device_operation' not in group:
-                return {}
-            table = group['remote_device_operation'][:]
+        _t0 = time.perf_counter()
+        try:
+            with h5py.File(h5_filepath, 'r') as f:
+                group = f['devices'][self.device_name]
+                if 'remote_device_operation' not in group:
+                    return {}
+                table = group['remote_device_operation'][:]
 
-        # All h5 access done — program outside the zlock so that exceptions
-        # (e.g. lock-wait timeout) don't trigger "lock not held" on cleanup.
-        if not self.remote_comms.connected:
-            raise Exception(
-                "Cannot program remote device: connection not established.\n"
-                "Please check connection and try again."
-            )
+            # All h5 access done — program outside the zlock so that exceptions
+            # (e.g. lock-wait timeout) don't trigger "lock not held" on cleanup.
+            if not self.remote_comms.connected:
+                raise Exception(
+                    "Cannot program remote device: connection not established.\n"
+                    "Please check connection and try again."
+                )
 
-        self.h5_filepath = h5_filepath
+            self.h5_filepath = h5_filepath
 
-        for connection in table.dtype.names:
-            value = float(table[0][connection])
-            self.logger.debug(f"transition_to_buffered: programming {connection} = {value}")
-            wait = getattr(self, 'wait_for_lock', False)
-            response = self.remote_comms.program_value(
-                connection, value, wait_for_lock=wait
-            )
-            self._check_response(response, f"buffered_program({connection}={value})")
+            for connection in table.dtype.names:
+                value = float(table[0][connection])
+                self.logger.debug(f"transition_to_buffered: programming {connection} = {value}")
+                wait = getattr(self, 'wait_for_lock', False)
+                response = self.remote_comms.program_value(
+                    connection, value, wait_for_lock=wait
+                )
+                self._check_response(response, f"buffered_program({connection}={value})")
 
-        # Snapshot monitor values before shot
-        self.initial_monitor_values = self.check_all_remote_values()
+            # Snapshot monitor values from PUB-SUB cache (no REQ-REP round-trip).
+            # The cache is updated at ~4 Hz by the tab's subscriber thread; for the
+            # slow physical quantities these devices monitor (motor positions,
+            # laser temperatures, lock setpoints), this is far fresher than needed.
+            # Mirrors the pattern proven in RasteringDevice/blacs_workers.py:85.
+            self.initial_monitor_values = dict(getattr(self, 'pubsub_monitor_cache', {}))
 
-        return {}
+            return {}
+        finally:
+            _dt_ms = (time.perf_counter() - _t0) * 1000
+            self.logger.info(f"PERF transition_to_buffered: {_dt_ms:.1f} ms")
 
     def post_experiment(self):
-        if self.initial_monitor_values:
-            self.final_monitor_values = self.check_all_remote_values()
+        _t0 = time.perf_counter()
+        try:
+            if self.initial_monitor_values:
+                # Final values from PUB-SUB cache (no REQ-REP round-trip).
+                self.final_monitor_values = dict(getattr(self, 'pubsub_monitor_cache', {}))
 
-            with h5py.File(self.h5_filepath, 'a') as hdf5_file:
-                self._save_monitor_values_to_hdf5(
-                    hdf5_file, 'initial_monitor_values', self.initial_monitor_values
-                )
-                self._save_monitor_values_to_hdf5(
-                    hdf5_file, 'final_monitor_values', self.final_monitor_values
-                )
+                with h5py.File(self.h5_filepath, 'a') as hdf5_file:
+                    self._save_monitor_values_to_hdf5(
+                        hdf5_file, 'initial_monitor_values', self.initial_monitor_values
+                    )
+                    self._save_monitor_values_to_hdf5(
+                        hdf5_file, 'final_monitor_values', self.final_monitor_values
+                    )
 
-        self.initial_monitor_values = {}
-        self.final_monitor_values = {}
-        return True
+            self.initial_monitor_values = {}
+            self.final_monitor_values = {}
+            return True
+        finally:
+            _dt_ms = (time.perf_counter() - _t0) * 1000
+            self.logger.info(f"PERF post_experiment: {_dt_ms:.1f} ms")
 
     def _save_monitor_values_to_hdf5(self, hdf5_file, group_name, monitor_values):
         if not monitor_values:
             return
 
-        dtypes = [(name, np.float32) for name in monitor_values.keys()]
+        dtypes = [(name, np.float64) for name in monitor_values.keys()]
         static_value_table = np.zeros(1, dtype=dtypes)
         for connection, value in monitor_values.items():
             static_value_table[connection] = value
