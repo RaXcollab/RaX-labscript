@@ -503,4 +503,9 @@ class RemoteControlWorker(Worker):
         return True
 
     def shutdown(self):
+        # Stop drain thread first so no further cache writes happen during
+        # teardown. daemon=True guarantees process exit even if join times out.
+        self._pubsub_stop.set()
+        if self._pubsub_thread is not None:
+            self._pubsub_thread.join(timeout=PUBSUB_SHUTDOWN_JOIN_TIMEOUT)
         self.remote_comms.shutdown()
