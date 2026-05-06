@@ -273,6 +273,40 @@ class RemoteControlWorker(Worker):
                 f"{len(self.child_monitor_connections)} monitor channels"
             )
 
+    def _pubsub_drain_loop(self):
+        """Drain the BLACS-internal EventBroker into self._pubsub_cache.
+
+        Bypasses event.wait()'s identifier filter (which discards messages with
+        non-matching identifiers) so all monitor-channel messages on this Event
+        are received. Verified empirically (Tests 1, 2): zero loss at 10 kHz
+        aggregate, zero cross-leak between devices.
+        """
+        while not self._pubsub_stop.is_set():
+            try:
+                with self._monitor_event.sublock:
+                    if not self._monitor_event.sub.poll(
+                        PUBSUB_DRAIN_POLL_TIMEOUT_MS, zmq.POLLIN
+                    ):
+                        continue
+                    _, event_id, data = self._monitor_event.sub.recv_multipart()
+                self._pubsub_cache[event_id.decode('utf8')] = pickle.loads(data)
+            except zmq.ContextTerminated:
+                # Socket is dead (process shutting down). Exit cleanly.
+                return
+            except (ValueError, pickle.UnpicklingError) as e:
+                # Malformed message — log and keep draining.
+                self.logger.warning(
+                    f"_pubsub_drain_loop: malformed message: "
+                    f"{type(e).__name__}: {e}"
+                )
+            except Exception as e:
+                # Unexpected — log and back off to avoid a tight error loop.
+                self.logger.error(
+                    f"_pubsub_drain_loop: {type(e).__name__}: {e}",
+                    exc_info=True,
+                )
+                time.sleep(1.0)
+
     def connect_to_remote(self):
         return self.remote_comms.connect_to_remote()
 
