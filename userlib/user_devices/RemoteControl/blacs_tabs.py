@@ -294,6 +294,20 @@ class RemoteControlTab(DeviceTab):
 
     def connect_to_pubsub(self):
         """Start (or restart) the heartbeat subscriber thread."""
+        # Lazy-create the post-side Event ONCE per tab lifetime. The internal
+        # EventBroker lives in the BLACS root process and only dies with BLACS,
+        # so there is no legitimate reason to recreate the post Event on
+        # reconnect. The hasattr guard is required: connecting the same Qt
+        # slot twice causes duplicate fires (verified Test 4 T3.4).
+        if not hasattr(self, '_monitor_event'):
+            self._monitor_event = Event(
+                f'{self.device_name}_pubsub_monitor',
+                role='post',
+            )
+            self._pubsub_bridge.monitor_value_received.connect(
+                self._post_to_internal_broker
+            )
+
         # Signal any existing threads to stop
         self._pubsub_stop_event.set()
         time.sleep(0.05)  # give them a moment
