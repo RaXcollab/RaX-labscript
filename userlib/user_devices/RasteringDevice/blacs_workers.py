@@ -79,26 +79,13 @@ class RasteringWorker(RemoteControlWorker):
                     )
 
         # Step 3: Capture X/Y position snapshot for the shot record.
-        # Use PUB-SUB cached values (updated at ~4 Hz by the tab's subscriber
-        # thread) instead of REQ-REP CHECK_VALUE round-trips. The motor has
-        # already settled by this point, so the cache reflects the final position.
-        self.initial_monitor_values = dict(self.pubsub_monitor_cache)
+        # Use PUB-SUB cached values (populated by the base RemoteControlWorker's
+        # drain thread). dict() copy is atomic under the GIL.
+        self.initial_monitor_values = dict(self._pubsub_cache)
+        self.logger.info(
+            f"initial_monitor_values: "
+            f"{len(self.initial_monitor_values)} channels"
+        )
 
         return {}
 
-    def post_experiment(self):
-        if self.initial_monitor_values:
-            # Final values from PUB-SUB cache (no REQ-REP round-trip)
-            self.final_monitor_values = dict(self.pubsub_monitor_cache)
-
-            with h5py.File(self.h5_filepath, 'a') as f:
-                self._save_monitor_values_to_hdf5(
-                    f, 'initial_monitor_values', self.initial_monitor_values
-                )
-                self._save_monitor_values_to_hdf5(
-                    f, 'final_monitor_values', self.final_monitor_values
-                )
-
-        self.initial_monitor_values = {}
-        self.final_monitor_values = {}
-        return True
