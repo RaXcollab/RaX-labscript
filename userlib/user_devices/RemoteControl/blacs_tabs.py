@@ -506,6 +506,32 @@ class RemoteControlTab(DeviceTab):
             except KeyError as e:
                 self.logger.debug(f"Monitor update error for {connection}: {e}")
 
+    def _post_to_internal_broker(self, connection, value_str):
+        """Forward a PUB-SUB monitor value into the BLACS-internal
+        EventBroker so worker subprocesses can subscribe.
+
+        Runs on the GUI thread via Qt queued connection from the daemon
+        subscriber thread that emits ``_pubsub_bridge.monitor_value_received``.
+
+        Numeric-only contract: only values that float() parses are forwarded.
+        If a future subclass needs to forward string-valued monitors, it
+        must override this method. (Empirically all current devices are
+        numeric: THz, V, A, deg C, raster coords.)
+        """
+        try:
+            value = float(value_str)
+        except (ValueError, TypeError):
+            return  # non-numeric, silently dropped per contract
+        try:
+            self._monitor_event.post(connection, value)
+        except Exception as e:
+            # post() should not fail (PUSH is non-blocking, broker is local).
+            # Log loudly if it does so we notice broken plumbing.
+            self.logger.error(
+                f"_post_to_internal_broker: post failed for "
+                f"{connection}={value}: {type(e).__name__}: {e}"
+            )
+
     # ── GUI status management ────────────────────────────────────────
 
     def _update_gui_status(self):
