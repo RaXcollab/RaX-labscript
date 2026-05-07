@@ -318,7 +318,6 @@ class RasteringTab(RemoteControlTab):
                 "port": self.reqrep_port,
                 "child_output_connections": self.child_output_connections,
                 "child_monitor_connections": self.child_monitor_connections,
-                "pubsub_monitor_cache": self._pubsub_monitor_cache,
             },
         )
         self.primary_worker = "main_worker"
