@@ -46,8 +46,11 @@ def _get_state():
         return _MODULE_STATE
     key = '_scan_explorer_state'
     if key not in ip.user_ns:
-        ip.user_ns[key] = {'sa': None, 'widgets_created': False}
+        ip.user_ns[key] = {'sa': None, 'widgets_created': False, 'stored': {}}
         log.debug("Created new explorer state in user_ns")
+    else:
+        # Ensure 'stored' key exists for older state dicts
+        ip.user_ns[key].setdefault('stored', {})
     return ip.user_ns[key]
 
 # Fallback for non-IPython use
@@ -212,10 +215,36 @@ def setup_explorer(experiment='Closed_cell', base=None):
             layout=widgets.Layout(width='120px'))
         _state['w_cache_info'] = widgets.HTML(value='')
 
+        # Store & Compare controls
+        _state['w_store_label'] = widgets.Text(
+            value='', description='Label:',
+            placeholder='e.g. Mar 6 seq 2',
+            style={'description_width': 'auto'},
+            layout=widgets.Layout(width='220px'))
+        _state['w_store'] = widgets.Button(
+            description='Store', button_style='warning',
+            layout=widgets.Layout(width='80px'))
+        _state['w_compare_signal'] = widgets.Dropdown(
+            options=['fl_open', 'fl_closed', 'abs_open', 'abs_closed'],
+            value='fl_open', description='Signal:',
+            style={'description_width': 'auto'},
+            layout=widgets.Layout(width='160px'))
+        _state['w_compare'] = widgets.Button(
+            description='Compare', button_style='success',
+            layout=widgets.Layout(width='100px'))
+        _state['w_clear_stored'] = widgets.Button(
+            description='Clear', button_style='danger',
+            layout=widgets.Layout(width='70px'))
+        _state['w_stored_info'] = widgets.HTML(value='')
+        _state['w_compare_out'] = widgets.Output()
+
         # Attach handlers ONCE
         _state['w_detect'].on_click(_on_detect)
         _state['w_load'].on_click(_on_load)
         _state['w_save_cache'].on_click(_on_save_cache)
+        _state['w_store'].on_click(_on_store)
+        _state['w_compare'].on_click(_on_compare)
+        _state['w_clear_stored'].on_click(_on_clear_stored)
         _state['widgets_created'] = True
     else:
         log.debug("Reusing existing widgets (skipping handler registration)")
@@ -236,6 +265,10 @@ def setup_explorer(experiment='Closed_cell', base=None):
                           w['w_time_end'], w['w_exclude_raw'],
                           w['w_save_cache'], w['w_cache_info']]),
             w['w_out'],
+            widgets.HBox([w['w_store_label'], w['w_store'],
+                          w['w_compare_signal'], w['w_compare'],
+                          w['w_clear_stored'], w['w_stored_info']]),
+            w['w_compare_out'],
         ])
     clear_output(wait=True)
     display(w['container'])
@@ -410,3 +443,69 @@ def _on_save_cache(b=None):
         sa.save_cache(path=cache_path, downsample=downsample, exclude=exclude,
                       time_window=time_window)
     _update_cache_info(w)
+
+
+def _update_stored_info(w):
+    """Refresh the stored scans display."""
+    stored = w.get('stored', {})
+    if not stored:
+        w['w_stored_info'].value = (
+            '<span style="font-size: 11px; color: #999;">No stored scans</span>')
+        return
+    labels = list(stored.keys())
+    text = ', '.join(f'<b>{l}</b>' for l in labels)
+    w['w_stored_info'].value = (
+        f'<span style="font-size: 11px; color: #080;">'
+        f'Stored ({len(labels)}): {text}</span>')
+
+
+def _on_store(b=None):
+    """Store current sa's spectroscopy data under a label."""
+    w = _get_state()
+    sa = w.get('sa')
+    if sa is None:
+        w['w_stored_info'].value = (
+            '<span style="font-size: 11px; color: #c00;">No data loaded</span>')
+        return
+    label = w['w_store_label'].value.strip()
+    if not label:
+        # Auto-generate label from date + seq
+        label = f"{w['w_date'].value} #{w['w_seq'].value}"
+    import io, contextlib
+    buf = io.StringIO()
+    with contextlib.redirect_stdout(buf):
+        data = sa.spectroscopy(return_data=True, plot=False)
+    w['stored'][label] = data
+    # Also inject into notebook namespace for manual use
+    ip = get_ipython()
+    if ip:
+        ip.user_ns.setdefault('stored_scans', {})
+        ip.user_ns['stored_scans'][label] = data
+    _update_stored_info(w)
+
+
+def _on_compare(b=None):
+    """Compare all stored scans on the same axes."""
+    w = _get_state()
+    stored = w.get('stored', {})
+    if len(stored) < 2:
+        w['w_stored_info'].value = (
+            '<span style="font-size: 11px; color: #c00;">'
+            'Need at least 2 stored scans to compare</span>')
+        return
+    signal = w['w_compare_signal'].value
+    datasets = [(label, data) for label, data in stored.items()]
+    with w['w_compare_out']:
+        w['w_compare_out'].clear_output(wait=True)
+        ScanAnalysis.compare(datasets, signal=signal)
+
+
+def _on_clear_stored(b=None):
+    """Clear all stored scans."""
+    w = _get_state()
+    w['stored'] = {}
+    ip = get_ipython()
+    if ip and 'stored_scans' in ip.user_ns:
+        ip.user_ns['stored_scans'] = {}
+    w['w_compare_out'].clear_output()
+    _update_stored_info(w)

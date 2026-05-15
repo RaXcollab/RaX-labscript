@@ -6,3 +6,4 @@ paths:
 ---
 
 @docs/blacs-device-patterns.md
+@docs/shot-h5-layout.md

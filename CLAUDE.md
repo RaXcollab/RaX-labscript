@@ -121,6 +121,7 @@ Add new external GUIs to this table.
 
 Docs load via path-scoped rules (`.claude/rules/ref-*.md`) when editing matching files:
 - `docs/blacs-device-patterns.md` — RemoteControl + NI_DAQmx patterns (loads for `user_devices/`, `blacs/`)
+- `docs/shot-h5-layout.md` — per-shot HDF5 file layout reference: where each writer puts what, with code citations + LaserLockGUI case study (loads for `user_devices/`, `blacs/`, `analysislib/`)
 - `docs/labscript-api.md` — labscript DSL, device drivers, sequence functions (loads for `labscriptlib/`, `user_devices/`)
 - `docs/analysis-api.md` + `docs/ni-scope-conventions.md` — analysis utilities (loads for `analysislib/`)
 - `docs/yag-laser-physics.md` — Nd:YAG laser physics, trigger modes, serial commands (loads for `user_devices/BigSky*`, `GUIs/BigSkyControl/`)

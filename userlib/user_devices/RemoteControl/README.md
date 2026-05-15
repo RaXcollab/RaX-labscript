@@ -52,6 +52,14 @@ _Manual mode allows the user to provide manual control over devices when experim
   - No values are programmed. However, at the beginning of the shot, read and save the remote GUI values of the `RemoteAnalogOut`s using the REQ-REP socket. This way, we know the value of all devices when the shot occured even if we didn't program their values.
   - Similarly, read and save the initial and final `RemoteAnalogMonitor` values using the REQ-REP socket.
 
+> **⚠ Known issue (as of 2026-05-01) — REQ-REP `CHECK_VALUE` doesn't yield the monitor measurement.**
+>
+> The "read initial/final `RemoteAnalogMonitor` values via REQ-REP" steps above describe the *intent*. In practice, what `CHECK_VALUE` returns is server-defined — for HF_Locking it returns the server's stored *setpoint*, not the wavemeter measurement. So `initial_monitor_values` and `final_monitor_values` are equal in any shot where the setpoint isn't reprogrammed mid-shot, defeating the lock-deviation check.
+>
+> The working pattern (implemented in `RasteringDevice`) is for the tab to maintain a `_pubsub_monitor_cache` dict updated by `_on_monitor_value_received`, share it with the worker via `init_kwargs`, and have the worker snapshot `dict(self._pubsub_monitor_cache)` for the initial/final values instead of calling `check_all_remote_values()`. New RemoteControl subclasses that want true measurement snapshots should follow that pattern.
+>
+> See `docs/shot-h5-layout.md` for full empirical evidence and the LaserLockGUI-specific case study.
+
 ## Setting Up RemoteControl
 
 1. Identify values to control or monitor in your existing GUI application.

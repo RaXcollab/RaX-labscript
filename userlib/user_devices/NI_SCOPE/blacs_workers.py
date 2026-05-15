@@ -313,7 +313,7 @@ class NI_SCOPEWorker(Worker):
         self.scope.configure_horizontal_timing(
             min_sample_rate=self.min_sample_rate,
             min_num_pts=self.min_num_pts,
-            ref_position=1.0,      # percent; 1% = start-trigger style capture
+            ref_position=0,      # percent; e.g. 1% = start-trigger style capture
             num_records=1,
             enforce_realtime=True
         )
@@ -466,7 +466,14 @@ class NI_SCOPEWorker(Worker):
         self.scope.initiate()
         return {}
 
-    def transition_to_manual(self):
+    def post_experiment(self):
+        """Per-shot: fetch acquired waveforms and write to h5.
+
+        Runs after every shot (between queued shots and at queue end).
+        Defining this method lets BLACS skip the backwards-compatibility scan
+        in device_base_class.py:778 that otherwise costs ~80 ms on the first
+        shot of every sequence.
+        """
         try:
             self.channel_count = self.scope.channel_count
             self.num_samps_actual = self.scope.horz_record_length
@@ -504,9 +511,13 @@ class NI_SCOPEWorker(Worker):
         try:
             self.scope.abort()
         except Exception as e:
-            print(f'[NI_SCOPE] abort() before manual idle: {e}')
+            print(f'[NI_SCOPE] abort() after fetch (ignored): {e}')
 
-        print('[NI_SCOPE] Manual mode: leaving scope IDLE (not armed).')
+        return True
+
+    def transition_to_manual(self):
+        """Queue-end only: per-shot fetch already happened in post_experiment."""
+        print('[NI_SCOPE] transition_to_manual: scope idle (data saved by post_experiment).')
         return True
 
     def program_manual(self, values):

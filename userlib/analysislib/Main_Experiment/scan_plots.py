@@ -504,7 +504,8 @@ class ScanAnalysis:
 
     def spectroscopy(self, int_start=0.05, int_end=30.0,
                      abs_int=None, fl_int=None,
-                     secondary_filter=None, mode='shot', figsize=(18, 5)):
+                     secondary_filter=None, mode='shot', figsize=(18, 5),
+                     return_data=False, plot=True):
         """Integrated signal vs scan variable.
 
         Each point integrates the OD or fluorescence trace over a time window
@@ -533,6 +534,13 @@ class ScanAnalysis:
               Better SNR than 'shot' mode; use for the cleanest spectroscopy.
         figsize : tuple
             Figure size (width, height) in inches.
+        return_data : bool
+            If True, return a dict keyed by secondary value with arrays:
+            ``'x'``, ``'abs_open'``, ``'abs_open_err'``, ``'abs_closed'``,
+            ``'abs_closed_err'``, ``'fl_open'``, ``'fl_open_err'``,
+            ``'fl_closed'``, ``'fl_closed_err'``.
+        plot : bool
+            If False, suppress plotting (useful with ``return_data=True``).
         """
         # Resolution: explicit kwargs > stored bounds > int_start/int_end defaults
         if abs_int is None and self.abs_int is not None:
@@ -546,8 +554,7 @@ class ScanAnalysis:
         print(f"Bounds: abs=({a_s - self.tYAG_ms:.2f}, {a_e - self.tYAG_ms:.1f}), "
               f"fl=({f_s - self.tYAG_ms:.2f}, {f_e - self.tYAG_ms:.1f}) ms from tYAG")
         svs = secondary_filter or self.sec_vals
-
-        fig, (ax_ao, ax_ac, ax_fl) = plt.subplots(1, 3, figsize=figsize)
+        result = {}
 
         for sv in svs:
             xd = []  # x-values in MHz (or raw units)
@@ -583,25 +590,80 @@ class ScanAnalysis:
                         ac.append(np.nan); ac_err.append(0)
                         fc.append(np.nan); fc_err.append(0)
 
-            # Both modes use errorbar (avg mode has propagated errors)
-            ax_ao.errorbar(xd, ao, yerr=ao_err, fmt='o-', label=f'{sv}', markersize=4, capsize=2)
-            ax_ac.errorbar(xd, ac, yerr=ac_err, fmt='o-', label=f'{sv}', markersize=4, capsize=2)
-            ax_fl.errorbar(xd, fo, yerr=fo_err, fmt='o-', label=f'{sv} open', markersize=4, capsize=2)
-            ax_fl.errorbar(xd, fc, yerr=fc_err, fmt='s--', label=f'{sv} closed', markersize=4, capsize=2, alpha=0.7)
+            result[sv] = {
+                'x': np.array(xd),
+                'abs_open': np.array(ao), 'abs_open_err': np.array(ao_err),
+                'abs_closed': np.array(ac), 'abs_closed_err': np.array(ac_err),
+                'fl_open': np.array(fo), 'fl_open_err': np.array(fo_err),
+                'fl_closed': np.array(fc), 'fl_closed_err': np.array(fc_err),
+            }
 
-        for ax, title in [(ax_ao, 'Absorption OD (shutter open)'),
-                          (ax_ac, 'Absorption OD (shutter closed)'),
-                          (ax_fl, 'Fluorescence: open vs closed')]:
-            ax.set_xlabel(self.scan_label)
-            ax.set_title(title)
-            ax.legend(title=self.secondary_col, fontsize=8)
-            ax.grid(True, alpha=0.3)
-        ax_ao.set_ylabel('Integrated OD [ms]')
-        ax_ac.set_ylabel('Integrated OD [ms]')
-        ax_fl.set_ylabel('Integrated fluorescence [V·ms]')
+        if plot:
+            fig, (ax_ao, ax_ac, ax_fl) = plt.subplots(1, 3, figsize=figsize)
+            for sv, d in result.items():
+                ax_ao.errorbar(d['x'], d['abs_open'], yerr=d['abs_open_err'],
+                               fmt='o-', label=f'{sv}', markersize=4, capsize=2)
+                ax_ac.errorbar(d['x'], d['abs_closed'], yerr=d['abs_closed_err'],
+                               fmt='o-', label=f'{sv}', markersize=4, capsize=2)
+                ax_fl.errorbar(d['x'], d['fl_open'], yerr=d['fl_open_err'],
+                               fmt='o-', label=f'{sv} open', markersize=4, capsize=2)
+                ax_fl.errorbar(d['x'], d['fl_closed'], yerr=d['fl_closed_err'],
+                               fmt='s--', label=f'{sv} closed', markersize=4, capsize=2, alpha=0.7)
+            for ax, title in [(ax_ao, 'Absorption OD (shutter open)'),
+                              (ax_ac, 'Absorption OD (shutter closed)'),
+                              (ax_fl, 'Fluorescence: open vs closed')]:
+                ax.set_xlabel(self.scan_label)
+                ax.set_title(title)
+                ax.legend(title=self.secondary_col, fontsize=8)
+                ax.grid(True, alpha=0.3)
+            ax_ao.set_ylabel('Integrated OD [ms]')
+            ax_ac.set_ylabel('Integrated OD [ms]')
+            ax_fl.set_ylabel('Integrated fluorescence [V·ms]')
+            plt.tight_layout()
+            plt.show()
+
+        if return_data:
+            return result
+
+    @staticmethod
+    def compare(datasets, signal='fl_open', xlabel=None, figsize=(8, 5)):
+        """Overlay spectroscopy data from multiple scans on the same axes.
+
+        Parameters
+        ----------
+        datasets : list of (label, data_dict)
+            Each entry is ``(label, dict)`` where *dict* is the return value
+            of ``spectroscopy(return_data=True)``.  *label* is used in the
+            legend (e.g. ``'March 6 seq 2'``).
+        signal : str
+            Which signal to plot. One of ``'abs_open'``, ``'abs_closed'``,
+            ``'fl_open'``, ``'fl_closed'``.
+        xlabel : str, optional
+            X-axis label. If None, defaults to ``'Scan variable'``.
+        figsize : tuple
+            Figure size (width, height) in inches.
+        """
+        ylabel_map = {
+            'abs_open': 'Integrated OD [ms]',
+            'abs_closed': 'Integrated OD [ms]',
+            'fl_open': 'Integrated fluorescence [V·ms]',
+            'fl_closed': 'Integrated fluorescence [V·ms]',
+        }
+        err_key = signal + '_err'
+
+        fig, ax = plt.subplots(figsize=figsize)
+        for label, data in datasets:
+            for sv, d in data.items():
+                leg = f'{label} ({sv})' if len(data) > 1 else label
+                ax.errorbar(d['x'], d[signal], yerr=d[err_key],
+                            fmt='o-', label=leg, markersize=4, capsize=2)
+        ax.set_xlabel(xlabel or 'Scan variable')
+        ax.set_ylabel(ylabel_map.get(signal, signal))
+        ax.set_title(signal.replace('_', ' ').title())
+        ax.legend(fontsize=8)
+        ax.grid(True, alpha=0.3)
         plt.tight_layout()
         plt.show()
-        # Use plt.gcf() to capture figures if needed
 
     def time_traces(self, xlim=(-1, 10), secondary_filter=None, figsize=(14, 5)):
         """Averaged time traces per secondary value, shutter open vs closed.

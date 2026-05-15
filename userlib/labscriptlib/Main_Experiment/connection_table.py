@@ -31,7 +31,7 @@ def connection_table():
         acquisition_rate=100e3,
         stop_order=-1,
         AI_term = 'Diff',
-        num_AI = 4,
+        num_AI = 6,
         num_AO = 2
     )
 
@@ -68,18 +68,27 @@ def connection_table():
         decimals=9
     )
 
-    RemoteAnalogMonitor(
-        name='Vexlum_Value', 
+    RemoteAnalogOut(
+        name='TiSa_2_Setpoint', 
         parent_device=LaserLockGUI, 
-        connection=3,
+        connection=6,
         units="THz",
         decimals=9
     )
+
 
     RemoteAnalogMonitor(
         name='TiSa_1_Value', 
         parent_device=LaserLockGUI, 
         connection=4,
+        units="THz",
+        decimals=9
+    )
+
+    RemoteAnalogMonitor(
+        name='TiSa_2_Value', 
+        parent_device=LaserLockGUI, 
+        connection=6,
         units="THz",
         decimals=9
     )
@@ -161,10 +170,12 @@ def connection_table():
     )
 
 
-    AnalogIn('daq_ai0',ni_6361,'ai0') # not used
+    AnalogIn('daq_ai0',ni_6361,'ai0') 
     AnalogIn('daq_ai1',ni_6361,'ai1')
     AnalogIn('daq_ai2',ni_6361,'ai2')
     AnalogIn('daq_ai3',ni_6361,'ai3')
+    AnalogIn('daq_ai4',ni_6361,'ai4')
+    AnalogIn('daq_ai5',ni_6361,'ai5')
 
     AnalogOut('daq_ao0',ni_6361,'ao0') #Used for NI-5922 TRIG
     AnalogOut('daq_ao1',ni_6361,'ao1') # not used

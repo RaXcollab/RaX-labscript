@@ -30,3 +30,5 @@ paths:
 - **docs/*.md** — domain reference (patterns, API, conventions). Loaded via `@docs/` in CLAUDE.md
 - **.claude/rules/*.md** — path-scoped rules. Auto-loaded when editing matching files. Keep narrow and imperative
 - **memory/*.md** — cross-session lessons, device internals. Loaded into auto-memory context
+
+@docs/context-best-practices.md

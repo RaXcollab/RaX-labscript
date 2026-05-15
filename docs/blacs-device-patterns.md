@@ -44,6 +44,19 @@ Set the cooldown to 2x the poll interval (default 5s → 10s cooldown).
 
 **Problem 4: `_fetch_initial_values` blindly accepts remote zeros after GUI restart.** The base class fetches remote values on startup and updates the front panel unconditionally. If the remote GUI has no config persistence and restarts with zeroed values, BLACS silently overwrites its saved state (which may contain correct setpoints from the last session).
 
+**Active RemoteControl module is `user_devices.RemoteControl`** — the `labscript-devices/labscript_devices/RemoteControl/` copy is dead code on this machine. All citations below are to the userlib copy. (See `.claude/rules/devices.md`.)
+
+**Per-shot monitor snapshot HDF5 layout.** `RemoteControlWorker` writes pre- and post-shot snapshots into `/data/{device}/monitor_values/{initial,final}_monitor_values`. **Full layout, semantics, and the empirical evidence that initial==final for LaserLockGUI lives in [`docs/shot-h5-layout.md`](shot-h5-layout.md).** Quick summary here for device authors:
+
+- Pre-snapshot taken in `transition_to_buffered` ([userlib/user_devices/RemoteControl/blacs_workers.py:350](../userlib/user_devices/RemoteControl/blacs_workers.py#L350)); post in `post_experiment` ([:356](../userlib/user_devices/RemoteControl/blacs_workers.py#L356)). Both write via `_save_monitor_values_to_hdf5` (per-column `np.float64` since 2026-04-29; was `float32` before — see precision warning).
+- Each calls `check_all_remote_values()` ([:268](../userlib/user_devices/RemoteControl/blacs_workers.py#L268)), which queries REQ-REP `CHECK_VALUE` for every entry in `child_connections = child_output_connections + child_monitor_connections`. Duplicate connection IDs (output/monitor sharing `parent_port`) collide in the result dict.
+- **What the value actually is depends on what the remote server returns for `CHECK_VALUE`.** For HF_Locking it's the server's stored setpoint (NOT the wavemeter reading). The intended "wavemeter pre-vs-post" comparison ([TODO at blacs_workers.py:306](../userlib/user_devices/RemoteControl/blacs_workers.py#L306)) is therefore broken for LaserLockGUI: 538/549 entries in scan 0015 had `initial == final` exactly.
+- **Working pattern (RasteringDevice):** instead of REQ-REP `CHECK_VALUE`, the tab maintains a `_pubsub_monitor_cache` dict updated by `_on_monitor_value_received`, and shares it with the worker via `init_kwargs`. Worker snapshots `dict(self._pubsub_monitor_cache)` for initial/final. Reproduce this for any new RemoteControl device that needs true "before/after measurement" snapshots; LaserLockGUI is a candidate.
+
+**Datasets are absent when:** `enable_comms=False`, no `remote_device_operation` group exists in the shot file, or the shot was aborted (snapshots cleared by `abort_*` methods). See `shot-h5-layout.md` for full conditions.
+
+**Pre-fix precision warning (shots before 2026-04-29):** snapshot dtype was `np.float32`, ULP ~40 MHz at 348 THz. Programmed setpoints in `remote_device_operation` are full float64 in all shots; only the `monitor_values` snapshots were affected.
+
 **Pattern: startup mismatch dialog (tab-side override)**
 ```python
 @define_state(MODE_MANUAL, True)
