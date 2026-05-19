@@ -14,11 +14,12 @@
 | Directory | Remote | Role |
 |---|---|---|
 | `.` (labscript-suite) | `github.com/RaXcollab/RaX-labscript` | **User-facing.** Tracks `userlib/` — custom devices, sequences, analysis. |
-| `blacs/` | `github.com/shafinulh/blacs` | **Backend.** BLACS runtime, state machine, device base classes. |
-| `labscript-devices/` | `github.com/shafinulh/labscript-devices` | **Backend.** Official device drivers (PrawnBlaster, NI_DAQmx, etc.) |
-| `labscript-utils/` | `github.com/shafinulh/labscript-utils` | **Backend.** Shared utilities. |
+| `blacs/` | `github.com/RaXcollab/blacs` | **Backend.** BLACS runtime, state machine, device base classes. |
+| `labscript-devices/` | `github.com/RaXcollab/labscript-devices` | **Backend.** Official device drivers (PrawnBlaster, NI_DAQmx, etc.) |
+| `labscript-utils/` | `github.com/RaXcollab/labscript-utils` | **Backend.** Shared utilities. |
 
 - Parent `.gitignore` excludes backend folders (`blacs/`, `labscript-devices/`, `labscript-utils/`, `app_saved_configs/`, `labconfig/`, `logs/`, `GUIs/`)
+- Backend repos are **`RaXcollab/*` forks of `shafinulh/*`** (the historical upstream). `origin` points at RaXcollab over SSH (key auth as `RadMolecules`). `shafinulh/*` is no longer a configured remote — re-add as `upstream` if you need to pull upstream changes.
 - **Commit to each repo separately.** Do not push without asking.
 - This machine runs `Main_Experiment` — only `userlib/labscriptlib/Main_Experiment/` is relevant
 - Domain rules (Qt safety, worker paths, RunManager globals, analysis) in `.claude/rules/` — auto-load per file path
@@ -60,7 +61,7 @@ source ~/miniconda/etc/profile.d/conda.sh && conda activate labscript && python 
 
 - **Modularity over simplicity** — when the user describes distinct categories (e.g., manual vs timed vs latched channels), the solution must handle each type independently. Do NOT collapse into blanket behavior.
 - **Need-driven complexity** — match solution complexity to the problem. A latched channel gets distinct code; a rename gets one line.
-- **Our fork is ground truth** — `shafinulh/blacs`, `shafinulh/labscript-devices`, `shafinulh/labscript-utils` are custom. When official docs disagree with our code, our code wins.
+- **Our fork is ground truth** — `RaXcollab/blacs`, `RaXcollab/labscript-devices`, `RaXcollab/labscript-utils` (forked from `shafinulh/*`) are custom. When official docs disagree with our code, our code wins.
 
 ## Critical Conventions
 

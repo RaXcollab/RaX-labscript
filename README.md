@@ -16,7 +16,7 @@ The key areas of BLACS identified for potential improvements are:
 2. **Reliance on QT Main Thread**: Reducing dependency on the main thread to prevent bottlenecks.
 3. **Worker Processes**: Enhancing the efficiency of worker processes to better handle concurrent tasks.
 
-More details, along with the BLACS fork can be found at https://github.com/shafinulh/blacs.
+More details, along with the BLACS fork can be found at https://github.com/RaXcollab/blacs.
 
 ### Performance Improvements Overview
 
@@ -28,11 +28,11 @@ The following demonstration visualizes the overall impact of the optimizations. 
     <img src="readme_images/blacs_perf_6-50Hz.gif" alt="Performance Hacks Branch Demo" width="32%">
 </div>
 
-*BLACS state machine operating at **2.27Hz**, **5.66Hz**, and **6.50Hz** for `default_labscript`, `master`, and `performance_hacks` branches of shafinulh/blacs respectively.*
+*BLACS state machine operating at **2.27Hz**, **5.66Hz**, and **6.50Hz** for `default_labscript`, `master`, and `performance_hacks` branches of RaXcollab/blacs respectively.*
 
 **Branch Descriptions:**
 - `default_labscript`: Most up-to-date official branch
-- `master`: Includes all changes described in the *shafinulh/blacs* documentation
+- `master`: Includes all changes described in the *RaXcollab/blacs* documentation
 - `performance_hacks`: All `master` changes plus optimizations discussed in section 4
 
 Note: the functionality and output remain identical across all three branches.
@@ -59,7 +59,7 @@ Added the *Fast Analog Data Monitor* feature aimed to provide a more flexible an
   <em><strong>Buffered acquisition displaying raw data from an entire shot, immediately after shot completion</strong></em>
 </p>
 
-The labscript-devices fork can be found at https://github.com/shafinulh/labscript-utils
+The labscript-utils fork can be found at https://github.com/RaXcollab/labscript-utils
 
 ## labscript-devices
 
@@ -75,7 +75,7 @@ Key changes include:
 
 These updates serve as examples for adapting other devices to our enhanced labscript environment. You can use our changes for the device listed above or can use them as a guide for modifying your own devices.
 
-The labscript-devices fork can be found at https://github.com/shafinulh/labscript-devices
+The labscript-devices fork can be found at https://github.com/RaXcollab/labscript-devices
 
 ## userlib/user_devices
 
