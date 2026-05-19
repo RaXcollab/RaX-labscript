@@ -97,6 +97,6 @@ Between shots (manual mode):
 
 ## Cross-References
 
-- For BLACS architecture (state machines, Qt thread safety, device base classes): see the `labscript-amo-expert` agent in `C:\Users\radmo\labscript-suite\.claude\agents\`
+- For BLACS architecture (state machines, Qt thread safety, device base classes): see the `amo-expert` agent in `C:\Users\radmo\labscript-suite\.claude\agents\`
 - For the integration workflow checklist: see "Workflow: Adding a New External GUI Integration" in `C:\Users\radmo\labscript-suite\CLAUDE.md`
 - For existing integrations: see the External GUI Registry in `CLAUDE.md`

@@ -1,5 +1,5 @@
 ---
-name: labscript-amo-expert
+name: amo-expert
 description: "Use this agent for experiment sequence design, connection table architecture, runmanager scan configuration, NI hardware setup, and physics-side scripting in the Labscript suite. This is the physicist's agent — it knows the labscript DSL, timing, triggers, and how to structure experiments.\n\nExamples:\n\n- User: \"Can you help me write an experiment sequence for absorption imaging?\"\n  Assistant: \"Let me use the amo-expert agent to design the sequence.\"\n  (Launch amo-expert to write the labscript sequence with proper timing and triggers.)\n\n- User: \"I need to set up a runmanager scan over detuning and intensity.\"\n  Assistant: \"I'll use the amo-expert agent to configure the scan.\"\n  (Launch amo-expert to set up globals and scan configuration.)\n\n- User: \"How should I structure the connection table for our new PXIe card?\"\n  Assistant: \"Let me use the amo-expert agent to design the connection table entry.\"\n  (Launch amo-expert to configure the NI device with proper clocklines and channels.)"
 model: inherit
 color: orange

@@ -90,10 +90,13 @@ source ~/miniconda/etc/profile.d/conda.sh && conda activate labscript && python 
 
 Add new external GUIs to this table.
 
+Each GUI codebase carries its own `.claude/agents/` domain agent: `HF_Locking`→`pid-persistence`, `rastering`→`ablation-tech`, `BigSkyControl`→`bigsky-yag-laser-controller`. Use the GUI-local agent for that GUI's internals; use `amo-expert`/`blacs-expert` for BLACS-side architecture. Never flag a GUI-local agent name as broken without checking `GUIs/*/.claude/agents/`.
+
 ## Do NOT Flag These
 
 - **`__pycache__/` and `.ipynb_checkpoints/`** — auto-managed by Python and Jupyter
 - **Single-occurrence log errors** without recurrence — yellow observation, not critical
+- **`npx claude-mem status` saying "Worker is not running"** — known CLI bug (unwritten `.worker.pid`). Ground truth: `netstat -ano | grep 37777` LISTENING + `curl http://127.0.0.1:37777/api/health`
 - Domain-specific suppressions (RunManager globals, NaN rows, deprecated kwargs) in `.claude/rules/`
 
 ## Available Tools

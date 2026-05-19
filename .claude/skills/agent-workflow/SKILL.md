@@ -64,6 +64,18 @@ This prevents: (a) forgetting to launch experts, (b) using generic Explore for d
 
 For **BLACS worker changes** (safety-critical — affects live hardware): every claim audited by one expert must be cross-audited by the other. State cross-audit status in the plan's Agent Audit Trail table. Do not exit plan mode with unaudited claims.
 
+## Parallel Dispatch & Forking
+
+Multi-agent env is enabled (`CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS=1`, `CLAUDE_CODE_FORK_SUBAGENT=1`). Use it:
+
+- **Independent path-routed audits → dispatch in ONE message.** When several routing-table paths are touched (e.g. `user_devices/` + `analysislib/` + `logs/`), launch their domain agents concurrently in a single response, not serially.
+- **Cross-Audit Rule → fork, don't re-explain.** For the BLACS cross-audit, fork `blacs-expert` and `amo-expert` from the shared plan context so both see *identical* claims (fork inherits full parent context + ~90% prompt-cache savings on children 2..N). Follow with one synthesis pass that reconciles their findings.
+- **Use fresh (non-fork) subagents for adversarial work.** Code review, security review, and "find what's wrong" audits must NOT be forks — a fork inherits the parent's assumptions and will gloss over the same bugs. Spawn a clean `subagent_type` instead.
+- **Orchestrator stays orchestrator.** During any multi-agent run, the lead routes and synthesizes — it does not also do domain work in parallel.
+- **Team size 2–3.** Coordination overhead exceeds parallelism gains past ~3 concurrent teammates.
+- **Plan-mode cost caveat.** Agent *teams* cost ≈7× tokens in plan mode (each teammate re-runs planning). While planning, prefer parallel one-shot subagents or forks over teams.
+- **Known bug:** never combine `isolation: "worktree"` with `team_name` — agents silently land in the main repo. Use separate Agent calls or verify isolation explicitly.
+
 ## Session Notes Protocol
 
 - At session start, ask the user if they want session-notes tracking (use AskUserQuestion, short yes/no)

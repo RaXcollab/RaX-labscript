@@ -25,40 +25,26 @@ You do not need to re-explain any of this each session.
 
 ## Custom Agents
 
-We have two specialized agents that Claude automatically uses when relevant. You can also request them explicitly.
+Eight specialized agents Claude auto-invokes by task type (request any by name too). Full prompts in `.claude/agents/`; orchestration rules in `.claude/skills/agent-workflow/`.
 
-### labscript-amo-expert
+| Agent | Use it for |
+|---|---|
+| `amo-expert` | Experiment sequences, connection tables, runmanager scans, NI hardware, physics-side scripting |
+| `blacs-expert` | BLACS runtime internals, Qt thread safety, state machine, device lifecycle, NI_DAQmx worker |
+| `device-builder` | Scaffolding new BLACS device classes (5-file RemoteControl pattern) + external GUI integration |
+| `lyse-analysis` | Analysis scripts and Jupyter notebooks, lyse utility API |
+| `labscript-diagnostics` | BLACS/labscript log triage, crash/error diagnosis, recurrence analysis (sonnet) |
+| `session-notes` | Lightweight background session note-taking (sonnet) |
+| `wrap-up` | End-of-session deliverables: commits, HTML lab notes, introspection, context updates |
+| `context-auditor` | Audits context health vs best practices; researches new practices (multi-source) |
 
-**When it activates:** Any question about Labscript code, device classes, BLACS tabs/workers, connection tables, runmanager, lyse, or experiment sequences.
+External GUI codebases under `GUIs/` each carry their own `.claude/agents/`: `GUIs/rastering` → `ablation-tech`, `GUIs/BigSkyControl` → `bigsky-yag-laser-controller`, `GUIs/HF_Locking` → `pid-persistence`. Use the GUI-local agent for that GUI's internals; use `amo-expert`/`blacs-expert` for BLACS-side architecture.
 
-**What it knows:**
-- The 3-class device pattern (labscript_devices.py, blacs_tabs.py, blacs_workers.py)
-- RemoteControl / ExternalSoftware template for integrating external GUIs
-- BLACS state machine internals (event ordering, initialization sequence)
-- Qt thread safety rules (critical for avoiding crashes)
-- NI PXIe hardware conventions
-
-**Example prompts:**
-- "Help me create a new RemoteControl device for the rastering GUI"
-- "Why is my device tab crashing when it tries to update a widget?"
-- "How do I add a new analog monitor channel to the laser lock tab?"
-- "Walk me through the shot lifecycle for our BaF sequence"
-
-### labscript-diagnostics
-
-**When it activates:** Any question about logs, crashes, errors, or system health.
-
-**What it knows:**
-- Log file locations (`logs/BLACS.log`, `logs/BLACS_faulthandler.log`)
-- How to interpret faulthandler output (C-level crash traces vs Python tracebacks)
-- Common error categories (device communication, Qt thread safety, queue manager, connection table)
-- BLACS state machine event ordering (for diagnosing race conditions)
-
-**Example prompts:**
-- "BLACS crashed, what happened?"
-- "Check the logs for any errors from the last few shots"
-- "We're getting intermittent timeouts on the PrawnBlaster"
-- "Increase logging verbosity for the connection table parser"
+Example prompts:
+- "Create a new RemoteControl device for the rastering GUI" → `device-builder`
+- "BLACS crashed, what happened?" → `labscript-diagnostics`
+- "Write an absorption-imaging sequence" → `amo-expert`
+- "Wrap up this session" → `wrap-up`
 
 ## Tips
 
@@ -75,7 +61,7 @@ All Claude Code configuration lives in the `.claude/` directory (tracked in git)
 | File | Purpose |
 |---|---|
 | [`CLAUDE.md`](CLAUDE.md) | Project instructions loaded every session |
-| `.claude/agents/labscript-amo-expert.md` | AMO/Labscript code agent prompt |
+| `.claude/agents/amo-expert.md` | AMO/Labscript code agent prompt |
 | `.claude/agents/labscript-diagnostics.md` | Log analysis agent prompt |
 | `.claude/settings.local.json` | Local permission settings |
 

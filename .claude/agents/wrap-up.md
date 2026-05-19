@@ -35,7 +35,7 @@ Produce SEPARATE commit messages per repo. Follow conventions:
   (wrap long lines at ~72 chars, indent continuation with 2 spaces)
 - <file_or_component>: <NEW> — <what this new file does>
 
-Co-Authored-By: Claude Opus 4.6 <noreply@anthropic.com>
+Co-Authored-By: Claude Opus 4.7 <noreply@anthropic.com>
 ```
 
 Rules:
