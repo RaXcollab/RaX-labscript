@@ -309,15 +309,15 @@ class NI_SCOPEWorker(Worker):
 
     # ---------- helpers ----------
     def _configure_horizontal(self):
-        """Start-trigger style capture with 50% reference position."""
+        """Start-trigger style capture with `ref_position=0` (no pre-trigger samples)."""
         self.scope.configure_horizontal_timing(
             min_sample_rate=self.min_sample_rate,
             min_num_pts=self.min_num_pts,
-            ref_position=0,      # percent; e.g. 1% = start-trigger style capture
+            ref_position=0,      # percent of record before trigger; 0 = trigger at sample 0 (start-trigger)
             num_records=1,
             enforce_realtime=True
         )
-        print(f'[NI_SCOPE] Horizontal: fs_min={self.min_sample_rate}, N_min={self.min_num_pts}, ref_pos=50%')
+        print(f'[NI_SCOPE] Horizontal: fs_min={self.min_sample_rate}, N_min={self.min_num_pts}, ref_pos=0%')
 
     def _normalize_trigger_source(self, src):
         """Return (src_norm, mode) where mode is 'analog', 'digital', or 'immediate'."""

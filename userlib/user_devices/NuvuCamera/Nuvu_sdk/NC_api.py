@@ -154,8 +154,8 @@ ncCamGetControllerTemp.argtypes = [NCCAM, POINTER(c_double)]
 
 #get température component
 ncCamGetComponentTemp = nuvuLib.ncCamGetComponentTemp
-ncCamGetControllerTemp.restype = c_int
-ncCamGetControllerTemp.argtypes = [NCCAM, c_int, POINTER(c_double)]
+ncCamGetComponentTemp.restype = c_int
+ncCamGetComponentTemp.argtypes = [NCCAM, c_int, POINTER(c_double)]
 
 #get Detector temp
 ncCamGetDetectorTemp = nuvuLib.ncCamGetDetectorTemp
@@ -234,5 +234,5 @@ ncCamGetBinningMode.argtypes = [NCCAM, POINTER(c_int), POINTER(c_int)]
 
 # flush read queue
 ncCamFlushReadQueue = nuvuLib.ncCamFlushReadQueues
-ncCamGetBinningMode.restype = c_int
-ncCamGetBinningMode.argtypes = [NCCAM]
+ncCamFlushReadQueue.restype = c_int
+ncCamFlushReadQueue.argtypes = [NCCAM]
