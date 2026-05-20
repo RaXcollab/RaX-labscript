@@ -1,0 +1,210 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<style>
+  body { font-family: Calibri, Segoe UI, sans-serif; font-size: 11pt; color: #333; max-width: 900px; margin: 20px auto; }
+  h1 { font-size: 20pt; border-bottom: 2px solid #0078d4; padding-bottom: 6px; color: #0078d4; }
+  h2 { font-size: 14pt; color: #0078d4; margin-top: 24px; }
+  h3 { font-size: 12pt; color: #444; }
+  table { border-collapse: collapse; width: 100%; margin: 10px 0; }
+  th, td { border: 1px solid #ccc; padding: 6px 10px; text-align: left; vertical-align: top; }
+  th { background: #f0f0f0; font-weight: bold; }
+  code { font-family: Consolas, monospace; font-size: 10pt; background: #f4f4f4; padding: 1px 4px; border-radius: 3px; }
+  pre { background: #f4f4f4; border: 1px solid #ddd; border-radius: 4px; padding: 10px; font-family: Consolas, monospace; font-size: 10pt; overflow-x: auto; white-space: pre; }
+  .badge { display: inline-block; padding: 2px 8px; border-radius: 10px; color: white; font-size: 9pt; font-weight: bold; }
+  .green { background: #4CAF50; }
+  .orange { background: #F57C00; }
+  .yellow { background: #FFC107; color: #333; }
+  .blue { background: #0078d4; }
+  .purple { background: #9C27B0; }
+  .gray { background: #9E9E9E; }
+  .red { background: #f44336; }
+  .meta { color: #888; font-size: 10pt; }
+  ol, ul { margin: 6px 0; padding-left: 24px; }
+  li { margin: 3px 0; }
+  strong { color: #222; }
+  .callout { background: #e8f4fd; border-left: 4px solid #0078d4; padding: 8px 12px; margin: 10px 0; }
+  .warn { background: #fff3cd; border-left: 4px solid #ffc107; padding: 8px 12px; margin: 10px 0; }
+</style>
+</head>
+<body>
+
+<h1>Rastering GUI: Command-Queue Crash &amp; Backlash Bug Fixes</h1>
+<p class="meta">
+  <strong>Date:</strong> 2026-05-15 &nbsp;&bull;&nbsp;
+  <strong>Repo:</strong> <code>RaXcollab/rastering</code> (separate repo, branch <code>main</code>) &nbsp;&bull;&nbsp;
+  <strong>Commits:</strong> <code>7021bdf</code>, <code>9623ae7</code>, <code>c06c4a0</code>, <code>08aef3b</code> (pushed) &nbsp;&bull;&nbsp;
+  <strong>Context:</strong> Five rastering-GUI bugs fixed via systematic debugging + code review
+</p>
+
+<p>
+  <span class="badge blue">ablation-tech</span>
+  <span class="badge purple">systematic-debugging</span>
+  <span class="badge gray">code-review</span>
+</p>
+
+<h2>What Changed</h2>
+<p>
+  Five distinct bugs in the laser-ablation rastering GUI were diagnosed and fixed: a
+  <code>PriorityQueue</code> crash on Device-Home-Both, and four backlash-related defects
+  (no acknowledgement, double-commit, GUI freeze, stale Reading label). Methodology was
+  <code>/systematic-debugging</code> (root cause by evidence/code-reading before any fix;
+  test-first RED&rarr;GREEN; one change per cause) followed by <code>/requesting-code-review</code>
+  (verdict "With fixes" &mdash; all addressed).
+</p>
+<p>
+  Two architectural decisions emerged: a monotonic tiebreaker for the motor command queue,
+  and a "write self-reports its read-back" pattern that eliminates a priority-inversion
+  hazard entirely rather than working around it.
+</p>
+
+<h2>Files Changed</h2>
+<table>
+  <tr><th>File</th><th>Change</th><th>Why</th></tr>
+  <tr>
+    <td><code>raster_controller.py</code></td>
+    <td>Queue tiebreaker; backlash Set/Reading fan-back via <code>backlash_reading_signal</code>; <code>set_backlash()</code> self-reports; <code>_deliver_result</code> emit</td>
+    <td>Bugs A, B, D, E + review Issue 1/2</td>
+  </tr>
+  <tr>
+    <td><code>ui.py</code></td>
+    <td>Removed <code>editingFinished</code> wiring; wired per-axis Set button; <code>_apply_loaded_backlash_widgets()</code>; <code>blockSignals</code> guards</td>
+    <td>Bugs C, D + review Issue 1</td>
+  </tr>
+  <tr>
+    <td><code>raster_gui.ui</code></td>
+    <td><strong>NEW</strong> per-axis "Set" QPushButton (X, Y)</td>
+    <td>Bug C &mdash; explicit commit replaces double-firing signal</td>
+  </tr>
+  <tr>
+    <td><code>tests/test_command_queue.py</code></td>
+    <td><strong>NEW</strong> &mdash; 7 tests, 7/7 green</td>
+    <td>RED&rarr;GREEN for Bug A tiebreaker; standalone-runnable + pytest-collectable</td>
+  </tr>
+</table>
+
+<h2>Bugs Found &amp; Fixed</h2>
+
+<div class="warn">
+  <strong>Bug A &mdash; Device-Home-Both crash</strong> (<code>7021bdf</code>).
+  <code>queue.PriorityQueue</code> received <code>(priority, cmd)</code> tuples. Equal-priority
+  commands forced Python to compare un-orderable <code>MotorCommand</code> objects &rarr;
+  <code>TypeError: '&lt;' not supported between MotorCommand</code>.
+  <strong>Fix:</strong> <code>itertools.count()</code> monotonic tiebreaker &rarr;
+  <code>(priority, next(seq), cmd)</code>. <code>next()</code> is GIL-atomic, safe for the
+  multi-producer (ui / zmq / telemetry) &rarr; single motor-IO-thread design.
+</div>
+
+<div class="warn">
+  <strong>Bug B &mdash; backlash Set produced no status-log acknowledgement</strong> (<code>9623ae7</code>).
+  <code>_LOGGABLE_SUCCESS_TAGS</code> whitelist omitted <code>backlash_X</code> / <code>backlash_Y</code>.
+  <strong>Fix:</strong> added tags + <code>_format_success_message</code> backlash branch.
+</div>
+
+<div class="warn">
+  <strong>Bug C &mdash; single backlash edit committed twice</strong> (<code>9623ae7</code>).
+  <code>QDoubleSpinBox.editingFinished</code> fires on <em>both</em> Enter <em>and</em> focus-out
+  with no dedup. <strong>Fix:</strong> removed <code>editingFinished</code> wiring; added a
+  dedicated per-axis "Set" QPushButton in <code>raster_gui.ui</code>, wired <code>.clicked</code>.
+</div>
+
+<div class="warn">
+  <strong>Bug D &mdash; GUI froze during backlash set</strong> (<code>9623ae7</code>).
+  <code>request_set_backlash</code> was invoked with <code>wait=True</code>, blocking the Qt GUI
+  thread on the motor-IO thread. <strong>Fix:</strong> fire-and-forget async; new
+  <code>backlash_reading_signal = pyqtSignal(str, float)</code> fans the motor read-back from
+  the worker thread to the GUI thread via an auto-queued connection (no wait).
+</div>
+
+<div class="warn">
+  <strong>Bug E &mdash; Reading label stale after Set</strong> (<code>c06c4a0</code>).
+  <strong>Priority inversion:</strong> the separate read-back <code>request_get_backlash</code>
+  (priority 50) and <code>request_set_backlash</code> (priority 100) shared one min-heap; the
+  lower number dequeues first, so the GET could resolve against pre-SET motor state.
+  <strong>Fix (Option C):</strong> the SET self-reports &mdash; <code>set_backlash()</code>
+  returns the motor read-back (KCube does SetBacklash then GetBacklash internally),
+  <code>MotorResult.value</code> carries it, <code>_deliver_result</code> emits
+  <code>backlash_reading_signal</code>. The separate GET was eliminated entirely; no ordering
+  hazard remains possible.
+</div>
+
+<h3>Code Review Follow-ups (<code>08aef3b</code>)</h3>
+<table>
+  <tr><th>Item</th><th>Root cause</th><th>Fix</th></tr>
+  <tr>
+    <td>Issue 1: Setpoint stale after cal-load</td>
+    <td>cal-load loop issued the same inverting GETs as Bug E</td>
+    <td><code>_apply_loaded_backlash_widgets()</code> seeds reading + setpoint directly from bundled calibration JSON (<code>blockSignals</code> guard); motor re-read only for legacy/missing-key axes</td>
+  </tr>
+  <tr>
+    <td>Issue 2 + Minor</td>
+    <td>Tag-keyed-by-design rationale undocumented; ad-hoc tag indexing</td>
+    <td>Documented (label reflects true motor state regardless of initiator); standardized <code>tag.split('_')[-1]</code></td>
+  </tr>
+</table>
+
+<h2>Key Decisions</h2>
+
+<div class="callout">
+  <strong>Monotonic tiebreaker for object-payload priority queues:</strong>
+  any <code>queue.PriorityQueue</code> / <code>heapq</code> carrying non-comparable object
+  payloads must use <code>(priority, next(itertools.count()), obj)</code>. The counter
+  guarantees a total order so the heap never falls through to comparing the objects.
+  Generalizable to all command-queue designs (BLACS workers, GUI motor queues).
+</div>
+
+<div class="callout">
+  <strong>Eliminate priority inversion, don't work around it:</strong> when a read-back must
+  reflect a just-issued write, make the <em>write self-report</em> the read-back instead of
+  enqueuing a separately-prioritized GET. Removing the second queue entry removes the ordering
+  hazard at the source &mdash; no priority tuning, no sequencing barrier needed.
+</div>
+
+<div class="callout">
+  <strong><code>QDoubleSpinBox.editingFinished</code> double-fires</strong> (Enter <em>and</em>
+  focus-out). Any spinbox that commits to hardware must use an explicit commit button, not
+  <code>editingFinished</code>. Qt-safety class lesson, applies to every hardware-committing
+  spinbox in any GUI.
+</div>
+
+<h2>Before / After</h2>
+<table>
+  <tr><th>Aspect</th><th>Before</th><th>After</th></tr>
+  <tr><td>Motor command queue ordering</td><td><code>(priority, cmd)</code> &mdash; crashes on equal priority</td><td><code>(priority, next(seq), cmd)</code> &mdash; total order</td></tr>
+  <tr><td>Backlash commit trigger</td><td><code>editingFinished</code> (fires twice)</td><td>Explicit per-axis Set button</td></tr>
+  <tr><td>Backlash set call</td><td><code>wait=True</code> (blocks GUI thread)</td><td>Fire-and-forget; signal fan-back</td></tr>
+  <tr><td>Reading label source</td><td>Separate prioritized GET (inverts vs SET)</td><td>SET self-reports read-back</td></tr>
+  <tr><td>Cal-load Setpoint</td><td>Inverting GET loop</td><td>Seeded from bundled calibration JSON</td></tr>
+</table>
+
+<h2>Testing</h2>
+<p>
+  <code>tests/test_command_queue.py</code> &mdash; 7/7 green. Standalone-runnable and
+  pytest-collectable; unbound-method invocation with a duck-typed <code>SimpleNamespace</code>
+  self; <code>_Skip</code>/<code>_skip</code> dual mechanism for <code>ui.py</code>-import-guarded
+  tests. Conda env is <code>rastering</code> (not <code>labscript</code>):
+</p>
+<pre>source ~/miniconda/etc/profile.d/conda.sh && conda activate rastering
+pytest tests/test_command_queue.py</pre>
+<p>
+  Live-validated by user: backlash Set <span class="badge green">OK</span>,
+  Device Home <span class="badge green">OK</span>.
+</p>
+
+<div class="warn">
+  <strong>Open verification item:</strong> the cal-load Setpoint fix (review Issue 1,
+  <code>08aef3b</code>) is <strong>not yet live-checked</strong>. Load a calibration on
+  hardware and confirm the Setpoint spinbox seeds from the bundled JSON for both axes
+  (and that legacy/missing-key axes still fall back to a motor re-read).
+</div>
+
+<h2>Future Work</h2>
+<ul>
+  <li>Live-verify the cal-load Setpoint fix (Issue 1) on hardware &mdash; see warning above.</li>
+  <li>Audit other hardware-committing spinboxes in the rastering GUI for the
+      <code>editingFinished</code> double-fire pattern.</li>
+</ul>
+
+</body>
+</html>

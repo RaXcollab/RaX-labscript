@@ -1,0 +1,122 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<style>
+  body { font-family: Calibri, Segoe UI, sans-serif; font-size: 11pt; color: #333; max-width: 900px; margin: 20px auto; }
+  h1 { font-size: 20pt; border-bottom: 2px solid #0078d4; padding-bottom: 6px; color: #0078d4; }
+  h2 { font-size: 14pt; color: #0078d4; margin-top: 24px; }
+  h3 { font-size: 12pt; color: #444; }
+  table { border-collapse: collapse; width: 100%; margin: 10px 0; }
+  th, td { border: 1px solid #ccc; padding: 6px 10px; text-align: left; vertical-align: top; }
+  th { background: #f0f0f0; font-weight: bold; }
+  code { font-family: Consolas, monospace; font-size: 10pt; background: #f4f4f4; padding: 1px 4px; border-radius: 3px; }
+  pre { background: #f4f4f4; border: 1px solid #ddd; border-radius: 4px; padding: 10px; font-family: Consolas, monospace; font-size: 10pt; overflow-x: auto; white-space: pre; }
+  .badge { display: inline-block; padding: 2px 8px; border-radius: 10px; color: white; font-size: 9pt; font-weight: bold; }
+  .green { background: #4CAF50; }
+  .orange { background: #F57C00; }
+  .yellow { background: #FFC107; color: #333; }
+  .blue { background: #0078d4; }
+  .purple { background: #9C27B0; }
+  .gray { background: #9E9E9E; }
+  .red { background: #f44336; }
+  .meta { color: #888; font-size: 10pt; }
+  ol, ul { margin: 6px 0; padding-left: 24px; }
+  li { margin: 3px 0; }
+  strong { color: #222; }
+  .callout { background: #e8f4fd; border-left: 4px solid #0078d4; padding: 8px 12px; margin: 10px 0; }
+  .warn { background: #fff3cd; border-left: 4px solid #ffc107; padding: 8px 12px; margin: 10px 0; }
+</style>
+</head>
+<body>
+
+<h1>Commit Bundling Root Cause &amp; Git Staging Hygiene</h1>
+<p class="meta">
+  <strong>Date:</strong> 2026-05-15 &nbsp;&bull;&nbsp;
+  <strong>Repo:</strong> <code>RaXcollab/RaX-labscript</code> (parent) &nbsp;&bull;&nbsp;
+  <strong>Commit under investigation:</strong> <code>b328f9f</code> &nbsp;&bull;&nbsp;
+  <strong>Code change:</strong> none (analysis-only; resolved by commit-message wording, already in place) &nbsp;&bull;&nbsp;
+  <strong>Context:</strong> systematic-debugging of why one commit bundled two logically separate changes
+</p>
+
+<p>
+  <span class="badge purple">systematic-debugging</span>
+  <span class="badge gray">git-hygiene</span>
+  <span class="badge blue">RemoteControl / Rastering PUB-SUB refactor</span>
+</p>
+
+<h2>Question</h2>
+<p>
+  Why did <code>b328f9f</code> bundle <strong>two logically separate changes</strong> when only one
+  &mdash; Task 12 Step 3, &ldquo;snapshot from live <code>_pubsub_cache</code> in
+  <code>transition_to_buffered</code>&rdquo; &mdash; was intended for that commit?
+</p>
+
+<h2>Root Cause</h2>
+<div class="warn">
+  A <strong>prior session</strong> left an uncommitted deletion of the redundant
+  <code>RasteringWorker.post_experiment</code> override in
+  <code>userlib/user_devices/RasteringDevice/blacs_workers.py</code>. The current session then
+  ran <code>git add &lt;file&gt;</code> for the Step 3 edit. <code>git add</code> on a path stages
+  <strong>every uncommitted hunk</strong> in that file &mdash; so the prior-session deletion and
+  the new Step 3 edit were fused into a single commit.
+</div>
+
+<h2>Functional Assessment</h2>
+<table>
+  <tr><th>Concern</th><th>Verdict</th></tr>
+  <tr>
+    <td>Is the bundled <code>post_experiment</code> deletion correct?</td>
+    <td><span class="badge green">Yes</span> &mdash; the override was redundant; base
+      <code>RemoteControlWorker.post_experiment</code> already performs the snapshot via
+      <code>_pubsub_cache</code>. The deletion is explicitly permitted by the refactor plan.</td>
+  </tr>
+  <tr>
+    <td>Did removing the override leave dead imports?</td>
+    <td><span class="badge green">No</span> &mdash; <code>transition_to_buffered</code> step 2
+      still uses <code>import h5py</code>; nothing became unused.</td>
+  </tr>
+  <tr>
+    <td>Net effect of the bundle</td>
+    <td>Two correct, related changes in one commit. No functional defect; only a commit-granularity
+      / message-accuracy concern.</td>
+  </tr>
+</table>
+
+<h2>Resolution</h2>
+<div class="callout">
+  Chosen resolution: <strong>amend the commit message</strong> (not split, not revert). The
+  message already documents both changes:
+  <em>&ldquo;Rastering: snapshot from live drain cache; remove redundant post_experiment override
+  (base RemoteControlWorker handles it)&rdquo;.</em> This resolution is <strong>already
+  satisfied</strong> &mdash; no further git action.
+</div>
+<div class="warn">
+  <strong>Do not re-amend <code>b328f9f</code>.</strong> It is buried under later commits
+  (HEAD = <code>d974676</code>). Amending it would require an interactive rebase rewriting every
+  subsequent SHA &mdash; destructive, unnecessary, and pushing is forbidden regardless. The
+  existing message is accurate; leave history intact.
+</div>
+
+<h2>Generalizable Lesson</h2>
+<div class="callout">
+  <strong>In a mixed working tree, <code>git add &lt;file&gt;</code> stages ALL uncommitted hunks
+  in that file</strong> &mdash; including changes from prior sessions you did not author this
+  session. Before every commit, inspect <code>git diff --cached</code> and confirm it contains
+  only the intended hunks. When the tree is known to be mixed, stage at hunk granularity with
+  <code>git add -p</code>. The existing memory note &ldquo;Mixed working tree is normal&rdquo;
+  states the situation but not this staging-semantics hazard or the <code>--cached</code> guard;
+  both are now captured in <code>feedback_git-staging-mixed-tree.md</code>.
+</div>
+
+<h2>Broader Context</h2>
+<p>
+  This investigation sits inside the larger ongoing RemoteControl / Rastering PUB-SUB cache
+  refactor &mdash; replacing the pickled <code>pubsub_monitor_cache</code> init-kwarg with a
+  live-drained <code>_pubsub_cache</code> shared dict. Related commits in this branch:
+  <code>3cf0e9d</code>, <code>7e586a6</code>, <code>b09843e</code>, <code>1bf8f07</code>,
+  <code>b328f9f</code>.
+</p>
+
+</body>
+</html>
