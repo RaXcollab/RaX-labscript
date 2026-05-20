@@ -1,6 +1,6 @@
 # Context Engineering Best Practices
 
-Last updated: 2026-03-06
+Last updated: 2026-05-19
 
 Corroborated findings from online sources. Each practice tagged with source count and tier.
 Anthropic official [A] > Expert practitioners [E] > Community [C].

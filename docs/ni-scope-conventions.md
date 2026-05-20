@@ -16,3 +16,5 @@ The NI_SCOPE device (`userlib/user_devices/NI_SCOPE/`) is a custom NI-5922 high-
 4. Default 1 MHz
 
 **NaN-padding pattern:** When optional data columns exist, fill with NaN rather than omitting. This preserves indexing semantics (`channel 0 = row 0`) and makes missing data visible (NaN propagates) rather than silent.
+
+**Fetch lifecycle:** NI_SCOPE pulls samples in **`post_experiment`** (per shot), NOT `transition_to_manual`. This matches the fork's queued-shot lifecycle (`transition_to_manual` only runs at queue-end / abort / pause). Practical consequence: every shot in a queue gets its own `/data/traces/NI_SCOPE` dataset written before the next `transition_to_buffered`; analysis can rely on the dataset existing on a per-shot basis. See `userlib/user_devices/NI_SCOPE/blacs_workers.py` for the fetch call.

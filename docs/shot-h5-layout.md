@@ -134,6 +134,33 @@ shot_file.h5
 │       └── NI_SCOPE                      shape=(channels, samples) raw float64 (NOT compound)
 │                                         Writer: userlib/user_devices/NI_SCOPE/blacs_workers.py
 │
+├── images/                       ── ONE SUBGROUP PER CAMERA ──
+│   │                                Writer: IMAQdxCamera-family workers (and NuvuCamera) in
+│   │                                transition_to_manual / post_experiment, writing each
+│   │                                acquired exposure as a uint16 gzipped HDF5 IMAGE dataset.
+│   │                                Source: labscript-devices/labscript_devices/IMAQdxCamera/
+│   │                                blacs_workers.py:446-449 (the image_group lookup and dataset
+│   │                                write). Group key is the camera's `orientation` property if
+│   │                                set, else its device name.
+│   │   image_group.attrs['camera']        ← device_name
+│   │   image_group.attrs['failed_shot']   ← True if any exposure failed mid-shot
+│   │
+│   ├── {orientation_or_device_name}/
+│   │   │   e.g. `images/side/`, `images/NuvuCamera/`
+│   │   └── {exposure_name}/      ← per `expose(t, name, frametype, ...)` call
+│   │       └── {frametype}       shape=(H, W) uint16   one dataset per (name, frametype)
+│   │                             attrs: CLASS='IMAGE', IMAGE_VERSION='1.2',
+│   │                                    IMAGE_SUBCLASS='IMAGE_GRAYSCALE',
+│   │                                    IMAGE_WHITE_IS_ZERO=0
+│   │                             (HDFView renders directly. Multiple exposures with the
+│   │                             same (name, frametype) → stacked into a single dataset of
+│   │                             shape (N, H, W) by the worker.)
+│   │
+│   └── (For NuvuCamera ONLY) — adds a sibling
+│       /data/cam_info/{device_name}/ group with per-shot scalars/attrs
+│       (temps, EM gains, exposure, readout mode). Written by
+│       userlib/user_devices/NuvuCamera/blacs_workers.py post_experiment.
+│
 └── results/                      ── ONE SUBGROUP PER LYSE ANALYSIS SCRIPT ──
                                      Writer: lyse creates parent group on Run() instantiation
                                              → site-packages/lyse/__init__.py:287
@@ -144,6 +171,8 @@ shot_file.h5
         ├── attrs                 ← from save_result(name, value)  (stored as group attrs)
         └── {array_name}          ← from save_result_array(name, data)  (stored as datasets)
 ```
+
+> **Lyse access pattern**: `df = lyse.data(); df['{orientation_or_device_name}/{exposure_name}', 'failed_shot']` returns the per-shot `failed_shot` attr column. Raw image bytes load via `lyse.Run(h5_path).get_image(orientation, name, frametype)` which is a thin wrapper around the same dataset path.
 
 ## Where do I find setpoint X? (LaserLockGUI case study)
 

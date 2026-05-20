@@ -43,7 +43,7 @@ skipped silently.
 | Lock-wait inner poll | 25 ms (40 Hz) | Polls `SharedState` during buffered-shot block | `workers.py:605,611,625` |
 | `LOCK_TIMEOUT_S` | 60 s | Max wait for setpoint convergence | `workers.py:21` |
 | `LOCK_CONSECUTIVE` | 5 | Fresh in-tolerance reads required to declare lock | `workers.py:22` |
-| `LOCK_TOLERANCE` | 5 µHz (THz units, ≈ 5 MHz) | Convergence tolerance | `workers.py:20` |
+| `LOCK_TOLERANCE` | 5e-6 THz = **5 MHz** | Convergence tolerance | `workers.py:20` |
 | `_PENDING_GUARD_S` | 1.0 s | Suppresses local-input clobber after "Set F" click | `display.py:101` |
 
 ### Diagnostic budgets (only active if `diagnostics.ENABLED=True`)

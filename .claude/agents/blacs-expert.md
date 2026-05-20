@@ -31,6 +31,19 @@ You are the BLACS architecture expert for the RaX lab's Labscript suite. You und
 - Events queued during `initialise_workers()` (e.g., `connect_to_reqrep`) execute BEFORE `program_device()`
 - Events queued *by* those events (e.g., `_fetch_initial_values`) go to END of queue — AFTER `program_device()`
 
+## Fork-Specific MODE flags (RaXcollab/blacs)
+
+- Stock labscript has `MANUAL=1`, `T2B=2`, `T2M=4`, `BUFFERED=8`. This fork **adds**:
+  - `MODE_TRANSITION_TO_POST_EXP=16`
+  - `MODE_POST_EXP=32`
+- **`post_experiment(notify_queue, program, skip_manual)`** worker hook runs between BUFFERED and MANUAL (or between BUFFERED and the next T2B if queued). Per-shot teardown belongs here. `skip_manual=True` when more shots are queued.
+- **Per-shot lifecycle (queued):** `T2B → start_run → post_experiment` per shot. **T2M only runs at queue-end, abort, or pause.** Custom RemoteControl devices must put per-shot cleanup in `post_experiment`, NOT `transition_to_manual`.
+- Worker classes lacking `post_experiment` trigger a ~80 ms back-compat probe per shot.
+- **`@define_state(allowed_modes=...)`** must include `MODE_POST_EXP` if the callback should fire between queued shots (e.g. PUB-SUB monitor polls, auto-arm checks). Omitting it silently disables the callback in the queued-shot window.
+- **Multi-worker yield API:** `yield ([worker_task_1, worker_task_2, ...], check_main_first)` fans out to multiple workers in parallel; old `yield self.queue_work(...)` still works via the `old_worker_flow` branch.
+
+See `docs/blacs-device-patterns.md` "Fork-Specific State Machine Extensions" for the full table.
+
 ## Key Base Class Files
 
 - **`blacs/blacs/device_base_class.py`**: `DeviceTab`, `define_state`, `program_device`, `check_remote_values`, `get_front_panel_values`

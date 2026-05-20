@@ -4,7 +4,7 @@ Source: `~/miniconda/envs/labscript/Lib/site-packages/labscript/` and `labscript
 
 ## Connection Table Classes
 
-- `PrawnBlaster(name, com_port, num_pseudoclocks=1, trigger_device=None, clock_frequency=100e6, use_wait_monitor=True, ...)` — pseudoclock device. Access clocklines via `pb.clocklines[N]`. Max 30,000/num_pseudoclocks instructions. Resolution ~20ns
+- `PrawnBlaster(name, com_port, num_pseudoclocks=1, trigger_device=None, clock_frequency=100e6, use_wait_monitor=True, ...)` — pseudoclock device. `clock_frequency=100e6` is the **RP2040 internal core clock**, NOT the pseudoclock output rate; pseudoclock output is **10 MHz max** (`clock_limit = 1/100e-9`), 20 ns resolution. Access clocklines via `pb.clocklines[N]`. Max 30,000/num_pseudoclocks instructions.
 - `NI_PXIe_6361(name, parent_device, clock_terminal, MAX_name, num_AI=0, num_AO=0, AI_term='RSE', acquisition_rate=None, ports=None, stop_order=None, ...)` — analog+digital I/O. Capabilities auto-applied; kwargs override. AI term: ai0-7 support RSE/NRSE/Diff; ai8-15 RSE/NRSE only
 - `NI_PXIe_6535(name, parent_device, clock_terminal, MAX_name, ports=None, ...)` — digital-only. 4 buffered ports (8 lines each) + port4 (6 lines, static)
 - `AnalogOut(name, parent_device, connection, limits=None, default_value=None, unit_conversion_class=None, ...)` — timed analog output

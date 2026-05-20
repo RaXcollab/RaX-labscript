@@ -70,6 +70,12 @@ source ~/miniconda/etc/profile.d/conda.sh && conda activate labscript && python 
 - **NEVER** `rm -rf`, `rm -r`, `mv` on directories without explicit user confirmation
 - Use read-only commands (`ls`, `stat`, `test -d`) for diagnostics — never `mv` or `rm`
 
+### Lab-Wide Invariants (load-bearing)
+
+- **Per-shot teardown** belongs in `post_experiment`, NOT `transition_to_manual`. The fork's queued-shot lifecycle runs `transition_to_buffered → start_run → post_experiment` per shot; `transition_to_manual` only runs at queue-end, abort, or pause. Fork-only MODE flags: `MODE_TRANSITION_TO_POST_EXP=16`, `MODE_POST_EXP=32`. Worker classes without `post_experiment` trigger a ~80 ms back-compat probe per shot.
+- **HF lock spec (canonical):** lock acquires when **5** consecutive in-tolerance samples land within `LOCK_TOLERANCE = 5e-6 THz = 5 MHz`, with `LOCK_TIMEOUT_S = 60`. Code is authoritative — `GUIs/HF_Locking/workers.py:21-22`. Older "2 consecutive" notes are stale; correct everywhere on contact.
+- **Authoritative scan x-axis** for RemoteControl-programmed scans is `/devices/{dev}/remote_device_operation['{ch}'][0]` (the actual labscript intent, full float64). `front_panel`, `_AO/value`, and `monitor_values` lag, quantize, or were `float32` pre-2026-04-29.
+
 ### Verification
 
 - **Sequence changes**: compile in RunManager → check for errors
@@ -124,10 +130,16 @@ Each GUI codebase carries its own `.claude/agents/` domain agent: `HF_Locking`�
 ## Reference Documentation
 
 Docs load via path-scoped rules (`.claude/rules/ref-*.md`) when editing matching files:
-- `docs/blacs-device-patterns.md` — RemoteControl + NI_DAQmx patterns (loads for `user_devices/`, `blacs/`)
-- `docs/shot-h5-layout.md` — per-shot HDF5 file layout reference: where each writer puts what, with code citations + LaserLockGUI case study (loads for `user_devices/`, `blacs/`, `analysislib/`)
+- `docs/blacs-state-machine.md` — canonical BLACS state machine + per-shot lifecycle (fork-specific MODE_POST_EXP); loads for `user_devices/`, `blacs/`
+- `docs/blacs-device-patterns.md` — RemoteControl + NI_DAQmx patterns incl. latched-lines mechanism (loads for `user_devices/`, `blacs/`)
+- `docs/remotecontrol-zmq-protocol.md` — canonical ZMQ protocol for external-GUI devices: REQ-REP + PUB-SUB + monitor-snapshot pattern (loads for `user_devices/`, `GUIs/`)
+- `docs/external-guis-architecture.md` — per-GUI architecture for HF_Locking / rastering / BigSkyControl (loads for `user_devices/`, `GUIs/`)
+- `docs/main-experiment-overview.md` — this machine's CT topology, channels, sequences, globals model (loads for `labscriptlib/Main_Experiment/`)
+- `docs/shot-h5-layout.md` — per-shot HDF5 file layout incl. `/images/` camera group + LaserLockGUI case study (loads for `user_devices/`, `blacs/`, `analysislib/`)
 - `docs/labscript-api.md` — labscript DSL, device drivers, sequence functions (loads for `labscriptlib/`, `user_devices/`)
 - `docs/analysis-api.md` + `docs/ni-scope-conventions.md` — analysis utilities (loads for `analysislib/`)
+- `docs/hf-locking-rates.md` — HF_Locking refresh-rate inventory + lock thresholds (loads for `GUIs/HF_Locking/`, `user_devices/LaserLockDevice/`)
 - `docs/yag-laser-physics.md` — Nd:YAG laser physics, trigger modes, serial commands (loads for `user_devices/BigSky*`, `GUIs/BigSkyControl/`)
+- `docs/known-latent-issues.md` — catalog of latent bugs / conditional issues; no auto-load (reference-on-demand)
 - `Labscript-Confluence-2026-02-11.pdf` — Lab-specific Confluence docs
 - Official labscript docs: https://docs.labscriptsuite.org/ (reference only — our fork code takes precedence)

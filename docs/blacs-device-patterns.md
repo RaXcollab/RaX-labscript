@@ -89,6 +89,29 @@ Events queued by `@define_state` methods execute in FIFO order in the mainloop t
 
 ---
 
+## Fork-Specific State Machine Extensions
+
+This fork extends stock labscript BLACS with post-experiment states and a multi-worker `yield` API. The MODE bitmask (in `blacs/blacs/tab_base_classes.py:64`) is:
+
+| Flag | Value | Meaning |
+|---|---|---|
+| `MODE_MANUAL` | 1 | Idle; user-driven |
+| `MODE_TRANSITION_TO_BUFFERED` | 2 | T2B — preparing to run |
+| `MODE_TRANSITION_TO_MANUAL` | 4 | T2M — tearing down to idle |
+| `MODE_BUFFERED` | 8 | Shot executing |
+| `MODE_TRANSITION_TO_POST_EXP` | **16** | **fork** — T2POST |
+| `MODE_POST_EXP` | **32** | **fork** — between-shot idle in queue |
+
+**Per-shot worker hook:** `post_experiment(notify_queue, program, skip_manual)` runs between BUFFERED and MANUAL (or between BUFFERED and the next T2B if queued). It is the canonical place for per-shot teardown (clearing latched lines, snapshotting final monitor values, fetching scope traces). `skip_manual=True` is set by `QueueManager` when more shots are queued — devices use this to defer expensive widget syncs.
+
+**Back-compat fallback:** Worker classes that don't implement `post_experiment` trigger a ~80 ms first-shot probe per shot. Implement the hook to skip the probe.
+
+**Multi-worker yield API:** A `@define_state` method can yield `([worker_task_1, worker_task_2, ...], check_main_first)` to fan out work to multiple workers in parallel and resume after all complete. The old single-task form `yield self.queue_work(...)` is still supported via the `old_worker_flow` branch in mainloop. Use multi-worker yield when programming several workers or dispatching a coordinated transition.
+
+**`@define_state(allowed_modes=...)`** must include `MODE_POST_EXP` if the callback should run between queued shots — e.g. PUB-SUB monitor poll, BigSky auto-rearm checks. Omitting POST_EXP silently disables the callback in the queued-shot window.
+
+---
+
 ## NI_DAQmx Output Worker Lifecycle
 
 **Shared class warning:** `NI_DAQmxOutputWorker` is used by ALL NI devices (6361, 6535, etc.). Changes to `transition_to_buffered`, `post_experiment`, or `transition_to_manual` affect every NI device. Guard device-specific behavior with property checks (e.g., `if self._latched_lines:`).

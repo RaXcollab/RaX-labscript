@@ -31,6 +31,13 @@ Every RemoteControl-based device has 5 files in `userlib/user_devices/{DeviceNam
 ```
 NOT `"labscript_devices.{DeviceName}..."` — that resolves to the wrong module.
 
+### Two RemoteControl Trees (memorize)
+
+- **ACTIVE**: `userlib/user_devices/RemoteControl/` — the live runtime base used by LaserLockDevice, RasteringDevice, BigSkyHub. ALL new RemoteControl subclasses inherit from THIS copy.
+- **DEAD CODE**: `labscript-devices/labscript_devices/RemoteControl/` — `register_classes.py` is fully commented out; the labscript-devices copy is not loaded by BLACS. It is the **independently-evolved upstream-style ancestor** kept as a protocol reference (the README and standalone classes document the JSON request/response schema).
+- **No class inheritance** between the two trees. The userlib copy has diverged (added `MultiStaticOutputValue`, overrode `check_remote_values` poll from 30 s base to 5 s, added the PUB-SUB drain pattern).
+- **Never `import labscript_devices.RemoteControl`** for new code — use `from user_devices.RemoteControl.labscript_devices import RemoteControl, RemoteAnalogOut, RemoteAnalogMonitor`. The worker path string is `"user_devices.RemoteControl.blacs_workers.RemoteControlWorker"`.
+
 ### `@set_passed_properties` Decorator
 The parent `RemoteControl.__init__` captures `host, reqrep_port, pubsub_port, mock` via this decorator. Subclasses do NOT need their own decorator — just call `super().__init__()` with these values.
 
