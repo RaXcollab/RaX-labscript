@@ -113,6 +113,13 @@ class RemoteControlTab(DeviceTab):
         # CHECK_VALUE round-trips during transition_to_buffered/post_experiment.
         self._pubsub_monitor_cache = {}
 
+        # Extra subscriber topic registry: subclasses call
+        # _register_subscriber() during initialise_GUI to subscribe to status
+        # topics (etc.) beyond child_monitor_connections. Frozen at thread
+        # start via local snapshot in _subscriber_loop — must not be mutated
+        # after connect_to_pubsub() runs.
+        self._extra_topics = {}
+
         # Signal bridge for thread-safe GUI updates from subscriber threads
         self._pubsub_bridge = _PubSubSignalBridge()
         self._pubsub_bridge.pubsub_status_changed.connect(self._on_pubsub_status_changed)
@@ -457,12 +464,33 @@ class RemoteControlTab(DeviceTab):
         )
         self._subscriber_thread.start()
 
+    def _register_subscriber(self, topic, signal_emit):
+        """Register an extra ZMQ PUB topic to subscribe to.
+
+        ``signal_emit(topic, value_str)`` is invoked from the subscriber
+        daemon thread when a matching message arrives. Must be a bound
+        ``pyqtSignal.emit`` (queued cross-thread dispatch) — do not call
+        widgets directly from the callback.
+
+        Call from ``initialise_GUI`` BEFORE ``connect_to_pubsub`` spawns
+        the daemon. The subscriber loop snapshots ``self._extra_topics``
+        once at thread start; mutations afterwards are ignored.
+        """
+        self._extra_topics[topic] = signal_emit
+
     def _subscriber_loop(self):
         """
-        Subscribe to monitor connection topics and forward values to
-        the GUI via the signal bridge (thread-safe).
+        Subscribe to monitor connection topics + any topics registered
+        via ``_register_subscriber()``, and dispatch values to the GUI
+        via the appropriate signal (thread-safe).
+
+        Frozen registry: ``self._extra_topics`` is snapshotted once at
+        thread start (``extras``). Subclasses adding subscriptions after
+        the loop has started will not see them — by design (daemon-thread
+        mutability hazard).
         """
         stop = self._pubsub_stop_event
+        extras = dict(self._extra_topics)  # frozen snapshot
         subscribers = {}
         poller = zmq.Poller()
 
@@ -475,6 +503,14 @@ class RemoteControlTab(DeviceTab):
                 subscribers[connection] = sub
                 poller.register(sub, zmq.POLLIN)
 
+            for topic in extras:
+                sub = self._pubsub_context.socket(zmq.SUB)
+                sub.setsockopt(zmq.LINGER, 0)
+                sub.connect(f"tcp://{self.host}:{self.pubsub_port}")
+                sub.setsockopt_string(zmq.SUBSCRIBE, topic)
+                subscribers[topic] = sub
+                poller.register(sub, zmq.POLLIN)
+
             while self.pubsub_connected and not stop.is_set():
                 socks = dict(poller.poll(timeout=500))
                 for sub_sock in socks:
@@ -482,8 +518,11 @@ class RemoteControlTab(DeviceTab):
                         message = sub_sock.recv_string(zmq.NOBLOCK)
                         parts = message.split(" ", 1)
                         if len(parts) == 2:
-                            conn, val = parts
-                            self._pubsub_bridge.monitor_value_received.emit(conn, val)
+                            topic, val = parts
+                            if topic in extras:
+                                extras[topic](topic, val)
+                            else:
+                                self._pubsub_bridge.monitor_value_received.emit(topic, val)
                     except zmq.ZMQError:
                         pass
 
