@@ -337,9 +337,13 @@ every step.
 
 ---
 
-## 10. Open questions for user
+## 10. Open questions for user (RESOLVED 2026-05-22)
 
-Listed in priority order:
+Original draft listed four open questions. All four are resolved below
+(§10-resolved). The original Q1–Q4 framing is preserved for historical
+context.
+
+### Original questions (historical)
 
 1. **Hub-mode capability advertisement** — BigSky is a hub of N lasers,
    each with its own connection prefix (`YAG_1_*`, `YAG_2_*`). Should
@@ -354,6 +358,94 @@ Listed in priority order:
    harder to test exhaustively.
 4. **v1 sunset date** — soft (warn on v1 receive) or hard (refuse) after
    all three migrate? External-script survey needed first.
+
+### §10-resolved (canonical — supersedes the open questions above)
+
+#### Q1 — Hub-mode capability advertisement: OPTIONAL prefix-match glob
+
+- HELLO reply MAY include a top-level `"connections"` key with an array of
+  string patterns. Hub-mode servers (BigSky) SHOULD advertise; single-
+  instance servers (HF_Locking, Rastering) SHOULD omit.
+- **Pattern format**: a string ending in `*` matches by **prefix only**.
+  No other glob/regex metacharacters supported.
+- **BLACS-side check** (canonical algorithm):
+
+  ```python
+  any(conn.startswith(p.rstrip("*")) for p in advertised_connections)
+  ```
+
+- **NO** `fnmatch`, **NO** recursive `**`, **NO** character classes `[abc]`.
+  Three lines of matcher code, zero library dependency.
+- Advertisement is a **hint, not a contract**. BLACS-side MUST still
+  gracefully handle `UNKNOWN_CONNECTION` for any request; a server MAY
+  advertise stale data during a hot config change.
+
+#### Q2 — `id` correlation: REQUIRED from BLACS, OPTIONAL from others
+
+- v2 requests MAY include `"id": uint64` (monotonically increasing per
+  (client, server) pair).
+- **BLACS-side `RemoteCommunication` MUST emit `id` on every outbound
+  request.** Other clients (debug scripts, future external tools) MAY
+  omit. Servers MUST echo `id` if present; MUST NOT reject requests that
+  omit it.
+- **Rationale**: half-instrumented logs are useless for correlation.
+  Forcing `RemoteCommunication.send_request` to always emit `id` keeps the
+  `remotecontrol.{server}.req` structured log (§6) reliably joinable
+  end-to-end at one uint64 per message.
+- **Implementation**: `RemoteCommunication` ships a per-instance counter
+  (`self._id_counter = itertools.count()`); `id = next(self._id_counter)`
+  on every send. Resets on reconnect (acceptable — the broken connection
+  itself is the correlation breakpoint).
+- Not a streaming commitment. If future async/streaming lands, `id` is
+  already the correlation handle.
+
+#### Q3 — Capabilities: enum strings + CANONICAL_CAPABILITIES frozenset
+
+- `capabilities` is an **array of strings** drawn from a fixed canonical set.
+- **Canonical set** (module-level constant in
+  `userlib/external_gui_lib/zmq_v2.py`):
+
+  ```python
+  CANONICAL_CAPABILITIES = frozenset({"monitors", "heartbeat", "wait_for_lock"})
+  ```
+
+- **Invariant test** (item 2.8 pattern): every capability string emitted by
+  a v2 server MUST be in `CANONICAL_CAPABILITIES`. New capabilities
+  require a two-step PR: (1) extend `CANONICAL_CAPABILITIES`, (2) use it.
+- **NO** `feature_level: int`. Lab features are orthogonal: HF_Locking has
+  `wait_for_lock` (`workers.py:595`), BigSky has `monitors` (PUB-SUB temp/
+  voltage cache), Rastering has `monitors` only. Coupling them via an int
+  forces a server that adds a new feature to claim all earlier ones it
+  doesn't implement.
+- Precedent: ZMQ itself uses string-mechanism advertisements (`NULL`,
+  `CURVE`, `PLAIN`); HTTP uses Accept enum headers.
+
+#### Q4 — v1 sunset: HARD SUNSET at v2 release (no dual-path code)
+
+- **External-HELLO survey ran 2026-05-22**:
+  - Searched `C:\Users\radmo\MIT Dropbox\Shungo Fukaya\Experiments\Main_Experiment\`
+    for `import zmq` / `zmq.` / `tcp://` / `action.*HELLO` patterns.
+  - **Result**: zero matches. Only `.ipynb` analysis notebooks exist in
+    the operator tree (no `.py` scripts). Initial keyword hits were
+    incidental matches inside PNG base64 blobs.
+  - No external code calls HELLO/REQ on ports 3796, 55535, 55540.
+- **v2 server behavior on v1 request**: return
+  `{"status": "ERROR", "error": {"code": "v1_protocol_refused",
+  "message": "Server requires v2 protocol; client must include 'v': 2 in
+  requests"}}`. No fallback path. No dual-path code.
+- **BLACS-side `RemoteCommunication`**: ships v2-only from day 1. The
+  dual-path parser that §7.2 originally described is **not written**.
+- **Migration order**: BLACS + all three GUIs (BigSky, HF, Rastering)
+  ship v2 in one coordinated round. Since they're co-located on this PC
+  under one operator, no asymmetric-version window exists.
+- **Net**: ~50–80 lines of dual-path code that would have lived in
+  `RemoteCommunication.py` are never written. **Section 7.1 (purely
+  additive)** is superseded by this v2-only stance.
+
+### Resolution sign-off
+
+All four resolutions signed off by user 2026-05-22. The spec is
+implementation-ready. Next concrete step: begin §9 PR rollout.
 
 ---
 
