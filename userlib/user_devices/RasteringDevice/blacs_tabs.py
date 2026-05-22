@@ -420,3 +420,32 @@ class RasteringTab(RemoteControlTab):
 
         elif topic == "raster_progress":
             self.progress_indicator.set_text(f"Progress: {value}")
+
+    # ── Save / restore (BLACS-restart persistence) ───────────────────
+
+    def get_save_data(self):
+        """Persist the raster-mode checkbox across BLACS restarts.
+
+        DeviceTab base's get_save_data returns {} (no AO/DO snapshot —
+        those go through the separate front-panel mechanism). Only the
+        raster_check_box state has no other persistence channel today;
+        before this hook, operator had to re-tick after every restart.
+        """
+        return {
+            'raster_mode': self.raster_check_box.isChecked(),
+        }
+
+    def restore_save_data(self, data):
+        """Restore raster-mode checkbox without firing the worker.
+
+        ``restore_save_data`` is called from ``DeviceTab.__init__``
+        BETWEEN ``initialise_GUI`` and ``initialise_workers`` — the
+        worker does NOT exist yet. ``on_raster_toggled`` queues work to
+        the worker, so we MUST suppress the ``toggled`` signal here via
+        ``blockSignals``. The worker's raster-mode state will sync on
+        first ``program_device`` or via REQ-REP poll on connect.
+        """
+        raster_mode = bool(data.get('raster_mode', False))
+        self.raster_check_box.blockSignals(True)
+        self.raster_check_box.setChecked(raster_mode)
+        self.raster_check_box.blockSignals(False)
