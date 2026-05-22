@@ -137,7 +137,7 @@ start()
 
 digital_pulse(YAG1_line, tYAG, 0.5e-3)
 digital_pulse(YAG2_line, tYAG, 0.5e-3)
-digital_pulse(ENH_line,  ENH_start, ENH_end)
+digital_pulse(ENH_line,  ENH_START, ENH_DURATION)
 
 daq_ao0.constant(tstart, +2.5)
 daq_ao0.constant(tstart + 0.5e-3, -2.5)
