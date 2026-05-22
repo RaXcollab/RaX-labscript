@@ -210,6 +210,12 @@ class RasteringTab(RemoteControlTab):
         self._status_bridge = _StatusSignalBridge()
         self._status_bridge.status_received.connect(self._on_status_received)
 
+        # Register status topics with the base-class data-driven subscriber
+        # registry. Must happen here (initialise_GUI, before connect_to_pubsub)
+        # because _subscriber_loop snapshots the registry at thread start.
+        for _topic in STATUS_TOPICS:
+            self._register_subscriber(_topic, self._status_bridge.status_received.emit)
+
         # ── 9. Assemble custom content widget ──
         self._position_widget = QtWidgets.QWidget()
         content_layout = QtWidgets.QVBoxLayout()
@@ -344,59 +350,6 @@ class RasteringTab(RemoteControlTab):
                 self.primary_worker, 'update_raster_mode', raster_mode=state
             )
         )
-
-    # ── Extended PUB-SUB subscriber (overrides parent) ───────────────
-
-    def _subscriber_loop(self):
-        """Subscribe to monitor connections AND status topics."""
-        stop = self._pubsub_stop_event
-        subscribers = {}
-        poller = zmq.Poller()
-
-        try:
-            for connection in self.child_monitor_connections:
-                sub = self._pubsub_context.socket(zmq.SUB)
-                sub.setsockopt(zmq.LINGER, 0)
-                sub.connect(f"tcp://{self.host}:{self.pubsub_port}")
-                sub.setsockopt_string(zmq.SUBSCRIBE, connection)
-                subscribers[connection] = sub
-                poller.register(sub, zmq.POLLIN)
-
-            for topic in STATUS_TOPICS:
-                sub = self._pubsub_context.socket(zmq.SUB)
-                sub.setsockopt(zmq.LINGER, 0)
-                sub.connect(f"tcp://{self.host}:{self.pubsub_port}")
-                sub.setsockopt_string(zmq.SUBSCRIBE, topic)
-                subscribers[topic] = sub
-                poller.register(sub, zmq.POLLIN)
-
-            while self.pubsub_connected and not stop.is_set():
-                socks = dict(poller.poll(timeout=500))
-                for sub_sock in socks:
-                    try:
-                        message = sub_sock.recv_string(zmq.NOBLOCK)
-                        parts = message.split(" ", 1)
-                        if len(parts) == 2:
-                            topic, val = parts
-                            if topic in STATUS_TOPICS:
-                                self._status_bridge.status_received.emit(
-                                    topic, val
-                                )
-                            else:
-                                self._pubsub_bridge.monitor_value_received.emit(
-                                    topic, val
-                                )
-                    except zmq.ZMQError:
-                        pass
-
-        except Exception as e:
-            self.logger.error(f"Subscriber loop error: {e}")
-        finally:
-            for sub in subscribers.values():
-                try:
-                    sub.close()
-                except Exception:
-                    pass
 
     # ── Status signal handler (runs on GUI thread) ───────────────────
 
