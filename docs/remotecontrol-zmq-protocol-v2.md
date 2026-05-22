@@ -1,0 +1,367 @@
+# RemoteControl ZMQ Protocol v2 — Draft Spec
+
+**Status**: design draft (2026-05-22). NOT YET IMPLEMENTED. The current
+runtime is v1 (see [`docs/remotecontrol-zmq-protocol.md`](remotecontrol-zmq-protocol.md));
+this document describes the proposed v2 that all three external-GUI hubs
+(HF_Locking, Rastering, BigSky) should converge onto.
+
+This spec is the output of T0.5 (audit before item 2.2 implementation,
+[plan](../../.claude/plans/look-up-all-recent-purrfect-starfish.md)). It
+exists to be sign-off-able **before** any extraction work begins.
+
+---
+
+## Context — why v2
+
+The three RemoteControl external-GUI servers diverge significantly in their
+implementation:
+
+| GUI | Threading | Reply pattern | State ownership |
+|---|---|---|---|
+| HF_Locking | `ZMQRepWorker` + separate `ZMQPubWorker` (QThread × 2) | sync, `dict` reply | `SharedExperimentState` (mutex dict) |
+| Rastering | inline daemon `_zmq_loop` on `raster_controller` | sync, `dict` reply | inline `SystemController` |
+| BigSky | `BigSkyZmqServer` class + `concurrent.futures.Future` round-trip | async, structured `rejected:` envelope | `_lasers` dict of `SingleLaserController` |
+
+**Convergence is needed at the *protocol* layer (message format + dispatch
+contract), not at the *server* layer** (threading models legitimately differ
+per-GUI). v1 was string-based + ad-hoc JSON; v2 standardizes the envelope
+so:
+
+- BigSky's first-class `rejected:` futures stop being a special case (BLACS-
+  side worker `_check_response` no longer needs brittle string-prefix matching).
+- New external-GUI devices can adopt a common `RemoteControlServerBase` with
+  a `@handler("PROGRAM_VALUE")` decorator for dispatch.
+- Tests (item 2.8) can mock the transport via a single `Transport` ABC.
+- Protocol evolution is graceful: schema versioning + additive backwards
+  compat through one migration period.
+
+---
+
+## 1. Message envelope
+
+### 1.1 Negotiation (HELLO)
+
+Client sends:
+
+```json
+{"v": 2, "action": "HELLO", "protocol_version": 2}
+```
+
+Server replies:
+
+```json
+{
+  "v": 2,
+  "status": "SUCCESS",
+  "protocol_version": 2,
+  "server": "LaserLockGUI",
+  "capabilities": ["wait_for_lock", "monitors", "heartbeat"]
+}
+```
+
+If the server reply omits `protocol_version`, the client falls back to v1
+(legacy bare-string reply path). This is how v2 clients talk to v1 servers
+during the migration window.
+
+### 1.2 Request
+
+```json
+{
+  "v": 2,
+  "id": 17,
+  "action": "PROGRAM_VALUE",
+  "connection": "TiSa_set",
+  "value": 348.666410,
+  "args": {"wait_for_lock": true},
+  "request_timestamp": 1747948800.123
+}
+```
+
+- `v: 2` mandatory in every v2 request.
+- `id: uint64` correlation id (echoed in reply). Currently REQ-REP is
+  synchronous so `id` is redundant; reserved for future async/streaming
+  features (e.g., long-running diagnostics).
+- `args` named extension dict — v1's bare-key extras (`wait_for_lock`)
+  move here for cleaner parsing.
+
+### 1.3 Reply
+
+```json
+{
+  "v": 2,
+  "id": 17,
+  "status": "SUCCESS" | "ERROR" | "REJECTED" | "TIMEOUT" | "UNKNOWN_CONNECTION",
+  "value": 348.666410,
+  "error": {
+    "code": "rejected_did_not_take_effect",
+    "message": "rejected: lpm0 did not take effect (got 1)",
+    "retryable": false
+  },
+  "server_timestamp": 1747948800.456
+}
+```
+
+- `status` enum (5 fixed tokens). Promotes BigSky's structured `rejected:`
+  futures to first-class.
+- `error` object only present when `status != SUCCESS`.
+- `retryable` boolean — BLACS worker can decide whether to retry once vs.
+  bubble error up to runmanager.
+
+---
+
+## 2. Dispatch contract
+
+### 2.1 Explicit handler map (decorator-registered)
+
+Server subclasses register handlers via class-level decorator:
+
+```python
+class LaserLockZmqServer(RemoteControlServerBase):
+
+    @handler("PROGRAM_VALUE")
+    def _handle_program(self, conn, value, args):
+        ...
+
+    @handler("CHECK_VALUE")
+    def _handle_check(self, conn, args):
+        ...
+```
+
+Base class owns the recv-loop, JSON parse, envelope construction, version-
+check, and error wrapping. Subclasses only implement handler bodies.
+
+**Rejected alternative**: name-convention dispatch
+(`_handle_PROGRAM_VALUE`). Too magical; harder to grep; doesn't survive
+rename refactors cleanly.
+
+### 2.2 Reserved actions (v2 base implements)
+
+| Action | Purpose | Notes |
+|---|---|---|
+| `HELLO` | Negotiate version + advertise capabilities | Base-class impl; subclass override allowed for capability list |
+| `PING` | Liveness probe | Returns server uptime, monitor cadence; v2 base impl |
+| `PROGRAM_VALUE` | Write a setpoint | Subclass implements |
+| `CHECK_VALUE` | Read a setpoint/monitor | Subclass implements |
+
+Subclass may register additional actions (e.g., HF_Locking's
+`wait_for_lock` could become its own action instead of an `args` flag).
+
+---
+
+## 3. Liveness / heartbeat
+
+### 3.1 PUB topic (unchanged from v1)
+
+The `heartbeat` PUB topic continues at the existing per-server cadence:
+
+| Server | Cadence |
+|---|---|
+| HF_Locking | 10 Hz (matches `_poll_fast`) |
+| Rastering | ~1 Hz |
+| BigSky | ~1 Hz (`HUB_LOOP_PERIOD_MS = 1000`) |
+
+### 3.2 REQ-side PING action (new in v2)
+
+Optional `PING` action on REQ socket returns server status:
+
+```json
+{"v": 2, "id": ..., "status": "SUCCESS",
+ "uptime_seconds": 3724.5, "monitor_cadence_hz": 10,
+ "subscriber_count": 1}
+```
+
+BLACS tab uses this to detect *stuck* PUB threads (PUB alive, REP dead) by
+periodic ping with timeout < 1 s.
+
+### 3.3 Tab-side stale-detect
+
+If the tab observes no `heartbeat` for `3 × cadence_seconds`, mark
+disconnected via the existing `_PubSubSignalBridge.pubsub_status_changed`
+signal (already implemented for v1).
+
+---
+
+## 4. PUB-SUB topic format
+
+### 4.1 Standardized form (mandatory)
+
+```
+"{connection}_{param}_monitor {value}"
+```
+
+Examples:
+
+- `TiSa_set_setpoint_monitor 348.666410`
+- `Raster_X_position_monitor 12.345`
+- `YAG_1_temperature_monitor 30.5`
+
+This unifies the current v1 divergence where HF_Locking uses bare port
+numbers as topic prefixes. Existing topics will be re-emitted in the
+standardized form during the migration window.
+
+### 4.2 JSON payload (optional, opt-in via suffix)
+
+For multi-field monitors (vector readbacks, structured status):
+
+```
+"{connection}_{param}_monitor:json {...JSON dict...}"
+```
+
+The `:json` suffix is the version-flag; v1 subscribers don't subscribe to
+`:json` topics so they're invisible to legacy code. New subscribers can
+opt in per topic.
+
+---
+
+## 5. Mockable transport
+
+### 5.1 Transport ABC
+
+```python
+class Transport(Protocol):
+    def send(self, frame: bytes) -> None: ...
+    def recv(self, timeout_ms: int) -> bytes: ...
+    def close(self) -> None: ...
+```
+
+### 5.2 Concrete implementations
+
+| Class | Use |
+|---|---|
+| `ZmqReqTransport` | REQ socket; production client side |
+| `ZmqRepTransport` | REP socket; production server side |
+| `InMemoryTransport` | paired in-memory queue; tests inject this to bypass sockets |
+
+`RemoteCommunication` (BLACS-side) and `RemoteControlServerBase` (GUI-side)
+take a `Transport` in `__init__` (defaulting to ZMQ). Tests inject
+`InMemoryTransport(server_side=...)` to drive request/response pairs without
+binding any sockets — critical for item 2.8 (T0.4 invariant tests).
+
+---
+
+## 6. Observability
+
+### 6.1 Structured log keys
+
+Every request/response logs:
+
+```
+{
+  "ts": 1747948800.123,
+  "server": "LaserLockGUI",
+  "action": "PROGRAM_VALUE",
+  "conn": "TiSa_set",
+  "id": 17,
+  "status": "SUCCESS",
+  "latency_ms": 12.3,
+  "error_code": null
+}
+```
+
+### 6.2 Logger namespace
+
+`remotecontrol.{server_name}.{req|pub}`. Example:
+
+- `remotecontrol.LaserLockGUI.req` — REQ-REP server activity
+- `remotecontrol.LaserLockGUI.pub` — PUB-SUB broadcast activity
+
+Replaces ad-hoc `self._log("ZMQ: PROGRAM_VALUE ...")` calls in BigSky and
+`self.log_message.emit(...)` in HF_Locking.
+
+---
+
+## 7. Backwards compatibility
+
+### 7.1 Purely additive
+
+v2 servers MUST accept v1 requests (missing `v` key → respond in v1
+string/dict form per the existing protocol). v2 clients downgrade on
+HELLO if server omits `protocol_version` in reply.
+
+### 7.2 BLACS-side client behavior
+
+`userlib/user_devices/RemoteControl/RemoteCommunication.py` sends `v: 2`
+once **all three** GUIs ship v2; until then it sends v1 (current shape)
+and parses both reply forms. Cleanup of the v1 dual-path code is a
+separate post-v2 ticket.
+
+### 7.3 Sunset policy
+
+v1 sunset is **deferred to a follow-up** — out of scope for item 2.2.
+After all three GUIs ship v2, a future PR can change the policy from
+"accept v1" to "warn on v1" and eventually "refuse v1". Lab tooling
+outside this repo (external scripts using HELLO?) needs a survey first.
+
+---
+
+## 8. Migration order
+
+1. **BigSky first** — already structured-reply (`rejected:` futures via
+   `_handleRemoteCommand` / `executeRemoteCommand`, commit `6c72b49`); the
+   cleanest template for `RemoteControlServerBase`. Lowest blast radius
+   (single hub, single GUI restart per laser).
+
+2. **HF_Locking second** — has `SharedExperimentState` + QThread workers;
+   clean separation makes base-class adoption straightforward. The 10 Hz
+   wavemeter cadence will stress the base loop and validate perf.
+
+3. **Rastering last** — `_zmq_loop` is inline at `raster_controller.py:1585`,
+   tightly coupled to controller state. Refactor risk highest; do last
+   with both other migrations as templates. Coordinated with rastering
+   camera Spinnaker migration (separate session).
+
+---
+
+## 9. Implementation outline (NOT yet executed)
+
+Estimated PR breakdown — one per repo to minimize blast radius:
+
+1. **parent repo** — add `userlib/external_gui_lib/{__init__.py,zmq_v2.py}`
+   defining `RemoteControlServerBase`, `Transport` ABC, concrete `ZmqReqTransport` /
+   `ZmqRepTransport` / `InMemoryTransport`, `@handler` decorator, the v2
+   envelope helpers. Plus client-side `RemoteCommunication` v2 dual-path
+   parser in `userlib/user_devices/RemoteControl/RemoteCommunication.py`.
+
+2. **GUIs/BigSkyControl** — port `BigSkyZmqServer` to inherit from
+   `RemoteControlServerBase`. Dispatch via decorated handlers. PUB topic
+   re-emit in standardized form (keep legacy emit for migration window).
+
+3. **GUIs/HF_Locking** — port `ZMQRepWorker` to inherit. `ZMQPubWorker`
+   stays separate (still a QThread for cadence isolation).
+
+4. **GUIs/rastering** — port `_zmq_loop` to inherit. Daemon-thread model
+   preserved.
+
+Each PR independently mergeable and reversible. v1 path stays alive at
+every step.
+
+---
+
+## 10. Open questions for user
+
+Listed in priority order:
+
+1. **Hub-mode capability advertisement** — BigSky is a hub of N lasers,
+   each with its own connection prefix (`YAG_1_*`, `YAG_2_*`). Should
+   `capabilities` enumerate connection prefixes (e.g.,
+   `connections: ["YAG_1_*", "YAG_2_*"]`) so BLACS can fail-fast on typos
+   at HELLO time rather than at first CHECK_VALUE? Or leave per-call?
+2. **`id` correlation** — REQ-REP is synchronous so `id` is currently
+   redundant. Do we want it for future async/streaming (e.g., long-running
+   `wait_for_lock` could become a stream of progress events), or YAGNI?
+3. **Capabilities or feature flags** — `["wait_for_lock", "heartbeat"]`
+   enum vs. monotonic `feature_level: int`. Enum is more flexible but
+   harder to test exhaustively.
+4. **v1 sunset date** — soft (warn on v1 receive) or hard (refuse) after
+   all three migrate? External-script survey needed first.
+
+---
+
+## 11. References
+
+- v1 protocol: [`docs/remotecontrol-zmq-protocol.md`](remotecontrol-zmq-protocol.md)
+- External GUIs overview: [`docs/external-guis-architecture.md`](external-guis-architecture.md)
+- BigSky futures plumbing landed in commits `6c72b49`, `dc6c736`, `d37b822`,
+  `eafc229`, `1eb2321` (BigSkyControl sub-repo).
+- Audit memory: `~/.claude/projects/c--Users-radmo-labscript-suite/memory/reference_two-remotecontrol-trees.md`
+- Plan: `~/.claude/plans/look-up-all-recent-purrfect-starfish.md` (T0.5, item 2.2)
