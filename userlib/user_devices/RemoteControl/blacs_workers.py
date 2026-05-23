@@ -55,6 +55,39 @@ class RemoteRequestError(Exception):
         )
 
 
+class RemoteRetryableError(RemoteRequestError):
+    """v2 server reported a transient error (error.retryable == True).
+
+    Distinct subclass so a future retry layer can catch retryable failures
+    specifically (e.g. ``except RemoteRetryableError: retry_once_then_raise``)
+    without changing the v1 catch-all behavior. Today's BLACS callers
+    catch generic Exception around _check_response and treat all non-
+    SUCCESS as fatal — retry behavior is a deferred follow-up.
+    """
+
+
+class RemoteMalformedReplyError(RemoteRequestError):
+    """v2 reply could not be parsed as a valid envelope.
+
+    Distinguishes a server bug (garbled JSON, missing required keys)
+    from a transport timeout (which returns None). Surfaces the actual
+    parse error so debuggers don't waste time chasing a phantom timeout.
+    """
+
+    def __init__(self, parse_error, raw_bytes, context=""):
+        super().__init__(
+            status="ERROR",
+            error_dict={
+                "code": "malformed_reply",
+                "message": "could not parse v2 envelope: %s" % parse_error,
+                "retryable": False,
+            },
+            context=context,
+        )
+        self.parse_error = parse_error
+        self.raw_bytes = raw_bytes
+
+
 class _MockRemoteServer(RemoteControlServerBase):
     """In-memory v2 mock server backing RemoteCommunication(mock=True).
 
@@ -257,16 +290,28 @@ class RemoteCommunication:
         try:
             reply = parse_envelope(raw_reply)
         except ValueError as e:
-            self.logger.error(f"Malformed v2 reply: {e}")
-            return None
+            self.logger.error(
+                f"Malformed v2 reply for action={action} connection={connection}: {e}")
+            # Raise (not return None) so the caller's _check_response
+            # surfaces "malformed_reply" instead of "timeout" -- a real
+            # server bug should not be diagnosed as a network problem.
+            raise RemoteMalformedReplyError(
+                parse_error=str(e), raw_bytes=raw_reply,
+                context=f"action={action} connection={connection}",
+            )
 
         status = reply.get("status", "")
         if status == "SUCCESS":
             return reply
-        # Non-SUCCESS: raise so callers' existing try/except paths fire.
-        raise RemoteRequestError(
+        err = reply.get("error") or {}
+        # Distinguish retryable failures so a future retry layer can
+        # catch RemoteRetryableError specifically. Today's BLACS callers
+        # catch the parent Exception class -- same behavior either way.
+        exc_cls = (RemoteRetryableError if err.get("retryable") is True
+                   else RemoteRequestError)
+        raise exc_cls(
             status=status,
-            error_dict=reply.get("error"),
+            error_dict=err,
             context=f"action={action} connection={connection}",
         )
 
@@ -436,10 +481,18 @@ class RemoteControlWorker(Worker):
     def _check_response(self, response, context=""):
         """Raise on None (timeout) or any non-SUCCESS status.
 
-        v2 statuses: SUCCESS, ERROR, REJECTED, TIMEOUT, UNKNOWN_CONNECTION.
-        v2 errors live in response['error']['{code,message,retryable}'].
-        Falls back to v1 response['message'] for back-compat with the
-        RemoteCommunication translation layer.
+        v2 statuses (spec §1.3): SUCCESS, ERROR, REJECTED, TIMEOUT,
+        UNKNOWN_CONNECTION. v2 errors live in
+        response['error']['{code,message,retryable}']. Falls back to v1
+        response['message'] for back-compat with the RemoteCommunication
+        translation layer.
+
+        Retry policy (NOT YET IMPLEMENTED): error.retryable is surfaced
+        in the raised exception's message + propagates via the upstream
+        RemoteRetryableError class. A future retry layer in program_manual
+        / buffered_program can catch RemoteRetryableError specifically and
+        retry once before bubbling to runmanager. Today's callers catch
+        Exception generically -- same behavior as v1.
         """
         if response is None:
             raise Exception(f"No response from server (timeout). Context: {context}")
@@ -450,7 +503,9 @@ class RemoteControlWorker(Worker):
         code = err.get("code", "")
         msg = err.get("message") or response.get("message") or "unknown error"
         prefix = f"[{code}] " if code else ""
-        raise Exception(f"Server {status} ({context}): {prefix}{msg}")
+        retry_hint = " (retryable)" if err.get("retryable") is True else ""
+        raise Exception(
+            f"Server {status} ({context}): {prefix}{msg}{retry_hint}")
 
     # ── Value checks ─────────────────────────────────────────────────
 

@@ -1,13 +1,35 @@
-# RemoteControl ZMQ Protocol v2 — Draft Spec
+# RemoteControl ZMQ Protocol v2
 
-**Status**: design draft (2026-05-22). NOT YET IMPLEMENTED. The current
-runtime is v1 (see [`docs/remotecontrol-zmq-protocol.md`](remotecontrol-zmq-protocol.md));
-this document describes the proposed v2 that all three external-GUI hubs
-(HF_Locking, Rastering, BigSky) should converge onto.
+**Status**: IMPLEMENTED (2026-05-23). All five PRs from §9 shipped on
+topic branches across the 4 repos and pushed to RaXcollab origins:
 
-This spec is the output of T0.5 (audit before item 2.2 implementation,
-[plan](../../.claude/plans/look-up-all-recent-purrfect-starfish.md)). It
-exists to be sign-off-able **before** any extraction work begins.
+| Repo | Branch | Tip |
+|---|---|---|
+| parent | `zmq-v2-cutover` | `551a6c9` (atomic cutover) on top of `cf394d3` (PR 1 transport fix) |
+| `GUIs/BigSkyControl` | `zmq-v2-port` | `9d30ac9` |
+| `GUIs/HF_Locking` | `zmq-v2-port` | `a0cd4b2` |
+| `GUIs/rastering` | `zmq-v2-port` | `51d47d1` (off `main`, in worktree `GUIs/rastering-zmq-v2/`) |
+
+Tests passing (101/101): 31/31 V1–V11 (labscript env) +
+27/27 B1–B8 (BigSky, guis env) + 15/15 H1–H7 (HF, guis env) +
+28/28 rastering (13 existing + 15 v2, rastering env). v1 protocol
+is dead-code on both client and server sides per Q4 §10-resolved
+hard sunset.
+
+**Deployment**: branches stay on origin until the operator runs the
+coordinated merge + restart sequence in
+[`~/.claude/plans/zmq-v2-cutover-playbook.md`](../../../.claude/plans/zmq-v2-cutover-playbook.md).
+After merge, BLACS + all 3 GUI processes must restart in any order;
+no asymmetric-version window exists.
+
+The v1 protocol reference doc at
+[`docs/remotecontrol-zmq-protocol.md`](remotecontrol-zmq-protocol.md)
+is preserved for archaeological context; new client/server code uses
+v2 exclusively.
+
+Origin of this spec: T0.5 audit (item 2.2,
+[plan](../../.claude/plans/look-up-all-recent-purrfect-starfish.md)),
+signed off 2026-05-22, shipped 2026-05-23.
 
 ---
 
