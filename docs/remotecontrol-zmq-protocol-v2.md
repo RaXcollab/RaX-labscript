@@ -1,20 +1,36 @@
 # RemoteControl ZMQ Protocol v2
 
-**Status**: IMPLEMENTED (2026-05-23). All five PRs from §9 shipped on
-topic branches across the 4 repos and pushed to RaXcollab origins:
+**Status**: IMPLEMENTED + CODE-REVIEWED (2026-05-23). All five PRs from
+§9 shipped on topic branches across the 4 repos and pushed to RaXcollab
+origins. Four parallel code-reviewer agents ran and findings were
+addressed in a follow-up fixup commit per repo:
 
-| Repo | Branch | Tip |
+| Repo | Branch | Tip (post-fixup) |
 |---|---|---|
-| parent | `zmq-v2-cutover` | `551a6c9` (atomic cutover) on top of `cf394d3` (PR 1 transport fix) |
-| `GUIs/BigSkyControl` | `zmq-v2-port` | `9d30ac9` |
-| `GUIs/HF_Locking` | `zmq-v2-port` | `a0cd4b2` |
-| `GUIs/rastering` | `zmq-v2-port` | `51d47d1` (off `main`, in worktree `GUIs/rastering-zmq-v2/`) |
+| parent | `zmq-v2-cutover` | `928d9f6` (fixup) on `551a6c9` (cutover) on `cf394d3` (PR 1 patch) |
+| `GUIs/BigSkyControl` | `zmq-v2-port` | `960b5b5` (fixup) on `9d30ac9` (port) |
+| `GUIs/HF_Locking` | `zmq-v2-port` | `21079b7` (fixup) on `a0cd4b2` (port) |
+| `GUIs/rastering` | `zmq-v2-port` | `2295bc8` (fixup) on `51d47d1` (port) — off `main`, in worktree `GUIs/rastering-zmq-v2/` |
 
-Tests passing (101/101): 31/31 V1–V11 (labscript env) +
-27/27 B1–B8 (BigSky, guis env) + 15/15 H1–H7 (HF, guis env) +
-28/28 rastering (13 existing + 15 v2, rastering env). v1 protocol
-is dead-code on both client and server sides per Q4 §10-resolved
-hard sunset.
+Tests passing (105/105): 31/31 V1–V11 (labscript env) +
+27/27 B1–B8 (BigSky, guis env) + 19/19 H1–H7 (HF, guis env;
++4 new H7 tests from review I3/I4/I5/C2) + 28/28 rastering
+(13 existing + 15 v2, rastering env). v1 protocol is dead-code
+on both client and server sides per Q4 §10-resolved hard sunset.
+
+Review fixups summary:
+  * Parent: `RemoteRetryableError` + `RemoteMalformedReplyError`
+    exception subclasses (review I2/I3); `_check_response` surfaces
+    `(retryable)` hint.
+  * BigSky: `MAX_CONSECUTIVE_TRANSPORT_FAILURES=5` circuit breaker on
+    `serve_once` exceptions (review I2).
+  * HF_Locking: port range validation, `setpoint_not_initialized`
+    UNKNOWN_CONNECTION on uninitialized CHECK_VALUE, explicit WARNING
+    log when `wait_for_lock=True` but AND-gate conditions unmet
+    (silent lock-bypass) — reviews C2/I3/I4/I5.
+  * Rastering: `arm_raster` validate+commit consolidated into single
+    lock critical section (review I-2); `serve_once` exception now
+    `traceback.print_exc()` instead of `pass` (review I-3).
 
 **Deployment**: branches stay on origin until the operator runs the
 coordinated merge + restart sequence in

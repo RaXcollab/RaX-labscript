@@ -132,7 +132,8 @@ Each GUI codebase carries its own `.claude/agents/` domain agent: `HF_Locking`�
 Docs load via path-scoped rules (`.claude/rules/ref-*.md`) when editing matching files:
 - `docs/blacs-state-machine.md` — canonical BLACS state machine + per-shot lifecycle (fork-specific MODE_POST_EXP); loads for `user_devices/`, `blacs/`
 - `docs/blacs-device-patterns.md` — RemoteControl + NI_DAQmx patterns incl. latched-lines mechanism (loads for `user_devices/`, `blacs/`)
-- `docs/remotecontrol-zmq-protocol.md` — canonical ZMQ protocol for external-GUI devices: REQ-REP + PUB-SUB + monitor-snapshot pattern (loads for `user_devices/`, `GUIs/`)
+- `docs/remotecontrol-zmq-protocol-v2.md` — **canonical** v2 protocol for external-GUI devices: JSON envelope with `id`/`status` enum/`error.{code,message,retryable}`, `@handler` dispatch via `RemoteControlServerBase`, `InMemoryTransport` mock for tests. Shipped on topic branches awaiting coordinated cutover (`~/.claude/plans/zmq-v2-cutover-playbook.md`). Auto-loads for `user_devices/`, `GUIs/`.
+- `docs/remotecontrol-zmq-protocol.md` — **DEPRECATED** v1 reference (archaeological only; v2 servers refuse v1 envelopes per Q4 hard sunset)
 - `docs/external-guis-architecture.md` — per-GUI architecture for HF_Locking / rastering / BigSkyControl (loads for `user_devices/`, `GUIs/`)
 - `docs/main-experiment-overview.md` — this machine's CT topology, channels, sequences, globals model (loads for `labscriptlib/Main_Experiment/`)
 - `docs/shot-h5-layout.md` — per-shot HDF5 file layout incl. `/images/` camera group + LaserLockGUI case study (loads for `user_devices/`, `blacs/`, `analysislib/`)
