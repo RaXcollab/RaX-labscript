@@ -413,6 +413,8 @@ class RemoteControlServerBase:
       return
 
     action = envelope.get("action")
+    status: str = "SUCCESS"
+    err_code: Optional[str] = None
     if action == "HELLO":
       reply = self._handle_hello(request_id)
     elif action == "PING":
@@ -426,39 +428,48 @@ class RemoteControlServerBase:
             request_id,
         )
         if not isinstance(result, (bytes, bytearray)):
-          # Convenience: subclass may return a dict; we wrap it.
-          result = encode_reply(status="SUCCESS", request_id=request_id,
-                                value=result if not isinstance(result, dict)
-                                else result.get("value"))
+          # Handlers MUST return bytes (via `encode_reply`). Returning a
+          # raw dict is ambiguous — the early v2 draft tried to wrap it
+          # but silently discarded status/error keys, which is a footgun.
+          # See review finding 2026-05-22 (parent code-review).
+          raise TypeError(
+              "@handler %r returned %s; must return bytes via encode_reply()"
+              % (action, type(result).__name__))
         reply = result
+        # Trust handler-encoded reply: parse minimally for log fields.
+        # This single parse replaces the prior post-hoc JSON re-decode of
+        # every reply on the hot path.
+        try:
+          decoded = json.loads(reply.decode("utf-8"))
+          status = decoded.get("status", "?")
+          err_code = (decoded.get("error") or {}).get("code")
+        except Exception:
+          status = "?"
       except Exception as exc:
+        err_code = "handler_exception"
+        status = "ERROR"
         reply = encode_reply(
             status="ERROR",
             request_id=request_id,
             error={
-                "code": "handler_exception",
+                "code": err_code,
                 "message": "%s: %s" % (type(exc).__name__, exc),
                 "retryable": False,
             },
         )
     else:
+      status = "ERROR"
+      err_code = "unknown_action"
       reply = encode_reply(
-          status="ERROR",
+          status=status,
           request_id=request_id,
           error={
-              "code": "unknown_action",
+              "code": err_code,
               "message": "unknown action: %r" % action,
               "retryable": False,
           },
       )
 
-    try:
-      decoded = json.loads(reply.decode("utf-8"))
-      status = decoded.get("status", "?")
-      err_code = (decoded.get("error") or {}).get("code")
-    except Exception:
-      status = "?"
-      err_code = None
     self._log_request(action=action or "<missing>", request_id=request_id,
                       status=status, latency_s=time.perf_counter() - t0,
                       error_code=err_code)
