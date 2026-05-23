@@ -44,15 +44,18 @@ class RasteringWorker(RemoteControlWorker):
                     "The rastering GUI may not be responding."
                 )
 
+            # v2 maps the legacy "FINISHED" pseudo-status to SUCCESS with
+            # an extra `finished` field (spec §1.3 fixes the 5-token enum;
+            # iterator-end is communicated as a SUCCESS reply variant).
             status = response.get("status", "")
-            if status == "FINISHED":
+            if status == "SUCCESS" and response.get("finished") is True:
                 raise Exception(
                     "Raster sequence complete — no more points in the path.\n"
                     "Re-arm the raster in the rastering GUI to continue."
                 )
-            if status == "ERROR":
-                msg = response.get("message", "unknown error")
-                raise Exception(f"Raster move_to_next error: {msg}")
+            # Any non-SUCCESS status -> raise via the v2-aware checker
+            # (handles ERROR/REJECTED/TIMEOUT/UNKNOWN_CONNECTION uniformly).
+            self._check_response(response, "raster_move_to_next")
 
             self.logger.debug(f"Raster move_to_next: {response}")
 

@@ -15,14 +15,23 @@ Should pass in any conda env that has pytest + the standard library
 from __future__ import annotations
 
 import json
+import os
 import sys
 
 import pytest
 
-sys.path.insert(0, "..")
+# Put userlib/ on sys.path so external_gui_lib resolves the SAME way as
+# in BLACS runtime (where `userlib/` is the top-level search root for
+# `user_devices.*` and `external_gui_lib.*`). Avoids labscript_utils'
+# double_import_denier firing when tests import via both `external_gui_lib`
+# and `userlib.external_gui_lib` paths (regression 2026-05-23).
+_THIS_DIR = os.path.dirname(os.path.abspath(__file__))
+_USERLIB_DIR = os.path.normpath(os.path.join(_THIS_DIR, "..", ".."))
+if _USERLIB_DIR not in sys.path:
+    sys.path.insert(0, _USERLIB_DIR)
 
-from userlib.external_gui_lib import zmq_v2  # noqa: E402
-from userlib.external_gui_lib.zmq_v2 import (  # noqa: E402
+from external_gui_lib import zmq_v2  # noqa: E402
+from external_gui_lib.zmq_v2 import (  # noqa: E402
     CANONICAL_CAPABILITIES,
     InMemoryTransport,
     PROTOCOL_VERSION,
@@ -339,6 +348,95 @@ def test_V10_serve_once_timeout_returns_false():
   _, server_t = InMemoryTransport.pair()
   server = _TestServer("TestServer", server_t)
   assert server.serve_once(timeout_ms=10) is False
+
+
+# ---------------------------------------------------------------------------
+# V11. RemoteCommunication (BLACS-side client) v2 roundtrip via mock server.
+# ---------------------------------------------------------------------------
+
+
+@pytest.fixture
+def mock_remote_comms():
+  """Construct RemoteCommunication(mock=True) which sets up the
+  paired InMemoryTransport + _MockRemoteServer internally."""
+  from unittest import mock as _m  # noqa: PLC0415
+  from user_devices.RemoteControl.blacs_workers import (  # noqa: PLC0415
+      RemoteCommunication,
+  )
+  logger = _m.MagicMock()
+  rc = RemoteCommunication(
+      mock=True, logger=logger,
+      child_connections=["chan_a", "chan_b"],
+  )
+  return rc
+
+
+def test_V11_mock_connect_returns_true(mock_remote_comms):
+  assert mock_remote_comms.connect_to_remote() is True
+  assert mock_remote_comms.connected is True
+
+
+def test_V11_mock_program_value_roundtrips_through_v2_envelope(
+    mock_remote_comms):
+  """SET then GET via the v2 envelope path proves encode/parse +
+  RequestIdCounter + InMemoryTransport pair semantics work end-to-end."""
+  mock_remote_comms.connect_to_remote()
+  reply = mock_remote_comms.program_value("chan_a", 1.234)
+  assert reply["status"] == "SUCCESS"
+
+  check = mock_remote_comms.check_remote_value("chan_a")
+  assert check["status"] == "SUCCESS"
+  assert check["value"] == 1.234
+
+
+def test_V11_mock_program_with_wait_for_lock_packs_args(mock_remote_comms):
+  """Q2 §10-resolved: wait_for_lock moves into the v2 args dict. The
+  mock server's @handler signature is (conn, value, args, request_id).
+  We replace the mock server with a probe that records args."""
+  import queue as _q  # noqa: PLC0415
+
+  mock_remote_comms.connect_to_remote()
+  args_seen = _q.Queue()
+
+  orig_handler = mock_remote_comms._mock_server._handlers["PROGRAM_VALUE"]
+  def _probe(conn, value, args, request_id):
+    args_seen.put(args)
+    return orig_handler(conn, value, args, request_id)
+  mock_remote_comms._mock_server._handlers["PROGRAM_VALUE"] = _probe
+
+  mock_remote_comms.program_value("chan_a", 5.0, wait_for_lock=True)
+  recv_args = args_seen.get(timeout=1.0)
+  assert recv_args == {"wait_for_lock": True}
+
+
+def test_V11_request_id_monotonic_across_calls(mock_remote_comms):
+  """Each request bumps the per-instance counter."""
+  mock_remote_comms.connect_to_remote()
+  start = mock_remote_comms._id_counter.next_id()
+  mock_remote_comms.program_value("chan_a", 1.0)
+  mock_remote_comms.check_remote_value("chan_a")
+  end = mock_remote_comms._id_counter.next_id()
+  # Two real calls + the bookend reads above = >= 3 id increments.
+  assert end - start >= 3
+
+
+def test_V11_unknown_action_returns_v1_style_dict_for_compat(mock_remote_comms):
+  """RemoteCommunication translates raised RemoteRequestError back into
+  a v1-shaped dict so existing _check_response callers keep working
+  without refactoring. Status field gets the v2 enum value; error dict
+  carries v2 code/message."""
+  mock_remote_comms.connect_to_remote()
+  # Send an action the mock server doesn't register.
+  envelope = encode_request(
+      action="FROBNICATE",
+      request_id=mock_remote_comms._id_counter.next_id(),
+  )
+  mock_remote_comms._transport.send(envelope)
+  mock_remote_comms._mock_server.serve_once(timeout_ms=100)
+  raw_reply = mock_remote_comms._transport.recv(timeout_ms=100)
+  reply = parse_envelope(raw_reply)
+  assert reply["status"] == "ERROR"
+  assert reply["error"]["code"] == "unknown_action"
 
 
 if __name__ == "__main__":
