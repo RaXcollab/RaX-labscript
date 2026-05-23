@@ -183,6 +183,29 @@ def test_V4_handler_exception_wrapped():
   assert "intentional" in reply["error"]["message"]
 
 
+def test_V4_handler_must_return_bytes_not_dict():
+  """Strict-contract pin: handlers MUST return bytes (via encode_reply).
+
+  An earlier draft silently wrapped dict returns as SUCCESS with
+  `value = result.get("value")`, which discarded any `status`/`error`
+  keys the handler tried to express. We now refuse non-bytes returns
+  with TypeError, surfaced as a handler_exception ERROR reply.
+  """
+  class _DictReturningServer(RemoteControlServerBase):
+    CAPABILITIES = frozenset()
+    @handler("OOPS")
+    def _oops(self, conn, value, args, request_id):
+      # Subclass author who forgot to call encode_reply.
+      return {"status": "REJECTED", "value": 42}
+  _, server_t = InMemoryTransport.pair()
+  server = _DictReturningServer("OopsServer", server_t)
+  reply = _drive_one(server, encode_request("OOPS", request_id=4))
+  # Footgun is loud, not silent: TypeError surfaces as handler_exception.
+  assert reply["status"] == "ERROR"
+  assert reply["error"]["code"] == "handler_exception"
+  assert "must return bytes" in reply["error"]["message"]
+
+
 # ---------------------------------------------------------------------------
 # V5. HELLO reply: advertises capabilities; advertises connections only if set
 # ---------------------------------------------------------------------------
@@ -305,6 +328,7 @@ def test_V9_ping_returns_uptime_and_server_name():
   assert reply["status"] == "SUCCESS"
   assert reply["server"] == "TestServer"
   assert reply["uptime_seconds"] >= 0.0
+  assert reply["id"] == 99  # Q2 id echo holds for PING too (was unasserted)
 
 
 # ---------------------------------------------------------------------------

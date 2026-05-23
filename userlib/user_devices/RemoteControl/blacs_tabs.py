@@ -475,7 +475,19 @@ class RemoteControlTab(DeviceTab):
         Call from ``initialise_GUI`` BEFORE ``connect_to_pubsub`` spawns
         the daemon. The subscriber loop snapshots ``self._extra_topics``
         once at thread start; mutations afterwards are ignored.
+
+        Defensive guard: registering after the subscriber thread is alive
+        is a silent footgun (the registration is accepted into the dict
+        but never seen by the daemon's frozen ``extras`` snapshot). Raise
+        ``RuntimeError`` to fail loudly instead.
         """
+        if (self._subscriber_thread is not None
+                and self._subscriber_thread.is_alive()):
+            raise RuntimeError(
+                "_register_subscriber(%r) called after subscriber thread "
+                "started; the daemon snapshots the registry at thread "
+                "start and will not see this topic. Register before "
+                "connect_to_pubsub()." % topic)
         self._extra_topics[topic] = signal_emit
 
     def _subscriber_loop(self):
