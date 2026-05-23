@@ -141,7 +141,10 @@ class ZmqReqTransport:
   def recv(self, timeout_ms: int = -1) -> bytes:
     if timeout_ms >= 0:
       self._sock.setsockopt(self._zmq.RCVTIMEO, timeout_ms)
-    return self._sock.recv()
+    try:
+      return self._sock.recv()
+    except self._zmq.error.Again as exc:
+      raise TimeoutError("ZmqReqTransport.recv timeout") from exc
 
   def close(self) -> None:
     self._sock.close(linger=0)
@@ -167,7 +170,10 @@ class ZmqRepTransport:
   def recv(self, timeout_ms: int = -1) -> bytes:
     if timeout_ms >= 0:
       self._sock.setsockopt(self._zmq.RCVTIMEO, timeout_ms)
-    return self._sock.recv()
+    try:
+      return self._sock.recv()
+    except self._zmq.error.Again as exc:
+      raise TimeoutError("ZmqRepTransport.recv timeout") from exc
 
   def close(self) -> None:
     self._sock.close(linger=0)
