@@ -75,6 +75,26 @@ Multi-agent env is enabled (`CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS=1`, `CLAUDE_CO
 - **Team size 2–3.** Coordination overhead exceeds parallelism gains past ~3 concurrent teammates.
 - **Plan-mode cost caveat.** Agent *teams* cost ≈7× tokens in plan mode (each teammate re-runs planning). While planning, prefer parallel one-shot subagents or forks over teams.
 - **Known bug:** never combine `isolation: "worktree"` with `team_name` — agents silently land in the main repo. Use separate Agent calls or verify isolation explicitly.
+- **Inject canonical docs into reviewer prompts.** When dispatching reviewers/auditors against protocol-bound or contract-bound code, name the canonical reference doc paths explicitly in the prompt and instruct the agent to Read them first. Subagents inherit path-scoped rule files but NOT the rule's `@docs/...` imports — they see the literal text `@docs/...` and stop. Without explicit injection, reviewers flag canonical idioms as fabricated. Recurring: rastering reviewer flagged `extra={"finished":True}` (correct v2 idiom) as fabricated 2026-05-23; T6.2 audit confirmed same risk for upcoming BigSky REJECTED refactor.
+
+## Subagent Context Inheritance
+
+Empirical map (validated 2026-05-23 via fresh `general-purpose` probe). Use when writing subagent prompts.
+
+| Inherited | Source | Notes |
+|---|---|---|
+| ✅ Project CLAUDE.md | `<repo>/CLAUDE.md` | Auto-loaded |
+| ✅ Auto-memory `MEMORY.md` | `~/.claude/projects/<project>/memory/MEMORY.md` | Auto-loaded incl. `@device-internals.md` pointer |
+| ✅ Path-scoped rule **files** | `.claude/rules/*.md` with frontmatter `paths:` | Load on Read-tool access matching the glob |
+| ❌ `@docs/...` imports inside rules | Referenced by rule file | NOT expanded. Subagent sees literal text `@docs/...`, never the doc content |
+| ❌ Project skills | `.claude/skills/*/SKILL.md` (user-invokable: false) | NOT visible. Subagent skill registry contains plugin/global skills only |
+
+### Rules for prompt-writing
+
+- **Pass canonical doc paths explicitly** when the task depends on a spec, contract, or convention that lives outside CLAUDE.md and auto-memory. Tell the agent the path AND tell it to Read.
+- **Do not assume project skills are available** in subagents. If the subagent needs a skill's workflow, paste the skill content (or its key steps) into the prompt.
+- **Path-scoped rule files DO load** for subagents that Read matching paths — don't duplicate rule content in prompts for files the rule already covers (`user_devices/**`, `GUIs/**`, `analysislib/**`, `labscriptlib/**`, etc.).
+- **The auto-memory `MEMORY.md` is shared** — don't reload memory facts the subagent already has. Reference by name (e.g. "per `reference_inmemorytransport-test-pattern.md`") instead of pasting.
 
 ## Session Notes Protocol
 
