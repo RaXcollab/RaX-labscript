@@ -86,6 +86,7 @@ source ~/miniconda/etc/profile.d/conda.sh && conda activate labscript && python 
 - **After any BLACS change**: run a test shot, check h5 output in HDFView
 - **Connection table property changes**: recompile → BLACS auto-loads new properties (no need to delete saved state)
 - **BigSky Auto Re-Arm**: click Warmup/Arm Ext buttons → verify hardware responds; check "Auto Re-Arm Ext" → queue shots → verify auto-arm/restore in BLACS.log; queue 3+ → verify no re-arm between shots
+- **Userlib worker tests + pre-push hook (2.8c)**: SDK-free helpers in `userlib/user_devices/*/` carry unit tests at `<device>/tests/test_helpers.py`. Source-of-truth pre-push hook at `.githooks/pre-push` runs `userlib/external_gui_lib/tests/` + per-device helper tests in the `labscript` conda env. Install once per checkout: `cp .githooks/pre-push .git/hooks/pre-push && chmod +x .git/hooks/pre-push`. Git refuses to share hooks via the working tree; the install line is the install contract. Logs to `.git/hooks/pre-push.log` (inside `.git/`, auto-ignored).
 
 ## External GUI Registry
 

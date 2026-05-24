@@ -36,7 +36,10 @@ class NuvuCamera(object):
         self.camera_utils.set_attributes(attr_dict)
     
     def set_attribute(self, name, value):
-        self.attributes[name] = value
+        # Pure dict-mutation lives in _helpers (SDK-free, unit-testable);
+        # the SDK call stays on the class.
+        from ._helpers import apply_attribute_update
+        apply_attribute_update(self.attributes, name, value)
         self.camera_utils.set_attrs({name: value})
 
     def get_attribute_names(self, visibility_level, writeable_only=True):

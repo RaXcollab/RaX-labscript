@@ -320,32 +320,18 @@ class NI_SCOPEWorker(Worker):
         print(f'[NI_SCOPE] Horizontal: fs_min={self.min_sample_rate}, N_min={self.min_num_pts}, ref_pos=0%')
 
     def _normalize_trigger_source(self, src):
-        """Return (src_norm, mode) where mode is 'analog', 'digital', or 'immediate'."""
-        if src in [None, ""]:
-            return None, 'immediate'
-        if isinstance(src, (bytes, bytearray)):
-            src = src.decode('utf-8', errors='ignore')
+        """Return (src_norm, mode) where mode is 'analog', 'digital', or 'immediate'.
 
-        s = str(src).strip()
-        key = s.upper()
-
-        aliases = {
-            'EXTERNAL': 'TRIG',
-            '/PXI1SLOT2/TRIG': 'TRIG',
-        }
-        if key in aliases:
-            mapped = aliases[key]
-            print(f"[NI_SCOPE] Mapping trigger_source '{s}' -> '{mapped}'")
-            s = mapped
-            key = s.upper()
-
-        if s.isdigit() or key == 'TRIG':
-            return s, 'analog'
-
-        if key.startswith('PFI') or key.startswith('PXI_TRIG') or key.startswith('/PXI1SLOT'):
-            return s, 'digital'
-
-        return s, 'analog'
+        Pure-Python logic extracted to user_devices.NI_SCOPE._helpers so it can be
+        unit-tested without niscope. This wrapper preserves the [NI_SCOPE] log
+        line for the production-trace use case (aliased trigger source).
+        """
+        from ._helpers import normalize_trigger_source
+        original = str(src).strip().upper() if src not in (None, "") else ""
+        norm, mode = normalize_trigger_source(src)
+        if original in ("EXTERNAL", "/PXI1SLOT2/TRIG"):
+            print(f"[NI_SCOPE] Mapping trigger_source '{src}' -> '{norm}'")
+        return norm, mode
 
     def _configure_trigger(self):
         src_raw = getattr(self, 'trigger_source', None)
