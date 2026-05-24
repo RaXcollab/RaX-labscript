@@ -22,13 +22,15 @@ from user_devices.NI_SCOPE._helpers import normalize_trigger_source
     ("TRIG", ("TRIG", "analog")),
     ("0", ("0", "analog")),
     ("7", ("7", "analog")),
-    # analog: aliased forms
+    # analog: aliased forms (case-insensitive match against upper-cased alias keys)
     ("EXTERNAL", ("TRIG", "analog")),
     ("external", ("TRIG", "analog")),
-    ("/PXI1Slot2/TRIG", ("TRIG", "analog")),
+    ("/PXI1Slot2/TRIG", ("TRIG", "analog")),  # mixed case form (R3 fix: was the missing alias case)
+    ("/pxi1slot2/trig", ("TRIG", "analog")),  # all-lowercase still matches via upper()
     # bytes input -> decoded -> analog
     (b"TRIG", ("TRIG", "analog")),
     (bytearray(b"EXTERNAL"), ("TRIG", "analog")),
+    (b"/PXI1Slot2/TRIG", ("TRIG", "analog")),  # bytes form of the second alias
     # digital: PFI / PXI_TRIG / /PXI1Slot prefixes
     ("PFI0", ("PFI0", "digital")),
     ("pfi3", ("pfi3", "digital")),

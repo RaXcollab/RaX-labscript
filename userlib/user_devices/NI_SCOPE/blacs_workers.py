@@ -324,13 +324,23 @@ class NI_SCOPEWorker(Worker):
 
         Pure-Python logic extracted to user_devices.NI_SCOPE._helpers so it can be
         unit-tested without niscope. This wrapper preserves the [NI_SCOPE] log
-        line for the production-trace use case (aliased trigger source).
+        line for the production-trace use case (aliased trigger source) across
+        ALL input types — str, bytes, bytearray, whitespace-padded — matching
+        the pre-refactor behavior exactly.
         """
         from ._helpers import normalize_trigger_source
-        original = str(src).strip().upper() if src not in (None, "") else ""
         norm, mode = normalize_trigger_source(src)
-        if original in ("EXTERNAL", "/PXI1SLOT2/TRIG"):
-            print(f"[NI_SCOPE] Mapping trigger_source '{src}' -> '{norm}'")
+        # Build a display form that matches the pre-refactor 's' (decoded if
+        # bytes, whitespace-stripped, case-preserved). Then log iff the helper
+        # actually rewrote the input (alias collapse to TRIG).
+        if isinstance(src, (bytes, bytearray)):
+            s_disp = src.decode("utf-8", errors="ignore").strip()
+        elif src in (None, ""):
+            s_disp = ""
+        else:
+            s_disp = str(src).strip()
+        if norm == "TRIG" and s_disp.upper() != "TRIG":
+            print(f"[NI_SCOPE] Mapping trigger_source '{s_disp}' -> '{norm}'")
         return norm, mode
 
     def _configure_trigger(self):
