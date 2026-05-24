@@ -122,6 +122,18 @@ during the migration window.
 - `args` named extension dict — v1's bare-key extras (`wait_for_lock`)
   move here for cleaner parsing.
 
+> **Footnote — `wait_for_lock` AND-gate semantics (HF_Locking)**: when
+> `args.wait_for_lock=True` reaches `LaserLockGUI`, the server only blocks
+> on lock convergence if BOTH `lock_enabled` AND `deviation_mode` are True
+> for that port. If either is False the server writes the setpoint and
+> returns `SUCCESS` immediately, but emits a structured `WARNING` log
+> (`outer.log_message.emit`) noting the silent lock-bypass. The
+> `lock_enabled=True, deviation_mode=False` and inverse cases are
+> covered by `tests/test_zmq_v2_protocol.py` H7 cases (added 2026-05-23
+> per review C2). Callers that require enforcement must check the gate
+> state via PUB-SUB cached monitors before issuing the request — there
+> is no v2 status code for "wait requested but gate disarmed".
+
 ### 1.3 Reply
 
 ```json
