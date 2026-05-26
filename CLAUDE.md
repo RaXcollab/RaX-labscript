@@ -6,6 +6,7 @@
 - **Between unrelated tasks**, use `/clear` to reset context. Mixed domains degrade performance.
 - **Always present results before acting.** Agent findings and deliverables must be reviewed before committing or taking irreversible actions.
 - **Research before proposing.** During planning, proactively search for expert guidance, existing patterns, and hard constraints before designing solutions — don't wait for the user to ask.
+- **Session handoff lives at `~/.claude/plans/next-session-handoff-YYYY-MM-DD.md`** (latest date supersedes). Read it first when starting a new session — it carries branch state, deferred items, and false-positive callouts from prior reviews.
 
 ## Repository Structure
 
@@ -56,6 +57,7 @@ source ~/miniconda/etc/profile.d/conda.sh && conda activate labscript && python 
 
 - Python 3.11, pyzmq=23.2.0 (do NOT upgrade pyzmq), numpy=1.26.4
 - Backend repos: `pip install --no-build-isolation --no-deps -e blacs -e labscript-devices -e labscript-utils`
+- **REPL gotcha (guis/rastering envs):** direct `<env>/python.exe` paths HANG silently at numpy/PyQt5 import — always prefix `conda activate <env> &&`. labscript env less affected. Details: memory `reference_repl-conda-activate-required-guis.md`.
 
 ## Design Philosophy
 
