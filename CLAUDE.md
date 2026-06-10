@@ -72,6 +72,7 @@ source ~/miniconda/etc/profile.d/conda.sh && conda activate labscript && python 
 
 ### Lab-Wide Invariants (load-bearing)
 
+- **Never tag backend repos (`blacs`, `labscript-devices`, `labscript-utils`) with non-`v*` tags** — setuptools_scm parses `git describe` at import time; a non-version tag reachable from HEAD crashes `import labscript_utils` → BLACS/RunManager cannot start. Pin backend baselines by commit hash (`docs/stable-snapshot-2026-06-09.md`).
 - **Per-shot teardown** belongs in `post_experiment`, NOT `transition_to_manual`. The fork's queued-shot lifecycle runs `transition_to_buffered → start_run → post_experiment` per shot; `transition_to_manual` only runs at queue-end, abort, or pause. Fork-only MODE flags: `MODE_TRANSITION_TO_POST_EXP=16`, `MODE_POST_EXP=32`. Worker classes without `post_experiment` trigger a ~80 ms back-compat probe per shot.
 - **HF lock spec (canonical):** lock acquires when **5** consecutive in-tolerance samples land within `LOCK_TOLERANCE = 5e-6 THz = 5 MHz`, with `LOCK_TIMEOUT_S = 60`. Code is authoritative — `GUIs/HF_Locking/workers.py:21-22`. Older "2 consecutive" notes are stale; correct everywhere on contact.
 - **Authoritative scan x-axis** for RemoteControl-programmed scans is `/devices/{dev}/remote_device_operation['{ch}'][0]` (the actual labscript intent, full float64). `front_panel`, `_AO/value`, and `monitor_values` lag, quantize, or were `float32` pre-2026-04-29.
