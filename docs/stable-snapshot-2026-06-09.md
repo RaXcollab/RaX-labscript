@@ -14,12 +14,25 @@ these HEADs — never on `master`/`main`.
 Tag **`stable/2026-06-09-pre-rastering`** exists on every repo below, **pushed to
 origin** (verified over the wire with `git ls-remote --tags origin`).
 
-> **2026-06-10 restoration note:** the tag *refs* were found missing (locally AND
-> on origin) in parent, blacs, labscript-devices, and labscript-utils — only the
-> 3 GUI repos had them. The annotated tag objects listed below survived in each
-> object database and were restored verbatim via `git update-ref` and pushed;
-> re-verified over the wire 2026-06-10. If tags vanish again, suspect a pruning
-> fetch or an incomplete original push ceremony.
+> **2026-06-10 correction — backend repos are pinned by COMMIT HASH, not tag.**
+> The tag refs were found missing from parent, blacs, labscript-devices, and
+> labscript-utils. Restoring them (from the surviving annotated tag objects in
+> each odb) **broke the entire stack**: blacs/labscript-devices/labscript-utils
+> compute `__version__` via setuptools_scm at *import time*, which parses
+> `git describe` — a non-version tag (`stable/...`) on HEAD makes the parse
+> assert, so `import labscript_utils` crashes and BLACS/RunManager cannot
+> start. That is almost certainly why those tag refs were deleted in the first
+> place. Resolution (2026-06-10): backend tags deleted again (local + origin);
+> parent keeps its tag (no Python packaging); GUI repos keep theirs (not
+> setuptools_scm packages).
+>
+> **Rules:** (1) NEVER create a non-`v*` tag reachable from HEAD in blacs,
+> labscript-devices, or labscript-utils. (2) To restore a backend repo, use the
+> commit hashes in the table below, not the tag. (3) The annotated tag objects
+> remain in each odb (hashes in the table) for forensic reference only — do not
+> turn them back into refs. (4) Durable fix if tagging backend repos is ever
+> wanted: configure setuptools_scm `git_describe_command` with `--match "v*"`
+> in each backend repo (deferred backlog).
 
 | Repo | Branch | HEAD commit | Tag (annotated obj) | Remote | Auth |
 |------|--------|-------------|---------------------|--------|------|
