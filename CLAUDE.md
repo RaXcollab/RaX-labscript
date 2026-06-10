@@ -140,6 +140,7 @@ Docs load via path-scoped rules (`.claude/rules/ref-*.md`) when editing matching
 - `docs/analysis-api.md` + `docs/ni-scope-conventions.md` — analysis utilities (loads for `analysislib/`)
 - `docs/hf-locking-rates.md` — HF_Locking refresh-rate inventory + lock thresholds (loads for `GUIs/HF_Locking/`, `user_devices/LaserLockDevice/`)
 - `docs/yag-laser-physics.md` — Nd:YAG laser physics, trigger modes, serial commands (loads for `user_devices/BigSky*`, `GUIs/BigSkyControl/`)
+- `docs/matisse-c-external-locking.md` — Matisse C-S external-lock candidate architectures: baseline WS7-direct PID, Counterdrift plug-in, DSP External Input bypass, GoTo overlay; ruled-out paths + comparison matrix; corrected failure mechanism (Slow Piezo search on ref-cell unlock) (loads for `user_devices/LaserLockDevice/`, `GUIs/HF_Locking/`, `labscriptlib/Main_Experiment/`, `analysislib/Main_Experiment/`)
 - `docs/known-latent-issues.md` — catalog of latent bugs / conditional issues; no auto-load (reference-on-demand)
 - `Labscript-Confluence-2026-02-11.pdf` — Lab-specific Confluence docs
 - Official labscript docs: https://docs.labscriptsuite.org/ (reference only — our fork code takes precedence)
