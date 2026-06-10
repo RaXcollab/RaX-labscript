@@ -1,0 +1,92 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Rastering Stepping + Go-To-Site — 2026-06-09</title>
+<style>
+  body { font: 15px/1.6 -apple-system, Segoe UI, Roboto, sans-serif; max-width: 860px; margin: 2rem auto; padding: 0 1rem; color: #1a1a1a; }
+  h1 { font-size: 1.6rem; border-bottom: 3px solid #2b7cff; padding-bottom: .3rem; }
+  h2 { font-size: 1.2rem; margin-top: 1.8rem; color: #14478a; }
+  code { background: #f0f3f7; padding: .1em .35em; border-radius: 3px; font-size: .9em; }
+  .meta { color: #666; font-size: .9rem; }
+  .ok { color: #0a7d2c; font-weight: 600; }
+  .warn { color: #c0392b; }
+  table { border-collapse: collapse; width: 100%; margin: .6rem 0; }
+  th, td { border: 1px solid #d4dae3; padding: .4rem .6rem; text-align: left; font-size: .92rem; }
+  th { background: #eef3fb; }
+  ul { margin: .3rem 0; }
+  .tag { display: inline-block; background: #eef3fb; border: 1px solid #c5d4ea; border-radius: 4px; padding: .05em .5em; font-size: .82rem; }
+</style>
+</head>
+<body>
+<h1>Rastering: Stepping + Go-To-Arbitrary-Site — Shipped</h1>
+<p class="meta">2026-06-09 · branch <code>feat/raster-stepping</code> (worktree <code>GUIs/rastering-stepping</code>) · 3 commits, not pushed · live verification pending</p>
+
+<h2>Goal</h2>
+<p>Resume rastering work safely: (1) re-examine the subsystem with <code>/pathfinder</code> and decide on parked refactors; (2) validate/debug/improve the Automatic Controls tab and add the ability to step between path points <em>or jump to an arbitrary site on the path</em>. All on a topic branch, never on the <code>main</code> the operator runs between shots.</p>
+
+<h2>Safety net first</h2>
+<ul>
+  <li>Annotated <code>stable/2026-06-09-pre-rastering</code> tags on all 7 repos, pushed + verified over the wire. Manifest: <code>docs/stable-snapshot-2026-06-09.md</code>.</li>
+  <li>Dev work isolated in a git <strong>worktree</strong> (<code>GUIs/rastering-stepping</code>); the operator's live GUI on <code>main</code> stayed untouched throughout.</li>
+</ul>
+
+<h2>Re-examination (/pathfinder)</h2>
+<p>Full subsystem map in <code>docs/PATHFINDER-2026-06-09/</code> (6 flowcharts, duplication report, unified proposal, handoffs). Finding: the subsystem is <em>not</em> a tangle — most apparent duplication is legitimate specialization. Only two accidental duplications mattered, and both sat on the planned work: the stepping command paths (A1) and the 4&times; motor-bounds checks (A2). The duplication hunt independently validated the indexed-cursor refactor.</p>
+
+<h2>Decisions</h2>
+<table>
+  <tr><th>Question</th><th>Decision</th></tr>
+  <tr><td>Resume which parked refactor?</td><td>Neither now — build stepping; <code>feat/spinnaker-gige</code> (camera) and <code>zmq-v2-port</code> (transport) stay parked.</td></tr>
+  <tr><td>Go-to-site UX</td><td><strong>Select-then-confirm</strong>: click/numeric SELECTS (no motion); explicit "Move to selected" commits.</td></tr>
+  <tr><td>Display Bounds</td><td>Fold in the enforcement fix (U2).</td></tr>
+</table>
+
+<h2>What was built</h2>
+<p><span class="tag">controller</span> <code>raster_controller.py</code></p>
+<ul>
+  <li>One-shot <code>_raster_iter</code> generator &rarr; indexed <code>_raster_path_pts</code> + <code>_raster_index</code>, advanced by one <code>_next_raster_point_locked()</code> helper shared by the continuous run-loop <em>and</em> Step (sequence-equivalence tested per pattern). <code>start_raster</code> materializes (50k cap, warns on truncation) and refuses empty paths; progress total now real.</li>
+  <li><strong>F2 select/goto</strong>: <code>selection_changed_signal</code>, <code>select_path_index</code>, <code>select_nearest_path_point</code> (no motion), <code>request_go_to_path_index</code> (motion via <code>move_target</code> tag &rarr; bypasses continuous re-arm/step-count; cursor &rarr; n+1; rejected mid-continuous), <code>goto_selected_point</code>, <code>is_continuous</code>.</li>
+  <li><strong>U2</strong>: <code>set_target_bounds</code>/<code>clear_target_bounds</code> — enforcement already lived in <code>_execute</code>'s calibrated path; the UI simply never set the bounds.</li>
+  <li>No BLACS protocol change (connection names + PUB topics unchanged; only the <code>arm_raster</code> predicate switched to <code>bool(_raster_path_pts)</code>).</li>
+</ul>
+<p><span class="tag">ui</span> <code>ui.py</code></p>
+<ul>
+  <li>"pt N" spinbox + <strong>"Move to selected"</strong> button (status bar), hollow-green selection ring (distinct from the red live marker), <strong>Ctrl+click</strong>-to-select (modeless), <code>selection_changed_signal</code> wired, and <code>_display_bounds</code> now calls <code>set_target_bounds</code> so the drawn box <em>enforces</em> limits.</li>
+</ul>
+
+<h2>Verification</h2>
+<ul>
+  <li><span class="ok">17 controller unit tests pass</span> (<code>tests/test_raster_pathmodel.py</code>) — sequence-equivalence per pattern, exhaustion, step/continuous preservation, empty-path refusal, select clamp/argmin-ties, goto cursor/reject/tag, bounds enforcement.</li>
+  <li>7 UI-handler tests (<code>tests/test_raster_goto_handlers.py</code>, skip-clean) — run with the GUI closed.</li>
+  <li><code>py_compile</code> clean on all files.</li>
+  <li class="warn">Live verification still pending (operator at the rig — see runbook).</li>
+</ul>
+
+<h2>Code review</h2>
+<p>Requested a senior review over <code>bf9fee2..ee4d95c</code>: all six load-bearing invariants upheld. One <strong>Important</strong> finding — <em>preview&rarr;Move index drift</em> (editing the spec between Preview and Move could move to the wrong site) — fixed by resolving the move by the selected <em>coordinate</em> (re-select-nearest on the armed path) rather than the bare index. Plus a truncation warning, an init-order hardening, and a goto-tag pin test. Committed as <code>30c3fbf</code>.</p>
+
+<h2>Commits</h2>
+<table>
+  <tr><th>SHA</th><th>Subject</th></tr>
+  <tr><td><code>a75c103</code></td><td>feat(raster): indexed path model + go-to-arbitrary-site controller API</td></tr>
+  <tr><td><code>ee4d95c</code></td><td>feat(raster-ui): select-then-confirm go-to-site controls + Display Bounds enforcement</td></tr>
+  <tr><td><code>30c3fbf</code></td><td>fix(raster): address code review (preview&rarr;Move drift, truncation warning, init order, goto-tag test)</td></tr>
+</table>
+
+<h2>Friction / lessons (banked to memory)</h2>
+<ul>
+  <li><strong>Camera-busy test hang.</strong> Importing <code>ui.py</code> while the live GUI holds the uEye camera blocks forever and wedges the REPL bash session; the per-call timeout doesn't kill it. Use <code>py_compile</code> for syntax; run ui-importing tests only with the GUI closed; use a separate agent shell when the REPL is wedged. (~30 min lost.)</li>
+  <li><strong><code>*_ui.py</code> gitignore trap.</strong> The repo ignores <code>*_ui.py</code>/<code>*_rc.py</code> (pyuic); a test named <code>*_ui.py</code> silently vanished from <code>git status</code>. Renamed to <code>*_handlers.py</code>.</li>
+  <li>Agent Bash permission flipped to denied mid-session; resolved with bypassPermissions.</li>
+</ul>
+
+<h2>Next</h2>
+<ul>
+  <li>Operator: close GUI &rarr; <code>pytest tests/test_raster_goto_handlers.py tests/test_command_queue.py</code> &rarr; launch from the worktree &rarr; F2 walkthrough (Ctrl+click &rarr; green ring, no motion &rarr; Move to selected &rarr; Step continues; Display Bounds rejects out-of-box).</li>
+  <li>Then merge <code>feat/raster-stepping</code> &rarr; <code>main</code> (or push / open PR).</li>
+  <li>Deferred: land <code>feat/spinnaker-gige</code> (fixes the live <code>is_FreezeVideo</code> failures); A3–A8 camera-dock dedup (gated on that); <code>zmq-v2-port</code> (needs coordinated BLACS v2 cutover).</li>
+</ul>
+</body>
+</html>

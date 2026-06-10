@@ -1,0 +1,127 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<style>
+  body { font-family: Calibri, Segoe UI, sans-serif; font-size: 11pt; color: #333; max-width: 900px; margin: 20px auto; }
+  h1 { font-size: 20pt; border-bottom: 2px solid #0078d4; padding-bottom: 6px; color: #0078d4; }
+  h2 { font-size: 14pt; color: #0078d4; margin-top: 24px; }
+  h3 { font-size: 12pt; color: #444; }
+  table { border-collapse: collapse; width: 100%; margin: 10px 0; }
+  th, td { border: 1px solid #ccc; padding: 6px 10px; text-align: left; vertical-align: top; }
+  th { background: #f0f0f0; font-weight: bold; }
+  code { font-family: Consolas, monospace; font-size: 10pt; background: #f4f4f4; padding: 1px 4px; border-radius: 3px; }
+  pre { background: #f4f4f4; border: 1px solid #ddd; border-radius: 4px; padding: 10px; font-family: Consolas, monospace; font-size: 10pt; overflow-x: auto; white-space: pre; }
+  .badge { display: inline-block; padding: 2px 8px; border-radius: 10px; color: white; font-size: 9pt; font-weight: bold; }
+  .green { background: #4CAF50; }
+  .orange { background: #F57C00; }
+  .yellow { background: #FFC107; color: #333; }
+  .blue { background: #0078d4; }
+  .purple { background: #9C27B0; }
+  .gray { background: #9E9E9E; }
+  .red { background: #f44336; }
+  .meta { color: #888; font-size: 10pt; }
+  ol, ul { margin: 6px 0; padding-left: 24px; }
+  li { margin: 3px 0; }
+  strong { color: #222; }
+  .callout { background: #e8f4fd; border-left: 4px solid #0078d4; padding: 8px 12px; margin: 10px 0; }
+  .warn { background: #fff3cd; border-left: 4px solid #ffc107; padding: 8px 12px; margin: 10px 0; }
+</style>
+</head>
+<body>
+
+<h1>Phase 6 Post-Cutover Hardening Shipped</h1>
+<p class="meta">
+  <strong>Date:</strong> 2026-05-24 &nbsp;&bull;&nbsp;
+  <strong>Commits:</strong> <code>10c5eca</code> / <code>40d9a27</code> / <code>e2147ab</code> (parent), <code>1704f71</code> / <code>e0652ad</code> (BigSky) &mdash; all local-only, unpushed &nbsp;&bull;&nbsp;
+  <strong>Context:</strong> 3 tracks across 5 topic branches in 2 repos; 5 parallel reviewers; 3 fixup commits applied
+</p>
+
+<h2>What Changed</h2>
+<p>Three independent hardening tracks for the post-cutover ZMQ v2 stack shipped on isolated topic branches: <strong>T1</strong> SDK-free worker test helpers + scaffolds + pre-push hook, <strong>T2</strong> four polish items (BigSky timeout constant + transport-failure test + structured REJECTED replies; HF AND-gate spec footnote), <strong>T3</strong> codified subagent context-inheritance rules in the agent-workflow skill. All branches built, tested (108 tests total across two envs), and reviewed by 5 parallel fresh general-purpose agents.</p>
+
+<h2>Tracks Shipped</h2>
+<table>
+  <tr><th>Track</th><th>Repo / Branch</th><th>Tip</th><th>Description</th></tr>
+  <tr><td><span class="badge purple">T3</span></td><td>parent <code>chore/subagent-rule-inheritance</code></td><td><code>10c5eca</code></td><td>Agent-workflow SKILL.md reorder + new "Subagent Context Inheritance" section + reviewer-prompt rule + sibling-branch awareness bullet (R1 fixup)</td></tr>
+  <tr><td><span class="badge blue">T2D</span></td><td>parent <code>docs/zmq-v2-spec-footnote</code></td><td><code>40d9a27</code></td><td>v2 protocol doc &sect;1.2 footnote on <code>wait_for_lock</code> AND-gate semantics + silent-bypass test coverage</td></tr>
+  <tr><td><span class="badge green">T1 / item 2.8c</span></td><td>parent <code>tests/userlib-worker-tests</code></td><td><code>e2147ab</code></td><td>NuvuCamera + NI_SCOPE helper extraction (<code>_helpers.py</code>), 21 tests, pre-push hook at <code>.githooks/pre-push</code>, CLAUDE.md verification bullet</td></tr>
+  <tr><td><span class="badge orange">T2A+2C</span></td><td>BigSky <code>refactor/timeout-constant-disconnect-test</code></td><td><code>1704f71</code></td><td>Extracted <code>_REMOTE_CMD_TIMEOUT_S = 10.0</code> module constant + B8 transport-failure test</td></tr>
+  <tr><td><span class="badge orange">T2B</span></td><td>BigSky <code>refactor/structured-rejected</code></td><td><code>e0652ad</code></td><td>10 controller mixin sites &rarr; structured <code>{status: REJECTED, code, message}</code>; HugeSkyController dispatcher gets REJECTED branch + keeps legacy <code>startswith</code> safety net for one cycle (per T6.2)</td></tr>
+</table>
+
+<h2>Test Totals (verified green)</h2>
+<table>
+  <tr><th>Suite</th><th>Env</th><th>Result</th></tr>
+  <tr><td>parent userlib (NuvuCamera 3 + NI_SCOPE 18)</td><td><code>labscript</code></td><td>21/21</td></tr>
+  <tr><td>parent V11 zmq_v2 (unchanged)</td><td><code>labscript</code></td><td>31/31</td></tr>
+  <tr><td>BigSky (incl. 20 B8 for all 10 REJECTED codes + safety net + transport failure)</td><td><code>guis</code></td><td>37/37</td></tr>
+  <tr><td>HF_Locking (unchanged)</td><td><code>guis</code></td><td>19/19</td></tr>
+</table>
+
+<h2>Code Review Cycle</h2>
+<p>5 fresh (non-fork) <code>general-purpose</code> reviewers dispatched in parallel &mdash; one per branch. Wall time for all 5 returns: ~2 min.</p>
+<table>
+  <tr><th>Reviewer</th><th>Track</th><th>Verdict</th><th>Action</th></tr>
+  <tr><td>R1</td><td>T3</td><td>With fixes (2 Important)</td><td>Applied: section reorder + reviewer-prompt rule placement</td></tr>
+  <tr><td>R2</td><td>T2D</td><td>Yes (1 Minor wording)</td><td>Deferred (not load-bearing)</td></tr>
+  <tr><td>R3</td><td>T1</td><td>With fixes (2 Important)</td><td>Applied: restored bytes/whitespace log behavior + 3 alias parametrize cases</td></tr>
+  <tr><td>R4</td><td>T2A+2C</td><td>Yes (3 Minor cosmetics)</td><td>Deferred</td></tr>
+  <tr><td>R5</td><td>T2B</td><td>1 Critical + 3 Important</td><td>Critical pushed back as false positive; 1 Important applied</td></tr>
+</table>
+
+<div class="warn">
+<strong>R5 Critical pushback &mdash; recorded in <code>e0652ad</code> commit body.</strong>
+Reviewer claimed <code>_check_response</code> reads <code>response["message"]</code> (v1 path) instead of <code>response["error"]["message"]</code>, breaking the BigSky worker after cutover. Verification on the sibling branch <code>zmq-v2-cutover</code> (which ships <em>with</em> T2B) showed v2 errors flow through <code>_raw_request &rarr; RemoteRequestError(error_dict=err) &rarr; program_value</code>, which preserves <code>error.message</code> into the legacy <code>message</code> key via <code>exc.message = self.error_dict.get("message", "")</code>. R5 reviewed T2B against the <code>zmq-v2-port</code> base without seeing the parent-side cutover &mdash; the same class of false positive that prompted T3 originally, but a <em>new</em> failure mode (cross-repo sibling-branch awareness) that T3's original wording did not cover. The R1 fixup added a new sibling-branch awareness bullet to address it going forward.
+</div>
+
+<h2>REPL conda-activate Debug Finding</h2>
+<div class="callout">
+Persistent pytest hangs on the <code>guis</code> env in the Claude Code REPL traced to direct <code>python.exe</code> invocation skipping <code>conda activate</code>'s DLL search-path setup. <code>labscript</code> env not affected (fewer C-extension deps). Workaround: always prefix <code>source ~/miniconda/etc/profile.d/conda.sh &amp;&amp; conda activate &lt;env&gt; &amp;&amp;</code> for guis/rastering envs in REPL. Saved as new memory file <code>reference_repl-conda-activate-required-guis.md</code> + MEMORY.md index entry.
+</div>
+
+<h2>Auto-Memory Updates</h2>
+<ul>
+  <li><code>reference_repl-read-tool-available.md</code> &mdash; <code>await Read({...})</code> works in REPL despite not being listed in REPL docs (satisfies Edit/Write precondition)</li>
+  <li><code>reference_subagent-context-inheritance.md</code> &mdash; empirical inheritance map (CLAUDE.md, auto-memory, rule files inherited; <code>@docs/...</code> imports and project skills NOT inherited)</li>
+  <li><code>reference_repl-conda-activate-required-guis.md</code> &mdash; conda activate required for guis/rastering env Python in REPL</li>
+  <li><code>feedback_windows-git-race-fast-sh.md</code> &mdash; <strong>UPDATED</strong> with the concurrent <code>sh()</code> failure mode + surgical recovery for wrong-branch commits</li>
+  <li>MEMORY.md index updated with all 3 new + 1 updated entry</li>
+</ul>
+
+<h2>Branches Pending Push</h2>
+<p>All 5 branches are local-only. Operator-controlled per discipline. Reviews accepted (4/5 outright, 1/5 with Critical pushback). The Phase 6 work is <strong>additive and independent</strong> of the operator ZMQ v2 cutover ceremony per <code>zmq-v2-cutover-playbook.md</code>.</p>
+
+<h2>Process Patterns That Worked</h2>
+<ul>
+  <li><strong>5 parallel fresh reviewers</strong> &mdash; ~2 min wall time for all returns; caught one true Critical-class miss (R3 log-behavior regression) and surfaced one false positive (R5) that itself was useful signal</li>
+  <li><strong>Cross-branch verification before accepting Critical findings</strong> &mdash; the R5 pushback required reading the sibling cutover branch; without that, the fix would have been a regression</li>
+  <li><strong>Fixup commits, not amends</strong> &mdash; clean audit trail; each fixup commit names the review it addresses</li>
+</ul>
+
+<h2>Friction Points</h2>
+<table>
+  <tr><th>Observation</th><th>Category</th><th>Recommended Action</th></tr>
+  <tr><td>R5 sibling-branch false positive surfaced a NEW failure mode beyond what T3 (subagent context inheritance) originally covered</td><td>reviewer prompt scope</td><td>R1 fixup added explicit "multi-repo cutover sibling-branch awareness" bullet to agent-workflow SKILL.md &mdash; in place</td></tr>
+  <tr><td>REPL pytest hang on guis env consumed ~4 debug cycles before systematic-debugging skill was applied properly</td><td>debugging discipline</td><td>Early-warning sign documented: <em>"<code>python.exe</code> + non-labscript env + no output within 10s = DLL search path issue, NOT a test bug"</em>. Captured in <code>reference_repl-conda-activate-required-guis.md</code></td></tr>
+  <tr><td>Concurrent <code>sh()</code> calls in REPL during git work landed T2D commit on the wrong branch; surgical recovery via <code>git branch -f</code> + <code>git reset --hard</code> worked but cost time</td><td>git race</td><td><code>feedback_windows-git-race-fast-sh.md</code> updated with the failure mode + recovery recipe</td></tr>
+  <tr><td>Auto-memory generalization reflex worked &mdash; the T3 codification was prompted by accumulated subagent confusion, not a single instance</td><td>positive</td><td>Keep doing this</td></tr>
+</table>
+
+<h2>CLAUDE.md Update Recommendation</h2>
+<p>The Python Environment section currently states:</p>
+<pre>Every Python command needs conda activation. Bare `python` &rarr; wrong version; `python3` &rarr; Windows Store shim.</pre>
+<p>Recommended expansion (operator review pending):</p>
+<pre>In Claude Code REPL on Windows, even direct `&lt;env&gt;/python.exe` invocation hangs
+for guis/rastering envs (DLL search paths missing without `conda activate`).
+Always prefix `source ~/miniconda/etc/profile.d/conda.sh && conda activate &lt;env&gt; &&`.</pre>
+
+<h2>Future Work</h2>
+<ul>
+  <li>Operator cutover ceremony per <code>zmq-v2-cutover-playbook.md</code> still pending; Phase 6 work is independent</li>
+  <li>Deferred review minors: R2 wording polish; R4 BigSky cosmetics; R5 deferred (lamp_mode self-describing messages, safety-net grep predicate, parse_failure retryable=True for v2.1)</li>
+  <li>Per-item ship of the 5 Phase 6 branches awaiting operator go-ahead</li>
+</ul>
+
+</body>
+</html>
