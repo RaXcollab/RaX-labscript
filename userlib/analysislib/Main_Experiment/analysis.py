@@ -33,7 +33,7 @@ else:
 run = lyse.Run(h5_path)
 
 # --- Extract traces (graceful handling for missing traces) ---
-TRACE_NAMES = ['Absorption0', 'Absorption1', 'Absorption2', 'Absorption3']
+TRACE_NAMES = ['Absorption0', 'Absorption1', 'Absorption2', 'Absorption3','Absorption_ATOM']
 trace_data = {}
 for name in TRACE_NAMES:
     try:
@@ -97,7 +97,7 @@ if 'Absorption1' in trace_data and 'Absorption2' in trace_data:
         if min(np.nanmin(vis1), np.nanmin(vis2)) >= -0.5 and max(np.nanmax(vis1), np.nanmax(vis2)) <= 0.5:
             ax1.set_ylim([-0.3, 0.3])
 
-# ax1.set_xlim([0, XLIM_MS_ABS])
+ax1.set_xlim([0, XLIM_MS_ABS])
 ax1.set_xlabel('Time [ms]', fontsize=12)
 ax1.set_ylabel('Offset Value', fontsize=12)
 ax1.set_title('Absorption_RF', fontsize=14)
@@ -107,20 +107,36 @@ ann(ax1)
 
 # --- Subplot 2 (bottom left): Absorption DC (raw) ---
 ax3 = fig.add_subplot(gs[1, 0])
-if 'Absorption0' in trace_data:
-    analog_data_dcprobe = trace_data['Absorption0']
+if 'Absorption3' in trace_data:
+    analog_data_dcprobe = trace_data['Absorption3']
     times_dcprobe = analog_data_dcprobe[0].flatten()
     values_dcprobe = analog_data_dcprobe[1].flatten()
-    ax3.plot(times_dcprobe * 1000, values_dcprobe, 'b', label='Absorption_DC')
+    ax3.plot(times_dcprobe * 1000, values_dcprobe, 'b')
 
 ax3.set_xlim([0, XLIM_MS_ABS])
 ax3.set_xlabel('Time [ms]', fontsize=12)
 ax3.set_ylabel('Value', fontsize=12)
-ax3.set_title('Absorption_DC', fontsize=14)
+ax3.set_title('Absorption_DC_component', fontsize=14)
 ax3.grid(True)
-ax3.legend(loc='upper right')
+# ax3.legend(loc='upper right')
 ann(ax3)
 
+
+# --- Subplot 5 (bottom right): Absorption atom (raw) ---
+ax5 = fig.add_subplot(gs[1, 1])
+if 'Absorption0' in trace_data:
+    analog_data_dcprobe = trace_data['Absorption_ATOM']
+    times_dcprobe = analog_data_dcprobe[0].flatten()
+    values_dcprobe = analog_data_dcprobe[1].flatten()
+    ax5.plot(times_dcprobe * 1000, values_dcprobe, 'b', label='Absorption_ATOM')
+
+ax5.set_xlim([0, XLIM_MS_ABS])
+ax5.set_xlabel('Time [ms]', fontsize=12)
+ax5.set_ylabel('Value', fontsize=12)
+ax5.set_title('Absorption_ATOM', fontsize=14)
+ax5.grid(True)
+ax5.legend(loc='upper right')
+ann(ax5)
 # # --- Subplot 3 (bottom right): NI_SCOPE (PXIe-5922) ---
 # ax2 = fig.add_subplot(gs[1, 1])
 # try:
