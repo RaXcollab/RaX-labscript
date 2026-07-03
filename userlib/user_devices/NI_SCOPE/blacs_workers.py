@@ -320,32 +320,28 @@ class NI_SCOPEWorker(Worker):
         print(f'[NI_SCOPE] Horizontal: fs_min={self.min_sample_rate}, N_min={self.min_num_pts}, ref_pos=0%')
 
     def _normalize_trigger_source(self, src):
-        """Return (src_norm, mode) where mode is 'analog', 'digital', or 'immediate'."""
-        if src in [None, ""]:
-            return None, 'immediate'
+        """Return (src_norm, mode) where mode is 'analog', 'digital', or 'immediate'.
+
+        Pure-Python logic extracted to user_devices.NI_SCOPE._helpers so it can be
+        unit-tested without niscope. This wrapper preserves the [NI_SCOPE] log
+        line for the production-trace use case (aliased trigger source) across
+        ALL input types — str, bytes, bytearray, whitespace-padded — matching
+        the pre-refactor behavior exactly.
+        """
+        from ._helpers import normalize_trigger_source
+        norm, mode = normalize_trigger_source(src)
+        # Build a display form that matches the pre-refactor 's' (decoded if
+        # bytes, whitespace-stripped, case-preserved). Then log iff the helper
+        # actually rewrote the input (alias collapse to TRIG).
         if isinstance(src, (bytes, bytearray)):
-            src = src.decode('utf-8', errors='ignore')
-
-        s = str(src).strip()
-        key = s.upper()
-
-        aliases = {
-            'EXTERNAL': 'TRIG',
-            '/PXI1SLOT2/TRIG': 'TRIG',
-        }
-        if key in aliases:
-            mapped = aliases[key]
-            print(f"[NI_SCOPE] Mapping trigger_source '{s}' -> '{mapped}'")
-            s = mapped
-            key = s.upper()
-
-        if s.isdigit() or key == 'TRIG':
-            return s, 'analog'
-
-        if key.startswith('PFI') or key.startswith('PXI_TRIG') or key.startswith('/PXI1SLOT'):
-            return s, 'digital'
-
-        return s, 'analog'
+            s_disp = src.decode("utf-8", errors="ignore").strip()
+        elif src in (None, ""):
+            s_disp = ""
+        else:
+            s_disp = str(src).strip()
+        if norm == "TRIG" and s_disp.upper() != "TRIG":
+            print(f"[NI_SCOPE] Mapping trigger_source '{s_disp}' -> '{norm}'")
+        return norm, mode
 
     def _configure_trigger(self):
         src_raw = getattr(self, 'trigger_source', None)

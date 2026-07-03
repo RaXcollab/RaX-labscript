@@ -1,0 +1,51 @@
+#!/bin/sh
+# Parent-repo pre-push hook: run userlib pytest suite, block push on failure.
+#
+# INSTALL (one-time per checkout):
+#   cp .githooks/pre-push .git/hooks/pre-push
+#   chmod +x .git/hooks/pre-push
+#
+# Git refuses to share hooks via the working tree (security), so the
+# source-of-truth lives at .githooks/pre-push and operators install it
+# manually. Re-run the install line after a fresh clone.
+#
+# Logs to .git/hooks/pre-push.log; that path is inside .git/ so git
+# ignores it automatically. No .gitignore entry needed.
+#
+# Item 2.8c (Phase 6 hardening plan, plans/look-up-all-recent-purrfect-starfish.md).
+
+set -e
+
+LOG=".git/hooks/pre-push.log"
+echo "=== pre-push @ $(date) ===" >> "$LOG"
+
+# Source conda. The `labscript` env owns:
+#   - userlib/external_gui_lib/tests/  (V1-V11 v2 protocol contract)
+#   - userlib/user_devices/*/tests/    (per-device pure-Python helpers)
+CONDA_BASE="$HOME/miniconda"
+if [ -f "$CONDA_BASE/etc/profile.d/conda.sh" ]; then
+    . "$CONDA_BASE/etc/profile.d/conda.sh"
+    conda activate labscript
+else
+    echo "pre-push: conda not found at $CONDA_BASE — skipping userlib tests." | tee -a "$LOG"
+    exit 0
+fi
+
+echo "Running userlib tests in env: $CONDA_DEFAULT_ENV" | tee -a "$LOG"
+# external_gui_lib/tests/ was rolled back with ZMQ-v2 (2026-05-26); the guard
+# re-enables it automatically when the revival restores that tree.
+TEST_PATHS="userlib/user_devices/NuvuCamera/tests/ userlib/user_devices/NI_SCOPE/tests/"
+if [ -d "userlib/external_gui_lib/tests" ]; then
+    TEST_PATHS="userlib/external_gui_lib/tests/ $TEST_PATHS"
+fi
+python -m pytest -q $TEST_PATHS 2>&1 | tee -a "$LOG"
+
+RESULT=${PIPESTATUS[0]}
+if [ "$RESULT" -ne 0 ]; then
+    echo "pre-push: userlib tests failed (exit $RESULT). Push blocked." | tee -a "$LOG"
+    echo "         See full log: $LOG" >&2
+    exit "$RESULT"
+fi
+
+echo "pre-push: userlib tests passed." | tee -a "$LOG"
+exit 0
