@@ -4,9 +4,15 @@ timeout kills the handle, so post_experiment's get_cam_data() dies with
 fatal 101 and the tab needs a full BLACS restart."""
 import pytest
 
-from user_devices.NuvuCamera.Nuvu_sdk.nc_camera import (
-    NuvuException, NuvuTimeout, nc_camera,
-)
+try:
+    from user_devices.NuvuCamera.Nuvu_sdk.nc_camera import (
+        NuvuException, NuvuTimeout, nc_camera,
+    )
+except (ImportError, OSError) as exc:
+    # NC_api loads nc_driver_x64.dll at import time. On checkouts without the
+    # Nuvu driver (laptops, CI) the pre-push hook still collects this file —
+    # skip cleanly instead of blocking every push with a loader error.
+    pytest.skip(f"Nuvu SDK unavailable: {exc}", allow_module_level=True)
 
 
 def _blacs_workers():
