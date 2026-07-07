@@ -94,6 +94,23 @@ class _PubSubSignalBridge(QtCore.QObject):
 
 class RemoteControlTab(DeviceTab):
 
+    def __init__(self, *args, **kwargs):
+        # Subscriber-registry + monitor-cache attributes MUST exist before
+        # DeviceTab.__init__ runs initialise_GUI: subclasses override
+        # initialise_GUI without super() and call _register_subscriber
+        # (RasteringTab), and the inherited _subscriber_loop daemon reads
+        # _extra_topics as its second statement. Missing attrs here is the
+        # 2026-05-26 rollback failure class. Tested in
+        # tests/test_tab_registry.py.
+        self._init_subscriber_registry()
+        super().__init__(*args, **kwargs)
+
+    def _init_subscriber_registry(self):
+        """Idempotent init of subscriber-registry state (pure python)."""
+        self._pubsub_monitor_cache = {}
+        self._extra_topics = {}
+        self._subscriber_thread = None
+
     def initialise_GUI(self):
         connection_table = self.settings['connection_table']
         device = connection_table.find_by_name(self.device_name)
