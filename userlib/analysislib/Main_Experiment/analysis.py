@@ -124,7 +124,7 @@ ann(ax3)
 
 # --- Subplot 5 (bottom right): Absorption atom (raw) ---
 ax5 = fig.add_subplot(gs[1, 1])
-if 'Absorption0' in trace_data:
+if 'Absorption_ATOM' in trace_data:
     analog_data_dcprobe = trace_data['Absorption_ATOM']
     times_dcprobe = analog_data_dcprobe[0].flatten()
     values_dcprobe = analog_data_dcprobe[1].flatten()
