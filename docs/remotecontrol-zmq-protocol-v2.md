@@ -133,6 +133,10 @@ during the migration window.
 > per review C2). Callers that require enforcement must check the gate
 > state via PUB-SUB cached monitors before issuing the request — there
 > is no v2 status code for "wait requested but gate disarmed".
+>
+> As of 2026-07-07 the BLACS client always sends `wait_for_lock`
+> explicitly (True or False) and the server treats an absent key as
+> False — absence is never interpreted via server-side defaults.
 
 ### 1.3 Reply
 
