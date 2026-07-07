@@ -428,6 +428,9 @@ class BigSkyWorker(RemoteControlWorker):
         # All h5 access done — program outside the zlock so that exceptions
         # (e.g. lock-wait timeout) don't trigger "lock not held" on cleanup.
         if not has_operation:
+            # post_experiment writes the monitor snapshot to h5_filepath, so it
+            # must point at THIS shot even when nothing is programmed
+            self.h5_filepath = h5_filepath
             # No BigSky channels in this shot — still auto-arm if needed
             self._auto_arm_if_needed()
             self.initial_monitor_values = self.check_all_remote_values()
