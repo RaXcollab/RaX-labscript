@@ -174,6 +174,8 @@ shot_file.h5
 
 > **Lyse access pattern**: `df = lyse.data(); df['{orientation_or_device_name}/{exposure_name}', 'failed_shot']` returns the per-shot `failed_shot` attr column. Raw image bytes load via `lyse.Run(h5_path).get_image(orientation, name, frametype)` which is a thin wrapper around the same dataset path.
 
+> **`failed_shot` is only written for PARTIAL acquisitions.** If the camera trigger never fires at all, `post_experiment` raises before the h5-write block, so the shot has **no `/images/{camera}` group and no `failed_shot` attr** — the lyse column is NaN/missing, not `True`. Analysis must therefore test **image-group presence** (`'images/NuvuCamera' in h5`), never the flag alone. Same rule for the 2026-07-06 open-cell data (103/223 run shots lack `/images/NuvuCamera`; none carry `failed_shot=True` because the tab died before the write). Semantics confirmed in the 2026-07-07 P3 (`fix/nuvu-214-retry`) consequence review — the 214-retry fix made missing-trigger failures loud but did not change what gets written.
+
 ## Where do I find setpoint X? (LaserLockGUI case study)
 
 For LaserLockGUI, three places store frequency values per shot. **All three are setpoint-flavored, none is the wavemeter measurement.** The wavemeter reading is displayed in the BLACS GUI but **not persisted to any shot-file dataset**.
