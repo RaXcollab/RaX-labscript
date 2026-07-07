@@ -89,13 +89,24 @@ class NuvuCamera(object):
     # TODO: verify that the triggers are slower than the read out time
     # Begin acquisition for BUFFERED
     def grab_multiple(self, n_images, images, waitForNextBuffer=True):
+        # Lazy import mirrors __init__/set_attribute: keeps `import
+        # blacs_workers` free of the Nuvu DLL (NC_api.LoadLibrary runs at
+        # nc_camera import time). By the time a buffered shot reaches here the
+        # SDK is already loaded and cached in sys.modules, so this is free.
+        from .Nuvu_sdk.nc_camera import NuvuTimeout
         for i in range(n_images):
             while True:
                 if self._abort_acquisition:
                     self.logger.debug("Abort during acquisition.")
                     self._abort_acquisition = False
                     return
-                images.append(self.grab())
+                try:
+                    images.append(self.grab())
+                except NuvuTimeout:
+                    # Frame-wait timeout (SDK 214): trigger hasn't arrived
+                    # yet (upstream devices still in T2B, or long shot).
+                    # Re-arm and keep waiting; abort flag above is the exit.
+                    continue
                 self.logger.debug(f"Got image {i+1} of {n_images}.")
                 break
     

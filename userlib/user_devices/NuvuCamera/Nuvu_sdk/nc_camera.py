@@ -27,6 +27,12 @@ class NuvuException(Exception):
         return self.error
 
 
+class NuvuTimeout(NuvuException):
+    """Frame-wait timeout (SDK code 214). Benign race between the camera's
+    read timeout and the hardware trigger arriving after all devices finish
+    transition_to_buffered. The camera handle stays OPEN; callers retry."""
+
+
 class nc_camera:
     """
     Python-like interface to the Nuvu SDK.
@@ -107,6 +113,8 @@ class nc_camera:
         #     pass
         if error == 27:
             raise NuvuException("Error 27: Could not find camera")
+        elif error == 214:
+            raise NuvuTimeout("Error Code: 214 (frame-wait timeout; camera left open)")
         else:
             self.logger.debug("Error Code: " + str(error)+ ". \n Refer to error.h file in Nuvu SDK documentation.")
             self.closeCam(noRaise = True)
