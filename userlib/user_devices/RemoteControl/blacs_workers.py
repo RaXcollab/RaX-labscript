@@ -334,8 +334,11 @@ class RemoteCommunication:
         Q2 §10-resolved: wait_for_lock moves into the v2 `args` dict.
         """
         timeout = self.program_timeout_ms if wait_for_lock else self.timeout_ms
-        # Build args only when needed (encode_request drops empty/None).
-        args = {"wait_for_lock": True} if wait_for_lock else None
+        # Always send the key explicitly -- absence must never be
+        # interpretable by servers (HF defaulted absent->True pre-2026-07-07).
+        # A single-key dict is truthy even when the value is False, so
+        # encode_request's `if args:` guard keeps it in the envelope.
+        args = {"wait_for_lock": bool(wait_for_lock)}
         self.logger.debug(
             f"program_value: connection={connection} value={value} "
             f"wait_for_lock={wait_for_lock} timeout={timeout}ms")
