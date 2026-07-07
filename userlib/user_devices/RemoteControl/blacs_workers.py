@@ -449,7 +449,7 @@ class RemoteControlWorker(Worker):
     def post_experiment(self):
         _t0 = time.perf_counter()
         try:
-            if self.initial_monitor_values:
+            if self.initial_monitor_values and self.h5_filepath:
                 # Final values from PUB-SUB cache (no REQ-REP round-trip).
                 # dict() copy is atomic under the GIL; thread-safe vs the drain thread.
                 self.final_monitor_values = dict(self._pubsub_cache)
