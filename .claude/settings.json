@@ -95,7 +95,8 @@
       "Bash(git -C * show *)",
       "Bash(git -C * status *)",
       "Bash(git -C * diff *)",
-      "Bash(git -C * rev-parse *)"
+      "Bash(git -C * rev-parse *)",
+      "mcp__plugin_claude-mem_mcp-search__search"
     ],
     "additionalDirectories": [
       "c:\\Users\\radmo\\labscript-suite\\.claude\\skills",
@@ -105,9 +106,22 @@
     ]
   },
   "hooks": {
+    "SubagentStart": [
+      {
+        "matcher": "claude-code-guide|general-purpose|Explore|Plan",
+        "hooks": [
+          {
+            "type": "command",
+            "shell": "powershell",
+            "command": "& \"$env:CLAUDE_PROJECT_DIR\\.claude\\hooks\\subagent-source-discipline.ps1\"",
+            "timeout": 15
+          }
+        ]
+      }
+    ],
     "SessionStart": [
       {
-        "matcher": "startup|clear",
+        "matcher": "startup|resume|clear",
         "hooks": [
           {
             "type": "command",
@@ -126,8 +140,66 @@
           {
             "type": "command",
             "shell": "powershell",
+            "if": "Edit(userlib/user_devices/**)",
             "command": "& \"$env:CLAUDE_PROJECT_DIR\\.claude\\hooks\\mark-device-edit.ps1\"",
-            "timeout": 15
+            "timeout": 15,
+            "async": true
+          },
+          {
+            "type": "command",
+            "shell": "powershell",
+            "if": "Edit(blacs/**)",
+            "command": "& \"$env:CLAUDE_PROJECT_DIR\\.claude\\hooks\\mark-device-edit.ps1\"",
+            "timeout": 15,
+            "async": true
+          },
+          {
+            "type": "command",
+            "shell": "powershell",
+            "if": "Edit(labscript-devices/**)",
+            "command": "& \"$env:CLAUDE_PROJECT_DIR\\.claude\\hooks\\mark-device-edit.ps1\"",
+            "timeout": 15,
+            "async": true
+          },
+          {
+            "type": "command",
+            "shell": "powershell",
+            "if": "Edit(labscript-utils/**)",
+            "command": "& \"$env:CLAUDE_PROJECT_DIR\\.claude\\hooks\\mark-device-edit.ps1\"",
+            "timeout": 15,
+            "async": true
+          },
+          {
+            "type": "command",
+            "shell": "powershell",
+            "if": "Write(userlib/user_devices/**)",
+            "command": "& \"$env:CLAUDE_PROJECT_DIR\\.claude\\hooks\\mark-device-edit.ps1\"",
+            "timeout": 15,
+            "async": true
+          },
+          {
+            "type": "command",
+            "shell": "powershell",
+            "if": "Write(blacs/**)",
+            "command": "& \"$env:CLAUDE_PROJECT_DIR\\.claude\\hooks\\mark-device-edit.ps1\"",
+            "timeout": 15,
+            "async": true
+          },
+          {
+            "type": "command",
+            "shell": "powershell",
+            "if": "Write(labscript-devices/**)",
+            "command": "& \"$env:CLAUDE_PROJECT_DIR\\.claude\\hooks\\mark-device-edit.ps1\"",
+            "timeout": 15,
+            "async": true
+          },
+          {
+            "type": "command",
+            "shell": "powershell",
+            "if": "Write(labscript-utils/**)",
+            "command": "& \"$env:CLAUDE_PROJECT_DIR\\.claude\\hooks\\mark-device-edit.ps1\"",
+            "timeout": 15,
+            "async": true
           }
         ]
       }
@@ -140,7 +212,8 @@
             "type": "command",
             "shell": "powershell",
             "command": "& \"$env:CLAUDE_PROJECT_DIR\\.claude\\hooks\\mark-audit-ran.ps1\"",
-            "timeout": 15
+            "timeout": 15,
+            "async": true
           }
         ]
       }
@@ -164,6 +237,13 @@
           {
             "type": "command",
             "command": "bash -c 'INPUT=$(cat); CMD=$(echo \"$INPUT\" | python -c \"import sys,json; print(json.load(sys.stdin).get(\\\"tool_input\\\",{}).get(\\\"command\\\",\\\"\\\"))\"); if echo \"$CMD\" | grep -qE \"rm\\s+-(rf|r|fr)\\s\"; then echo \"BLOCKED: rm -r/rm -rf requires explicit user approval. Ask first.\" >&2; exit 2; fi; if echo \"$CMD\" | grep -qE \"^mv\\s.*/$\"; then echo \"BLOCKED: mv on directories requires explicit user approval. Ask first.\" >&2; exit 2; fi; exit 0'"
+          },
+          {
+            "type": "command",
+            "shell": "powershell",
+            "if": "Bash(git *)",
+            "command": "& \"$env:CLAUDE_PROJECT_DIR\\.claude\\hooks\\warn-git-chain.ps1\"",
+            "timeout": 15
           }
         ]
       }
