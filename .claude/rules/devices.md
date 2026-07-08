@@ -31,6 +31,13 @@ paths:
 - For BLACS worker changes: ALWAYS have `blacs-expert` audit. For safety-critical changes, cross-audit with both `blacs-expert` AND `amo-expert`
 - When making a method idempotent (adding cleanup at top), audit the FIRST call path — attributes may not exist yet during `init()`
 
+## Error-Handling Change Protocol
+
+- **Changed error/timeout semantics → sweep every caller.** Grep all callers of the changed primitive and trace each operating mode (manual snap, continuous, buffered grab) end-to-end before declaring done. Fixing one path does not fix the class (2026-07: 214-timeout retry fixed for buffered `grab_multiple`; unswept `snap`/`continuous_loop` siblings failed the next day).
+- **Audit scope = blast radius, not diff size.** A one-line config change that interacts with changed error semantics still gets the `blacs-expert` audit.
+- **Known gaps are decisions, not footnotes.** Operator-facing + cheap (≲10 lines) → fix in the same pass, or get an explicit defer from the user. Deferred → record as a tracked open item, never only prose in a summary.
+- **Verify all modes after camera/acquisition changes**: manual snap, continuous view, AND a queued shot — not just the test shot.
+
 ## Per-Shot Lifecycle (fork-specific, load-bearing)
 
 - **Queued-shot lifecycle:** `transition_to_buffered → start_run → post_experiment` per shot. **No `transition_to_manual` between queued shots.** T2M runs only at queue-end, abort, or pause.
