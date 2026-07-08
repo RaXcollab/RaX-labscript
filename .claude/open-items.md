@@ -3,16 +3,18 @@
 Deferred work with an owner and a gate. A Claude session that flags something as "worth a follow-up" MUST add it here (or fix it) — prose footnotes don't survive compaction. Remove items when done.
 
 ## Gated on operator / hardware
-- **Camera-fix hardware validation** (2026-07-08): after BLACS restart, confirm `Saving 1/1 images` incl. one slow-lock shot, no 214/101 in BLACS.log, manual snap returns an image. Gates: retroactive wrap-up (plan T7), P4 connection-table commit.
-- **Hooks live-fire test** (plan T2 step 5): fresh session → session-start checklist appears; scratch edit under `userlib/user_devices/` → gate message fires once, no loop.
+- **Camera-fix hardware validation** (updated 2026-07-08): morning merges VERIFIED (19:46 15-shot queue clean). Remaining: BLACS restart to activate the overnight hardening (b75b98b + labscript-devices b32c97e) — checklist in `notes/2026-07-08_Nuvu-error27-hardening-and-teardown-fixes.html`; then one slow-lock shot + manual snap.
+- **Hooks v2 settings-dispatch test** (plan T2 step 5, narrowed 2026-07-08): scripts smoke-tested 24/24 (both PS editions, byte-exact stdin) — remaining untested surface is Claude Code's settings-level dispatch only. Fresh session → checklist appears (also on `--resume`); scratch edit under `userlib/user_devices/` → audit gate fires once; chained `git add x && git commit` via Bash → blocked by git guard. Note: creating the audit-waiver marker will hit a permission prompt (allow-rule was classifier-denied; waiver now requires user click — keep it that way unless it annoys).
 
 ## Code follow-ups (NuvuCamera, pre-existing, audit-flagged 2026-07-08)
-- `errorHandling` 107 dead `pass` — falls through and closes the camera; needs `return` if 107 is benign ([nc_camera.py:108](userlib/user_devices/NuvuCamera/Nuvu_sdk/nc_camera.py)).
-- `get_bias` exposure leak on mid-call failure (no current callers).
-- Abort-during-continuous double-resume (fork T2M × inherited `abort()` both resume continuous).
+- ~~`errorHandling` 107 dead `pass`~~ FIXED in working tree by concurrent session (verified [nc_camera.py:109-116](userlib/user_devices/NuvuCamera/Nuvu_sdk/nc_camera.py#L109-L116) — 107 now returns without closing; 215/216 also reclassified no-close). Pending commit.
+- ~~`get_bias` exposure leak~~ RESOLVED — get_bias/get_bias64 deleted 2026-07-08 (no callers; verified [Nuvu_cam_utils.py:217](userlib/user_devices/NuvuCamera/Nuvu_sdk/Nuvu_cam_utils.py#L217)). Pending commit.
+- ~~Abort-during-continuous double-resume~~ FIXED in b75b98b (`should_resume_continuous` guard + idempotent `start_continuous`; cross-audited, 31/31 tests). All three audit-flagged NuvuCamera items now closed.
 
 ## Context follow-ups
-- Refresh stale codebase digests (`.claude/agent-memory/codebase-digests/cameras-and-scope.md`, `backend-core.md`) — predate 2026-07-07 merges.
+- ~~Digest refresh~~ DONE 2026-07-08 (3 opus agents): `cameras-and-scope.md`, `backend-core.md`, `labscriptlib.md` all stamped "Refreshed 2026-07-08" and verified against post-merge code + working tree.
+- Always-loaded budget: 11,713 → **7,996 tokens** after 2026-07-08 no-deferrals restructure (under 8k target; history in `.claude/agent-memory/context-auditor/audit-history.md`). Re-measure at next T8 run.
+- `Open_cell2.py`: unused `latch_digital` import (post-rework leftover, flagged by digest refresh) — one-line cleanup at next sequence edit.
 
 ## Standing queues (see plans)
 - Z1–Z4 ZMQ-v2 cutover set (runbook: `~\.claude\plans\2026-07-07-pr-queue.md`); P4/P6 gated; BigSky refactor branches post-cutover.

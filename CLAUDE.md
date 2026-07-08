@@ -1,5 +1,7 @@
 # RaX Lab — Labscript Suite
 
+> Load-bearing invariants: **Critical Conventions** below — read before mutating git, devices, or sequences.
+
 ## Context Management
 
 - **When compacting**, always preserve: Available Tools section, conda activation command, External GUI Registry, "Do NOT Flag These" list, and `.claude/rules/` pointer.
@@ -65,20 +67,17 @@ source ~/miniconda/etc/profile.d/conda.sh && conda activate labscript && python 
 
 ## Critical Conventions
 
-### File Move/Delete Safety
-
-- **NEVER** `rm -rf`, `rm -r`, `mv` on directories without explicit user confirmation
-- Use read-only commands (`ls`, `stat`, `test -d`) for diagnostics — never `mv` or `rm`
-
 ### Lab-Wide Invariants (load-bearing)
 
+- **NEVER** `rm -rf`, `rm -r`, `mv` on directories without explicit user confirmation; use read-only commands (`ls`, `stat`, `test -d`) for diagnostics
 - **Never tag backend repos (`blacs`, `labscript-devices`, `labscript-utils`) with non-`v*` tags** — setuptools_scm parses `git describe` at import time; a non-version tag reachable from HEAD crashes `import labscript_utils` → BLACS/RunManager cannot start. Pin backend baselines by commit hash (`docs/stable-snapshot-2026-06-09.md`).
-- **Per-shot teardown** belongs in `post_experiment`, NOT `transition_to_manual`. The fork's queued-shot lifecycle runs `transition_to_buffered → start_run → post_experiment` per shot; `transition_to_manual` only runs at queue-end, abort, or pause. Fork-only MODE flags: `MODE_TRANSITION_TO_POST_EXP=16`, `MODE_POST_EXP=32`. Worker classes without `post_experiment` trigger a ~80 ms back-compat probe per shot.
+- **Per-shot teardown** belongs in `post_experiment`, NOT `transition_to_manual` (T2M runs only at queue-end/abort/pause). MODE flags + probe details: `.claude/rules/device-lifecycle.md`.
 - **HF lock spec (canonical):** lock acquires when **5** consecutive in-tolerance samples land within `LOCK_TOLERANCE = 5e-6 THz = 5 MHz`, with `LOCK_TIMEOUT_S = 60`. Code is authoritative — `GUIs/HF_Locking/workers.py:21-22`. Older "2 consecutive" notes are stale; correct everywhere on contact.
 - **Authoritative scan x-axis** for RemoteControl-programmed scans is `/devices/{dev}/remote_device_operation['{ch}'][0]` (the actual labscript intent, full float64). `front_panel`, `_AO/value`, and `monitor_values` lag, quantize, or were `float32` pre-2026-04-29.
 
 ### Verification
 
+- **No "verified" / "not a bug" / "no record of X" without the artifact in this turn** — a command's output, a file:line just read, or a zero-hit search after ≥2 query variants. One failed/hung query ≠ absence: say "not confirmed yet" and keep looking, or hand the check to the user.
 - **Sequence changes**: compile in RunManager → check for errors
 - **Connection table changes**: compile + restart BLACS
 - **Device class changes**: restart BLACS, check `logs/BLACS.log`
@@ -87,7 +86,7 @@ source ~/miniconda/etc/profile.d/conda.sh && conda activate labscript && python 
 - **After any BLACS change**: run a test shot, check h5 output in HDFView
 - **Connection table property changes**: recompile → BLACS auto-loads new properties (no need to delete saved state)
 - **BigSky Auto Re-Arm**: click Warmup/Arm Ext buttons → verify hardware responds; check "Auto Re-Arm Ext" → queue shots → verify auto-arm/restore in BLACS.log; queue 3+ → verify no re-arm between shots
-- **Userlib worker tests + pre-push hook (2.8c)**: SDK-free helpers in `userlib/user_devices/*/` carry unit tests at `<device>/tests/test_helpers.py`. Source-of-truth pre-push hook at `.githooks/pre-push` runs per-device helper tests in the `labscript` conda env (+ `userlib/external_gui_lib/tests/` automatically once the ZMQ-v2 revival restores it). Install once per checkout: `cp .githooks/pre-push .git/hooks/pre-push && chmod +x .git/hooks/pre-push`. Git refuses to share hooks via the working tree; the install line is the install contract. Logs to `.git/hooks/pre-push.log` (inside `.git/`, auto-ignored).
+- **Userlib worker tests + pre-push hook (2.8c)**: SDK-free helpers in `userlib/user_devices/*/` carry unit tests at `<device>/tests/test_helpers.py`; the `.githooks/pre-push` hook runs them in the `labscript` conda env. Install once per checkout (contract + log path in the hook's header): `cp .githooks/pre-push .git/hooks/pre-push && chmod +x .git/hooks/pre-push`.
 
 ## External GUI Registry
 
@@ -117,6 +116,7 @@ Each GUI codebase carries its own `.claude/agents/` domain agent: `HF_Locking`�
 - `/check-guis` — ping ZMQ ports to verify external GUIs are running
 - `/debug-blacs` — standardized BLACS triage workflow (logs → routing → diagnosis)
 - `/new-device` — scaffold a new external GUI BLACS integration (5-file pattern)
+- `/github-auth-triage` — deterministic GitHub auth/MCP failure triage (never credential surgery first)
 
 ### Agents (launched automatically based on task type)
 
@@ -125,25 +125,13 @@ Each GUI codebase carries its own `.claude/agents/` domain agent: `HF_Locking`�
 - `device-builder` — scaffolding new device classes (confers with blacs-expert + amo-expert)
 - `lyse-analysis` — analysis scripts, Jupyter notebooks, utility API
 - `labscript-diagnostics` — log parsing, error diagnosis, recurrence analysis
-- `session-notes` — background note-taking during sessions (sonnet, lightweight)
-- `wrap-up` — end-of-session deliverables (commits, lab notes, introspection, context updates)
+- `session-notes` — background note-taking (sonnet); `wrap-up` — end-of-session deliverables (commits, lab notes, introspection, context updates)
 - `context-auditor` — audits context health against best practices; researches new practices with multi-source corroboration
 - Orchestration rules (routing table, workflow, deliverables checklist) auto-load via `agent-workflow` skill
 
 ## Reference Documentation
 
-Docs load via path-scoped rules (`.claude/rules/ref-*.md`) when editing matching files:
-- `docs/blacs-state-machine.md` — canonical BLACS state machine + per-shot lifecycle (fork-specific MODE_POST_EXP); loads for `user_devices/`, `blacs/`
-- `docs/blacs-device-patterns.md` — RemoteControl + NI_DAQmx patterns incl. latched-lines mechanism (loads for `user_devices/`, `blacs/`)
-- `docs/remotecontrol-zmq-protocol.md` — canonical ZMQ protocol for external-GUI devices: REQ-REP + PUB-SUB + monitor-snapshot pattern (loads for `user_devices/`, `GUIs/`)
-- `docs/external-guis-architecture.md` — per-GUI architecture for HF_Locking / rastering / BigSkyControl (loads for `user_devices/`, `GUIs/`)
-- `docs/main-experiment-overview.md` — this machine's CT topology, channels, sequences, globals model (loads for `labscriptlib/Main_Experiment/`)
-- `docs/shot-h5-layout.md` — per-shot HDF5 file layout incl. `/images/` camera group + LaserLockGUI case study (loads for `user_devices/`, `blacs/`, `analysislib/`)
-- `docs/labscript-api.md` — labscript DSL, device drivers, sequence functions (loads for `labscriptlib/`, `user_devices/`)
-- `docs/analysis-api.md` + `docs/ni-scope-conventions.md` — analysis utilities (loads for `analysislib/`)
-- `docs/hf-locking-rates.md` — HF_Locking refresh-rate inventory + lock thresholds (loads for `GUIs/HF_Locking/`, `user_devices/LaserLockDevice/`)
-- `docs/yag-laser-physics.md` — Nd:YAG laser physics, trigger modes, serial commands (loads for `user_devices/BigSky*`, `GUIs/BigSkyControl/`)
-- `docs/matisse-c-external-locking.md` — Matisse C-S external-lock candidate architectures: baseline WS7-direct PID, Counterdrift plug-in, DSP External Input bypass, GoTo overlay; ruled-out paths + comparison matrix; corrected failure mechanism (Slow Piezo search on ref-cell unlock) (loads for `user_devices/LaserLockDevice/`, `GUIs/HF_Locking/`, `labscriptlib/Main_Experiment/`, `analysislib/Main_Experiment/`)
-- `docs/known-latent-issues.md` — catalog of latent bugs / conditional issues; no auto-load (reference-on-demand)
-- `Labscript-Confluence-2026-02-11.pdf` — Lab-specific Confluence docs
+- `docs/*.md` auto-load via path-scoped rules — the doc↔path map is `.claude/rules/ref-*.md`
+- `docs/known-latent-issues.md` — latent-bug catalog, reference-on-demand (no auto-load)
+- `Labscript-Confluence-2026-02-11.pdf` — lab Confluence export
 - Official labscript docs: https://docs.labscriptsuite.org/ (reference only — our fork code takes precedence)
