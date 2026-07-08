@@ -1,5 +1,6 @@
-#!/bin/sh
+#!/bin/bash
 # Parent-repo pre-push hook: run userlib pytest suite, block push on failure.
+# bash (not sh): PIPESTATUS below is a bashism; under dash it is a hard error.
 #
 # INSTALL (one-time per checkout):
 #   cp .githooks/pre-push .git/hooks/pre-push
@@ -16,7 +17,12 @@
 
 set -e
 
-LOG=".git/hooks/pre-push.log"
+# Derive the log dir: in a linked worktree `.git` is a FILE and the private
+# gitdir (.git/worktrees/<name>/) has no hooks/ subdir — the old literal
+# ".git/hooks/pre-push.log" crashed the hook there and blocked the push.
+LOG_DIR="$(git rev-parse --git-dir)/hooks"
+mkdir -p "$LOG_DIR"
+LOG="$LOG_DIR/pre-push.log"
 echo "=== pre-push @ $(date) ===" >> "$LOG"
 
 # Source conda. The `labscript` env owns:
@@ -25,7 +31,10 @@ echo "=== pre-push @ $(date) ===" >> "$LOG"
 CONDA_BASE="$HOME/miniconda"
 if [ -f "$CONDA_BASE/etc/profile.d/conda.sh" ]; then
     . "$CONDA_BASE/etc/profile.d/conda.sh"
-    conda activate labscript
+    if ! conda activate labscript 2>>"$LOG"; then
+        echo "pre-push: 'labscript' conda env exists but FAILED TO ACTIVATE — userlib tests skipped, push allowed. Fix the env; conda's error is in $LOG" | tee -a "$LOG" >&2
+        exit 0
+    fi
 else
     echo "pre-push: conda not found at $CONDA_BASE — skipping userlib tests." | tee -a "$LOG"
     exit 0
