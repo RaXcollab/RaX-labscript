@@ -50,11 +50,39 @@ class NuvuCamera(object):
 
     # Single image acquisition. FIrst call prepare for a single image, then begin
     def snap(self):
-        # TODO: set trigger to internal
-        self.configure_acquisition(continuous=False, bufferCount=1)
-        image = self.camera_utils.get_image()
-        self.stop_acquisition()
-        return image
+        # Manual mode uses the internal trigger (trigger_mode 0), so a 214
+        # frame-wait timeout here should be rare — but protect the path anyway
+        # (mirrors grab_multiple's 214 handling). get_image() propagates
+        # NuvuTimeout WITHOUT closing the camera (disconnect_if_error_real), so
+        # the handle stays valid across retries; we re-arm the single-frame
+        # acquisition each attempt via configure_acquisition (cam_stop +
+        # cam_start). On final failure raise a clear, camera-still-open error
+        # instead of letting a raw 214 (or a closed-handle 101 cascade) hit the
+        # tab. Lazy import mirrors grab_multiple: keeps module import DLL-free.
+        from .Nuvu_sdk.nc_camera import NuvuTimeout
+        from ._helpers import SNAP_MAX_ATTEMPTS, snap_should_retry, snap_timeout_message
+        last_exc = None
+        for attempt in range(1, SNAP_MAX_ATTEMPTS + 1):
+            try:
+                self.configure_acquisition(continuous=False, bufferCount=1)
+                image = self.camera_utils.get_image()
+                self.stop_acquisition()
+                return image
+            except NuvuTimeout as e:
+                last_exc = e
+                self.logger.debug(
+                    f"snap frame-wait timeout (214) on attempt "
+                    f"{attempt}/{SNAP_MAX_ATTEMPTS}; "
+                    f"{'re-arming' if snap_should_retry(attempt) else 'giving up'}."
+                )
+                # Loop re-arms via configure_acquisition on the next iteration.
+        # Best-effort disarm so the camera isn't left armed after the final
+        # failure (configure_acquisition would self-heal via cam_stop anyway).
+        try:
+            self.stop_acquisition()
+        except Exception:
+            pass
+        raise NuvuTimeout(snap_timeout_message(SNAP_MAX_ATTEMPTS)) from last_exc
     
     # Prepare acquisition
     def configure_acquisition(self, continuous=False, bufferCount=0):
@@ -139,11 +167,45 @@ class NuvuCameraWorker(IMAQdxCameraWorker):
     interface_class = NuvuCamera
 
     def get_camera(self):
-        """ Andor cameras may not be specified by serial numbers"""
+        """Andor/Nuvu cameras may not be specified by serial numbers.
+
+        Wraps the SDK open (interface_class.__init__ -> NuvuCamUtils.__init__ ->
+        openCam -> ncCamOpen) in a bounded retry with backoff so a transient
+        open failure (camera briefly powered off, driver momentarily held by
+        another process) does not immediately crash worker init. On final
+        failure, raise a clear operator-facing error naming the likely causes
+        instead of a bare ``NuvuException: 27``. The tab's fatal-error +
+        restart-button flow still fires on the re-raised exception.
+        """
         if self.mock:
             return MockCamera()
-        else:
-            return self.interface_class(self.logger)
+
+        import time as _time
+        from ._helpers import open_retry_delays, camera_open_failure_message
+        from .Nuvu_sdk.nc_camera import NuvuException
+
+        delays = open_retry_delays()
+        max_attempts = len(delays) + 1
+        last_exc = None
+        for attempt in range(1, max_attempts + 1):
+            try:
+                return self.interface_class(self.logger)
+            except NuvuException as exc:
+                # Only SDK open failures (e.g. error 27, camera not found) are
+                # retried; anything else (missing DLL, programming error) is a
+                # different problem and propagates immediately. The constructor
+                # raises before returning, so there is no partially-built
+                # camera object to clean up between attempts.
+                last_exc = exc
+                self.logger.warning(
+                    f"Nuvu camera open attempt {attempt}/{max_attempts} failed: "
+                    f"{exc!r}"
+                )
+                if attempt < max_attempts:
+                    _time.sleep(delays[attempt - 1])
+        raise RuntimeError(
+            camera_open_failure_message(last_exc, max_attempts)
+        ) from last_exc
             
     def get_attributes_as_dict(self, visibility_level):
         """Return a dict of the attributes of the camera for the given visibility
@@ -151,8 +213,19 @@ class NuvuCameraWorker(IMAQdxCameraWorker):
         return self.camera.attributes
 
     def continuous_loop(self):
+        # Lazy import for the same reason as grab_multiple: keeps module
+        # import free of the Nuvu DLL.
+        from .Nuvu_sdk.nc_camera import NuvuTimeout
         while True:
-            image = self.camera.grab_most_recent()
+            try:
+                image = self.camera.grab_most_recent()
+            except NuvuTimeout:
+                # No frame within the SDK timeout (only reachable at very low
+                # fps). Stay alive so continuous_stop is still serviced.
+                if self.continuous_stop.is_set():
+                    self.continuous_stop.clear()
+                    break
+                continue
             self._send_image_to_parent(image)
 
             if self.continuous_stop.is_set():
@@ -162,7 +235,17 @@ class NuvuCameraWorker(IMAQdxCameraWorker):
     def start_continuous(self, dt):
         """Begin continuous acquisition in a thread with minimum repetition interval
         dt"""
-        assert self.continuous_thread is None
+        if self.continuous_thread is not None:
+            # Idempotent guard: continuous acquisition is already running. Treat
+            # a redundant resume as a no-op rather than an AssertionError that
+            # would kill the worker and force a tab restart. The desired end
+            # state (live view running) already holds. See should_resume_continuous
+            # in _helpers and the transition_to_manual guard below.
+            self.logger.debug(
+                "start_continuous: continuous acquisition already running; "
+                "ignoring redundant resume."
+            )
+            return
 
         fps = float(1/dt) if dt != 0 else 0
         self.camera.start_continuous_acquisition(fps)
@@ -280,11 +363,19 @@ class NuvuCameraWorker(IMAQdxCameraWorker):
         return True
 
     def transition_to_manual(self):
+        from ._helpers import should_resume_continuous
         self.logger.debug("Setting manual mode camera attributes.\n")
         self.set_attributes_smart(self.manual_mode_camera_attributes)
-        if self.continuous_dt is not None:
-            # If continuous manual mode acquisition was in progress before the bufferd
-            # run, resume it:
+        # If continuous manual mode acquisition was paused for the buffered run,
+        # resume it. Guard on continuous_thread is None (via
+        # should_resume_continuous) so a resume that already happened — e.g.
+        # abort() re-started live view before the queue's pause-block fired a
+        # transition_to_manual on this POST_EXP device — is NOT repeated. The
+        # base IMAQdxCameraWorker.abort() already has this guard; this mirrors
+        # it so the two resume paths are idempotent with respect to each other.
+        # (continuous_dt == 0 means "max rate" and is still a resumable value,
+        # so the check is `is not None`, not truthiness.)
+        if should_resume_continuous(self.continuous_dt, self.continuous_thread is not None):
             self.start_continuous(self.continuous_dt)
         return True
     

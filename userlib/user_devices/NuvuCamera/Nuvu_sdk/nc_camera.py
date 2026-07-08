@@ -5,6 +5,7 @@
 # desc: Only for camlink interface
 
 from .NC_api import *
+from .._helpers import describe_error_code
 import numpy as np
 import sys
 
@@ -106,8 +107,13 @@ class nc_camera:
         :type error: int
         """
         if error == 107:
-            pass
-            #print(error)
+            # NC_ERROR_CAM_NO_FEATURE: the queried feature isn't supported by
+            # this camera (e.g. an unsupported component-temp / readout query
+            # inside getAllCamInfo). Benign — RETURN without closing the driver.
+            # Previously this was `pass`, which fell through to the `else`
+            # branch below and closed the camera, cascading to error 101
+            # (NC_ERROR_CAM_STRUCT_PTR, invalid handle) on the next SDK call.
+            return
         # if error == 131:
         # Camera is started when it shouldn't be
         #     pass
@@ -115,10 +121,16 @@ class nc_camera:
             raise NuvuException("Error 27: Could not find camera")
         elif error == 214:
             raise NuvuTimeout("Error Code: 214 (frame-wait timeout; camera left open)")
+        elif error in (215, 216):
+            # Grab-family conditions (215 no-image-yet, 216 not-stopped): the
+            # NcCam handle is still valid — raise without closing so callers
+            # can retry/stop, avoiding the close→101 cascade.
+            raise NuvuException(describe_error_code(error))
         else:
-            self.logger.debug("Error Code: " + str(error)+ ". \n Refer to error.h file in Nuvu SDK documentation.")
+            msg = describe_error_code(error)
+            self.logger.debug(msg)
             self.closeCam(noRaise = True)
-            raise NuvuException("Error Code: " + str(error)+ ". \n Refer to error.h file in Nuvu SDK documentation.")
+            raise NuvuException(msg)
 
 
     def openCam(self, nbBuff=4):

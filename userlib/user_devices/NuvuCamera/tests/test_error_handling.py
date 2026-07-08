@@ -69,6 +69,174 @@ def test_other_codes_still_close_and_raise():
     assert cam.close_calls == [True]         # closeCam(noRaise=True) preserved
 
 
+def test_107_is_benign_no_close_no_raise():
+    """NC_ERROR_CAM_NO_FEATURE (107): feature not supported by this camera.
+    Must return WITHOUT closing the driver and WITHOUT raising — previously the
+    `if error == 107: pass` fell through to the else branch and closed the
+    camera, cascading to error 101 (invalid handle) on the next SDK call."""
+    cam = _bare_cam()
+    assert cam.errorHandling(107) is None    # returns, does not raise
+    assert cam.close_calls == []             # handle NOT closed
+
+
+def test_27_raises_without_closing():
+    """Camera-not-found (27) raises NuvuException but does not close the driver
+    (there is nothing open to close)."""
+    cam = _bare_cam()
+    with pytest.raises(NuvuException):
+        cam.errorHandling(27)
+    assert cam.close_calls == []
+
+
+def test_215_216_grab_conditions_raise_without_closing():
+    """Grab-family conditions (215 no-image-yet, 216 not-stopped) leave the
+    NcCam handle valid — raise WITHOUT closing, so no close->101 cascade."""
+    for code in (215, 216):
+        cam = _bare_cam()
+        with pytest.raises(NuvuException):
+            cam.errorHandling(code)
+        assert cam.close_calls == []         # handle NOT closed
+
+
+# ---------------------------------------------------------------------------
+# TASK 2 — manual-snap 214 protection
+# ---------------------------------------------------------------------------
+
+class _L:
+    def debug(self, *a, **k):
+        pass
+
+    def warning(self, *a, **k):
+        pass
+
+    def info(self, *a, **k):
+        pass
+
+
+def test_snap_retries_on_timeout_then_succeeds():
+    bw = _blacs_workers()
+
+    class _FakeUtils:
+        def __init__(self):
+            self.calls = 0
+
+        def get_image(self):
+            self.calls += 1
+            if self.calls < 2:
+                raise NuvuTimeout("214")
+            return "frame"
+
+    class _FakeCam:
+        def __init__(self):
+            self.camera_utils = _FakeUtils()
+            self.configure_calls = 0
+            self.stop_calls = 0
+            self.logger = _L()
+
+        def configure_acquisition(self, continuous=False, bufferCount=0):
+            self.configure_calls += 1
+
+        def stop_acquisition(self):
+            self.stop_calls += 1
+
+    cam = _FakeCam()
+    snap = bw.NuvuCamera.snap.__get__(cam)
+    assert snap() == "frame"
+    assert cam.camera_utils.calls == 2   # timed out once, succeeded on retry
+    assert cam.configure_calls == 2      # re-armed the single-frame acquisition
+    assert cam.stop_calls == 1           # stop only on success
+
+
+def test_snap_raises_clean_timeout_after_exhausting_retries():
+    bw = _blacs_workers()
+    from user_devices.NuvuCamera._helpers import SNAP_MAX_ATTEMPTS
+
+    class _FakeUtils:
+        def __init__(self):
+            self.calls = 0
+
+        def get_image(self):
+            self.calls += 1
+            raise NuvuTimeout("214")
+
+    class _FakeCam:
+        def __init__(self):
+            self.camera_utils = _FakeUtils()
+            self.stop_calls = 0
+            self.logger = _L()
+
+        def configure_acquisition(self, continuous=False, bufferCount=0):
+            pass
+
+        def stop_acquisition(self):
+            self.stop_calls += 1
+
+    cam = _FakeCam()
+    snap = bw.NuvuCamera.snap.__get__(cam)
+    with pytest.raises(NuvuTimeout):
+        snap()
+    assert cam.camera_utils.calls == SNAP_MAX_ATTEMPTS  # bounded number of tries
+    assert cam.stop_calls == 1  # best-effort disarm after the final failure
+
+
+# ---------------------------------------------------------------------------
+# TASK 5 — idempotent continuous-view resume
+# ---------------------------------------------------------------------------
+
+def _fake_worker(**attrs):
+    class _FakeWorker:
+        pass
+    w = _FakeWorker()
+    w.logger = _L()
+    w.manual_mode_camera_attributes = {}
+    w.set_attributes_smart = lambda a: None
+    w.start_calls = []
+    w.start_continuous = lambda dt: w.start_calls.append(dt)
+    for k, v in attrs.items():
+        setattr(w, k, v)
+    return w
+
+
+def test_transition_to_manual_resumes_paused_liveview_once():
+    bw = _blacs_workers()
+    w = _fake_worker(continuous_dt=0, continuous_thread=None)  # paused, max rate
+    t2m = bw.NuvuCameraWorker.transition_to_manual.__get__(w)
+    assert t2m() is True
+    assert w.start_calls == [0]     # resumed exactly once with the retained dt
+
+
+def test_transition_to_manual_does_not_double_resume():
+    bw = _blacs_workers()
+    # abort() already re-started live view (thread set) before this
+    # pause-triggered transition_to_manual fires:
+    w = _fake_worker(continuous_dt=5.0, continuous_thread=object())
+    t2m = bw.NuvuCameraWorker.transition_to_manual.__get__(w)
+    assert t2m() is True
+    assert w.start_calls == []      # no redundant resume
+
+
+def test_transition_to_manual_no_resume_when_liveview_never_ran():
+    bw = _blacs_workers()
+    w = _fake_worker(continuous_dt=None, continuous_thread=None)
+    t2m = bw.NuvuCameraWorker.transition_to_manual.__get__(w)
+    assert t2m() is True
+    assert w.start_calls == []
+
+
+def test_start_continuous_idempotent_noop_when_already_running():
+    bw = _blacs_workers()
+
+    class _FakeWorker:
+        pass
+
+    w = _FakeWorker()
+    w.logger = _L()
+    w.continuous_thread = object()  # already running
+    # camera intentionally absent: a correct no-op must not touch it.
+    start = bw.NuvuCameraWorker.start_continuous.__get__(w)
+    assert start(0) is None
+
+
 def test_grab_multiple_retries_on_timeout_then_succeeds():
     bw = _blacs_workers()
 
