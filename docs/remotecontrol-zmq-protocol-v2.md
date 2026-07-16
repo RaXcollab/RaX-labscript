@@ -511,3 +511,29 @@ implementation-ready. Next concrete step: begin §9 PR rollout.
   `eafc229`, `1eb2321` (BigSkyControl sub-repo).
 - Audit memory: `~/.claude/projects/c--Users-radmo-labscript-suite/memory/reference_two-remotecontrol-trees.md`
 - Plan: `~/.claude/plans/look-up-all-recent-purrfect-starfish.md` (T0.5, item 2.2)
+
+---
+
+## 12. Client-side typed-status contract (BLACS worker)
+
+The base `RemoteControlWorker` is the behavioral contract every device inherits
+(LaserLock has no `blacs_workers.py` — it is pure base). Policy for typed replies:
+
+- **Read/poll/snapshot** (`check_remote_values`, `check_all_remote_values`): a
+  non-SUCCESS reply → `_skip_non_success_read` logs a warning and skips that
+  channel. A read NEVER raises (a raising periodic poll bricks the tab with a
+  persistent error banner — the 2026-07-14 Blocker-A signature).
+- **Write** (`program_manual`, buffered `program_value`): `_check_response` raises
+  on any non-SUCCESS — real failures surface / abort the shot.
+- Device-specific divergence (e.g. BigSky buffered skip-unlaunched via
+  `should_skip_buffered_response`) is an explicit, tested override — not the norm.
+- **Behavior note:** an un-programmed channel (HF `CHECK_VALUE` →
+  `UNKNOWN_CONNECTION`) is now **omitted** from the monitor snapshot, where v1's
+  always-SUCCESS `CHECK_VALUE` recorded a bogus `0.0`. Normally-programmed channels
+  are unchanged; analysis reads per-channel keys, so a missing unset channel is safe.
+
+When adding a device (`/new-device`), use the base worker; do NOT re-implement
+dispatch or copy BigSky's overrides. Rationale + generalization:
+`memory/feedback_remotecontrol-base-is-the-contract.md`.
+(Post-merge follow-up: add a pointer to this section from `docs/device-internals.md`,
+which lives on `master`.)
