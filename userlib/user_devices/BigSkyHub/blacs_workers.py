@@ -296,25 +296,8 @@ class BigSkyWorker(RemoteControlWorker):
             if response is None:
                 self.logger.warning(f"check_remote_values: timeout for {connection}")
                 return None
-            if response.get("status") != "SUCCESS":
-                msg = response.get("message", "")
-                if "unknown connection" in msg:
-                    self.logger.debug(
-                        f"check_remote_values: skipping {connection} (not registered in GUI)"
-                    )
-                    continue
-                if "laser disconnected" in msg:
-                    self.logger.warning(
-                        f"check_remote_values: skipping {connection} (laser disconnected)"
-                    )
-                    continue
-                if "rejected:" in msg:
-                    self.logger.warning(
-                        f"check_remote_values: {connection} rejected by GUI ({msg}), skipping"
-                    )
-                    continue
-                # Other errors: raise as usual
-                self._check_response(response, f"check_remote_values({connection})")
+            if self._skip_non_success_read(connection, response, "check_remote_values"):
+                continue
             remote_values[connection] = float(response["value"])
         # Seed last-sent tracking so program_manual knows the remote state
         self._last_sent_values.update(remote_values)
@@ -337,24 +320,8 @@ class BigSkyWorker(RemoteControlWorker):
             if response is None:
                 self.logger.warning(f"check_all_remote_values: timeout for {connection}")
                 continue
-            if response.get("status") != "SUCCESS":
-                msg = response.get("message", "")
-                if "unknown connection" in msg:
-                    self.logger.debug(
-                        f"check_all_remote_values: skipping {connection} (not registered in GUI)"
-                    )
-                    continue
-                if "laser disconnected" in msg:
-                    self.logger.warning(
-                        f"check_all_remote_values: skipping {connection} (laser disconnected)"
-                    )
-                    continue
-                if "rejected:" in msg:
-                    self.logger.warning(
-                        f"check_all_remote_values: {connection} rejected by GUI ({msg}), skipping"
-                    )
-                    continue
-                self._check_response(response, f"check_all({connection})")
+            if self._skip_non_success_read(connection, response, "check_all_remote_values"):
+                continue
             remote_values[connection] = float(response["value"])
         return remote_values
 
