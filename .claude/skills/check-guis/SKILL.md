@@ -28,10 +28,13 @@ for name, port in guis:
     sock.setsockopt(zmq.LINGER, 0)
     try:
         sock.connect(f'tcp://localhost:{port}')
-        sock.send_json({'action': 'HELLO'})
+        sock.send_json({'v': 2, 'action': 'HELLO', 'protocol_version': 2})
         reply = sock.recv_json()
-        status = reply.get('status', 'UNKNOWN')
-        print(f'  {name} (:{port}): UP — {status}')
+        if (reply.get('error') or {}).get('code') == 'v1_protocol_refused':
+            print(f'  {name} (:{port}): UP — but refused v1 (client stale, expected pre-cutover)')
+        else:
+            status = reply.get('status', 'UNKNOWN')
+            print(f'  {name} (:{port}): UP — {status}')
     except zmq.Again:
         print(f'  {name} (:{port}): DOWN — no response (timeout)')
     except Exception as e:
