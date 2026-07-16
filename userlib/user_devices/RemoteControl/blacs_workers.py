@@ -510,6 +510,22 @@ class RemoteControlWorker(Worker):
         raise Exception(
             f"Server {status} ({context}): {prefix}{msg}{retry_hint}")
 
+    def _skip_non_success_read(self, connection, response, context):
+        """Read-path policy: a non-SUCCESS reply to a value CHECK means the
+        channel isn't readable yet (e.g. UNKNOWN_CONNECTION for an
+        un-programmed setpoint). Log and skip -- NEVER raise on a read (a
+        raising periodic poll bricks the tab with a persistent error banner).
+        Write paths keep using _check_response (raise). Single source of the
+        read policy for all subclasses. See
+        memory/feedback_remotecontrol-base-is-the-contract.
+        """
+        if response.get("status") == "SUCCESS":
+            return False
+        msg = (response.get("error") or {}).get("message") or response.get("message", "")
+        self.logger.warning(
+            f"{context}: skipping {connection} ({response.get('status')}: {msg})")
+        return True
+
     # ── Value checks ─────────────────────────────────────────────────
 
     def check_remote_values(self):
@@ -526,7 +542,8 @@ class RemoteControlWorker(Worker):
             if response is None:
                 self.logger.warning(f"check_remote_values: timeout for {connection}")
                 return None
-            self._check_response(response, f"check_remote_values({connection})")
+            if self._skip_non_success_read(connection, response, "check_remote_values"):
+                continue
             remote_values[connection] = float(response["value"])
         return remote_values
 
@@ -541,7 +558,8 @@ class RemoteControlWorker(Worker):
             if response is None:
                 self.logger.warning(f"check_all_remote_values: timeout for {connection}")
                 continue
-            self._check_response(response, f"check_all({connection})")
+            if self._skip_non_success_read(connection, response, "check_all_remote_values"):
+                continue
             remote_values[connection] = float(response["value"])
         return remote_values
 

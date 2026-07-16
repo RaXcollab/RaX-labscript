@@ -39,3 +39,27 @@ def test_check_response_raises_on_timeout_none():
 def test_check_response_passes_on_success():
     w = RemoteControlWorker.__new__(RemoteControlWorker)
     assert w._check_response({"status": "SUCCESS", "value": 1.0}, "write") is None
+
+
+# --- READ contract: check paths skip non-SUCCESS, keep the healthy ones ---
+
+def test_check_remote_values_skips_unknown_connection():
+    w = _bare_worker({
+        "4": {"status": "UNKNOWN_CONNECTION",
+              "error": {"code": "setpoint_not_initialized", "message": "no setpoint",
+                        "retryable": True}},
+        "6": {"status": "SUCCESS", "value": 348.686},
+    })
+    w.child_output_connections = ["4", "6"]
+    out = w.check_remote_values()          # must NOT raise
+    assert out == {"6": 348.686}           # unset ch4 skipped, ch6 kept
+
+
+def test_check_all_remote_values_skips_and_continues():
+    w = _bare_worker({
+        "4": {"status": "UNKNOWN_CONNECTION", "message": "no setpoint"},
+        "6": {"status": "SUCCESS", "value": 348.686},
+    })
+    w.child_connections = ["4", "6"]
+    out = w.check_all_remote_values()
+    assert out == {"6": 348.686}
