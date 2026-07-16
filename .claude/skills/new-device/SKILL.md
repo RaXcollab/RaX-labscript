@@ -30,6 +30,8 @@ Use the `device-builder` agent to scaffold 5 files in `userlib/user_devices/$ARG
 
 Reference implementations: `RemoteControl` (generic), `RasteringDevice` (subclassed), `BigSkyHub` (subclassed with ordering).
 
+**Base worker IS the typed-status contract — do NOT hand-roll it.** The base `RemoteControlWorker` handles v2 replies: read/poll/snapshot paths log + skip non-SUCCESS (`_skip_non_success_read`), write paths raise (`_check_response`). Use the base worker as-is; override only for a genuine, tested specialization (e.g. BigSky buffered skip-unlaunched). Never copy BigSky's message-substring gates. See `docs/remotecontrol-zmq-protocol-v2.md` §12 and `memory/feedback_remotecontrol-base-is-the-contract.md`.
+
 ## Step 4: Connection Table
 Add import and instantiation to `userlib/labscriptlib/Main_Experiment/connection_table.py`.
 Prefer auto-created children in `__init__` (BigSkyHub pattern).
