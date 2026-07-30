@@ -15,6 +15,7 @@ from labscript_utils.ls_zprocess import Event
 # (refined cf394d3 — REQ transport TimeoutError translation).
 from external_gui_lib.zmq_v2 import (
     InMemoryTransport,
+    PROTOCOL_VERSION,
     RemoteControlServerBase,
     RequestIdCounter,
     ZmqReqTransport,
@@ -297,6 +298,25 @@ class RemoteCommunication:
             # server bug should not be diagnosed as a network problem.
             raise RemoteMalformedReplyError(
                 parse_error=str(e), raw_bytes=raw_reply,
+                context=f"action={action} connection={connection}",
+            )
+
+        # Version enforcement was one-directional: the server refuses v1
+        # requests, but nothing checked the reply. A v1 GUI answering a v2
+        # client surfaced as a misleading 5s timeout on every setpoint.
+        if reply.get("v") != PROTOCOL_VERSION:
+            raise RemoteRequestError(
+                status="ERROR",
+                error_dict={
+                    "code": "protocol_version_mismatch",
+                    "message": (
+                        f"remote GUI replied with protocol v{reply.get('v')!r}, "
+                        f"expected v{PROTOCOL_VERSION} — that GUI is still on v1; "
+                        "complete the zmq v2 cutover on it "
+                        "(docs/zmq-v2-cutover-runbook.md)"
+                    ),
+                    "retryable": False,
+                },
                 context=f"action={action} connection={connection}",
             )
 
