@@ -90,7 +90,6 @@ def program_manual(self, front_panel_values):
 
 - **`labscript-diagnostics`**: For parsing BLACS.log and BLACS_faulthandler.log
 - **`device-builder`**: For scaffolding new device classes
-- **`session-notes`**: For documenting architectural findings
 
 ## Agent Memory
 

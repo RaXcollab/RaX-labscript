@@ -9,7 +9,7 @@ if ($in) {
     Set-Marker 'session-start' $in.session_id   # mtime anchor for the deferral gate
 }
 
-$ctx = "Session-start checklist: (1) launch the session-notes agent in the background now; (2) Read .claude/open-items.md and surface anything blocking today's work."
+$ctx = "Session-start checklist: (1) log milestones by appending TERSE timestamped entries (bullet, file paths, one-line rationale) to .claude/session-scratch.md — no session-notes agent, no per-milestone subagents; (2) if .claude/session-scratch.md exists from a prior session, surface it and offer to run wrap-up before new work; (3) Read .claude/open-items.md and surface anything blocking today's work."
 @{ hookSpecificOutput = @{ hookEventName = 'SessionStart'; additionalContext = $ctx } } |
     ConvertTo-Json -Depth 4 -Compress | Write-Output
 exit 0

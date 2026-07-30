@@ -87,7 +87,6 @@ labscript script → runmanager compilation → HDF5 shot file → BLACS executi
 - **`device-builder`**: For creating new BLACS device classes (scaffolding, worker overrides, tab customization)
 - **`blacs-expert`**: For BLACS internals, Qt thread safety, state machine issues
 - **`lyse-analysis`**: For post-shot analysis scripts and data processing
-- **`session-notes`**: For documenting experiment design decisions
 
 ## Agent Memory
 

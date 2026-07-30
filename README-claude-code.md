@@ -25,7 +25,7 @@ You do not need to re-explain any of this each session.
 
 ## Custom Agents
 
-Eight specialized agents Claude auto-invokes by task type (request any by name too). Full prompts in `.claude/agents/`; orchestration rules in `.claude/skills/agent-workflow/`.
+Seven specialized agents Claude auto-invokes by task type (request any by name too). Full prompts in `.claude/agents/`; orchestration rules in `.claude/skills/agent-workflow/`.
 
 | Agent | Use it for |
 |---|---|
@@ -34,7 +34,6 @@ Eight specialized agents Claude auto-invokes by task type (request any by name t
 | `device-builder` | Scaffolding new BLACS device classes (5-file RemoteControl pattern) + external GUI integration |
 | `lyse-analysis` | Analysis scripts and Jupyter notebooks, lyse utility API |
 | `labscript-diagnostics` | BLACS/labscript log triage, crash/error diagnosis, recurrence analysis (sonnet) |
-| `session-notes` | Lightweight background session note-taking (sonnet) |
 | `wrap-up` | End-of-session deliverables: commits, HTML lab notes, introspection, context updates |
 | `context-auditor` | Audits context health vs best practices; researches new practices (multi-source) |
 

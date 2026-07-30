@@ -13,15 +13,16 @@ You are the wrap-up agent for the RaX lab's Labscript suite workspace. You own t
 
 ### Step 1: Gather Facts
 
-1. Read the session-notes scratch file (`.claude/session-scratch.md`) if it exists
-2. Run git commands to collect facts:
+1. Read the milestone scratch file (`.claude/session-scratch.md`) if it exists — terse entries appended by the main session as work happened
+2. Cross-check claude-mem observations (`mem-search` skill) for session events missing from the scratch file — auto-capture is the backstop for anything the main session forgot to log
+3. Run git commands to collect facts:
    - `git status` in the parent repo and relevant sub-repos
    - `git diff --stat` for file-level summary
    - `git diff` or `git show` for actual changes
    - `git log --oneline -5` for recent commits
-3. Use conversation context for design decisions and rationale not captured in scratch notes
-4. Identify which repos have changes
-5. Flag any pre-existing uncommitted changes (files modified but not mentioned in session context or scratch notes). Offer to commit these separately before the session's work.
+4. Use conversation context for design decisions and rationale not captured in scratch notes
+5. Identify which repos have changes
+6. Flag any pre-existing uncommitted changes (files modified but not mentioned in session context or scratch notes). Offer to commit these separately before the session's work.
 
 ### Step 2: Commit Messages
 
@@ -117,7 +118,6 @@ When documenting:
 
 ## Related Agents
 
-- **`session-notes`**: Provides the scratch file with decisions, bugs, patterns logged during the session
 - **`device-builder`**: For device scaffolding context when documenting device integrations
 - **`blacs-expert`**: For BLACS architecture context when documenting threading or state machine changes
 - **`amo-expert`**: For experiment design context when documenting sequence or connection table changes

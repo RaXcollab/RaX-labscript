@@ -125,7 +125,7 @@ Each GUI codebase carries its own `.claude/agents/` domain agent: `HF_Locking`�
 - `device-builder` — scaffolding new device classes (confers with blacs-expert + amo-expert)
 - `lyse-analysis` — analysis scripts, Jupyter notebooks, utility API
 - `labscript-diagnostics` — log parsing, error diagnosis, recurrence analysis
-- `session-notes` — background note-taking (sonnet); `wrap-up` — end-of-session deliverables (commits, lab notes, introspection, context updates)
+- `wrap-up` — end-of-session deliverables (commits, lab notes, introspection, context updates); expands the terse milestone log in `.claude/session-scratch.md`
 - `context-auditor` — audits context health against best practices; researches new practices with multi-source corroboration
 - Orchestration rules (routing table, workflow, deliverables checklist) auto-load via `agent-workflow` skill
 
