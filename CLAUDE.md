@@ -117,6 +117,7 @@ Each GUI codebase carries its own `.claude/agents/` domain agent: `HF_Locking`�
 - `/debug-blacs` — standardized BLACS triage workflow (logs → routing → diagnosis)
 - `/new-device` — scaffold a new external GUI BLACS integration (5-file pattern)
 - `/github-auth-triage` — deterministic GitHub auth/MCP failure triage (never credential surgery first)
+- `/graphify query "<q>"` — code navigation + intra-repo blast radius via `graphify-out/graph.json` (userlib, 3 backend repos, GUIs). AST-only: ZMQ + string-path worker wiring invisible — External GUI Registry stays authoritative. Caveats/rebuild: `.claude/graphify/REFRESH.md`
 
 ### Agents (launched automatically based on task type)
 

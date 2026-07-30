@@ -7,6 +7,7 @@ labconfig/
 labscript-utils/
 logs/
 network_testing/
+graphify-out/
 userlib/labscriptlib/main_experiment_control_old/
 conda_list_output.txt
 userlib/analysislib/lyman29/old_gitignore
@@ -183,3 +184,14 @@ cython_debug/
 
 # Personal Claude Code settings (machine-local, never shared)
 .claude/settings.local.json
+
+# Claude Code machine-local state (never shared)
+.claude/worktrees/
+.claude/agent-memory/
+.claude/session-scratch.md
+.superpowers/
+
+# claude-mem plugin stubs — auto-generated empty CLAUDE.md at every level.
+# Root CLAUDE.md stays tracked; a future real nested CLAUDE.md needs its own !-rule.
+**/CLAUDE.md
+!/CLAUDE.md

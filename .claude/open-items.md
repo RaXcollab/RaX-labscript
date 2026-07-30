@@ -15,6 +15,7 @@ Deferred work with an owner and a gate. A Claude session that flags something as
 - ~~Digest refresh~~ DONE 2026-07-08 (3 opus agents): `cameras-and-scope.md`, `backend-core.md`, `labscriptlib.md` all stamped "Refreshed 2026-07-08" and verified against post-merge code + working tree.
 - Always-loaded budget: 11,713 → **7,996 tokens** after 2026-07-08 no-deferrals restructure (under 8k target; history in `.claude/agent-memory/context-auditor/audit-history.md`). Re-measure at next T8 run.
 - `Open_cell2.py`: unused `latch_digital` import (post-rework leftover, flagged by digest refresh) — one-line cleanup at next sequence edit.
+- **Graph rebuild gate** (added 2026-07-29): after the Z1–Z4 cutover merges, rebuild `graphify-out/graph.json` — `userlib/external_gui_lib/` gains real sources → first genuine GUI↔userlib structural bridge. Recipe + 13-check verify: `.claude/graphify/REFRESH.md`. Standing convention: after each rebuild, re-arm this item for the next large cross-root refactor rather than deleting it.
 
 ## Standing queues (see plans)
 - Z1–Z4 ZMQ-v2 cutover set (runbook: `~\.claude\plans\2026-07-07-pr-queue.md`); P4/P6 gated; BigSky refactor branches post-cutover.
