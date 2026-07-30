@@ -225,6 +225,12 @@
             "command": "& \"$env:CLAUDE_PROJECT_DIR\\.claude\\hooks\\mark-device-edit.ps1\"",
             "timeout": 15,
             "async": true
+          },
+          {
+            "type": "command",
+            "shell": "powershell",
+            "command": "& \"$env:CLAUDE_PROJECT_DIR\\.claude\\hooks\\check-py-syntax.ps1\"",
+            "timeout": 15
           }
         ]
       }
