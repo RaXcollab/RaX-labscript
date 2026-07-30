@@ -29,7 +29,7 @@ misleading 5 s ZMQ timeout. That is a better error message, not a working mode.
 | `RaXcollab/RaX-labscript` (parent) | `zmq-v2-cutover` | see `git log` | `master` | **merge** |
 | `RaXcollab/HF_Locking` | `zmq-v2-port` | `aa99a75` | `main` | **merge** (port → main) |
 | `RaXcollab/rastering` | `zmq-v2-port` | `c670dfd` | `main` | **merge** (port → main) |
-| `RaXcollab/BigSkyControl` | `zmq-v2-port-rebuilt` | `d3c7676` | `main` | **merge** (rebuilt only) |
+| `RaXcollab/BigSkyControl` | `zmq-v2-port-rebuilt` | `c38e6ab` | `main` | **merge** (rebuilt only) |
 
 Parent worktree: `.claude/worktrees/zmq-v2-cutover`. GUI worktrees:
 `GUIs/HF_Locking-zmq-v2`, `GUIs/rastering-zmq-v2`, `GUIs/BigSkyControl`.
@@ -44,10 +44,10 @@ Parent worktree: `.claude/worktrees/zmq-v2-cutover`. GUI worktrees:
   `git merge-base --is-ancestor main zmq-v2-port-rebuilt`.
 - **BigSky follow-ons are on the same poisoned base.** `refactor/structured-rejected`
   and `refactor/timeout-constant-disconnect-test` each carry 17–18 commits off
-  `main`. Cherry-pick their own commits only — `dd9da9f` + `e0652ad` (structured
-  REJECTED classification) and `1704f71` (`_REMOTE_CMD_TIMEOUT_S`; fixes the 10 s
-  server vs 5 s client inversion that makes the server's typed TIMEOUT
-  unreachable). Ship them in this round; they close this branch's own findings.
+  `main`. Never merge them — their payload (`dd9da9f`+`e0652ad` structured
+  REJECTED classification; `1704f71` `_REMOTE_CMD_TIMEOUT_S`, fixing the 10 s
+  server vs 5 s client inversion) is already cherry-picked into
+  `zmq-v2-port-rebuilt`. Nothing further to take from either branch.
 - **rastering: never `git rebase origin/zmq-v2-port`.** It regresses the base to
   old `main` and duplicates main's commits. The 2026-07-29 rebase already dropped
   `24b3ab4` once (serve-failure circuit breaker); it is back in as `0c16e7e`,
@@ -67,7 +67,8 @@ Parent worktree: `.claude/worktrees/zmq-v2-cutover`. GUI worktrees:
 
 - [ ] Parent branch has `master` merged in (done 2026-07-30) and the client-side
       version assertion (done 2026-07-30).
-- [ ] BigSky rebuild committed, working tree clean, its protocol tests pass.
+- [x] BigSky rebuild committed, working tree clean, its protocol tests pass
+      (done 2026-07-30: 38 passed, 0 skipped, incl. all 21 B8 items).
 - [ ] Each GUI branch: merge its own `main` in and re-run that GUI's tests.
       `main` is not currently an ancestor of any of the three port branches.
 - [ ] Run each suite with `ZMQ_V2_REQUIRED=1` so a missing `zmq_v2.py` is a hard
