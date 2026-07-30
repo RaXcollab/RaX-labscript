@@ -15,6 +15,7 @@
 
 ## Subagent output
 - **Independently confirm any `UNVERIFIED` or source-less factual claim from a subagent before presenting or acting on it** — research agents have fabricated config keys and doc URLs with confident citations
+- **Named background agents may idle WITHOUT delivering their report** — end every spawn prompt with "SendMessage your report to main as your final action"; idle ping with no report → nudge via SendMessage, never relaunch
 
 ## AskUserQuestion
 - **Options must be plain-English and independently decidable** — no git jargon ("force-push", "fast-forward"), one decision per question, never ask what you can verify yourself first

@@ -35,9 +35,9 @@ Produce SEPARATE commit messages per repo. Follow conventions:
 - <file_or_component>: <what changed> — <why>
   (wrap long lines at ~72 chars, indent continuation with 2 spaces)
 - <file_or_component>: <NEW> — <what this new file does>
-
-Co-Authored-By: Claude Opus 4.7 <noreply@anthropic.com>
 ```
+
+No Co-Authored-By or other trailers.
 
 Rules:
 - Title is imperative mood: "Add", "Fix", "Clean up", "Update", "Implement"
@@ -88,7 +88,7 @@ Show proposed changes as the exact text to add/modify and where it goes. Skip fo
 
 ### Step 6: Clean Up
 
-- Delete the scratch file (`.claude/session-scratch.md`) after all deliverables are produced
+- Trim the scratch file (`.claude/session-scratch.md`): remove ONLY the wrapped session's section. Preserve sections for paused or other sessions (e.g. a cutover pause state) verbatim — they are another session's handoff, not this session's leftovers. Delete the file only if nothing remains.
 - Present all artifacts for user review before committing
 
 ## Multi-Repo Awareness
