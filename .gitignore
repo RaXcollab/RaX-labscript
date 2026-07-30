@@ -195,3 +195,4 @@ cython_debug/
 # Root CLAUDE.md stays tracked; a future real nested CLAUDE.md needs its own !-rule.
 **/CLAUDE.md
 !/CLAUDE.md
+!userlib/user_devices/LaserLockDevice/CLAUDE.md
