@@ -2,7 +2,7 @@
 # device-class typos surface at edit time instead of on BLACS restart.
 # PostToolUse cannot block (tool already ran) -- report via additionalContext,
 # never exit 2 (that's a non-blocking error notice, not feedback) and never
-# decision:"block" (reserved for hard failures, not mere syntax errors).
+# the decision-block key (reserved for hard failures, not mere syntax errors).
 # __pycache__ writes from py_compile are fine (CLAUDE.md Do NOT Flag These).
 . "$PSScriptRoot\_hook-common.ps1"
 
