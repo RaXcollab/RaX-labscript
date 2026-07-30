@@ -1,6 +1,15 @@
-# RemoteControl ZMQ Protocol — Canonical Reference
+# RemoteControl ZMQ Protocol — v1 Reference (DEPRECATED 2026-05-23)
 
-> **Scope**: how custom external-GUI BLACS devices (`LaserLockDevice`, `RasteringDevice`, `BigSkyHub`) talk to their paired Qt GUIs over ZMQ. The 5-file device structure, the REQ-REP / PUB-SUB protocol, and the snapshot pattern for shot-h5 `monitor_values`.
+> **STATUS**: **v1 is dead code after the v2 cutover lands**
+> ([`remotecontrol-zmq-protocol-v2.md`](remotecontrol-zmq-protocol-v2.md) is
+> the live protocol — shipped on topic branches awaiting coordinated
+> merge per [`docs/zmq-v2-cutover-runbook.md`](zmq-v2-cutover-runbook.md)).
+> v2 servers REFUSE v1 envelopes (Q4 hard sunset); the BLACS-side
+> `RemoteCommunication` client emits v2-only. New device or external-tool
+> code MUST use v2. This doc is preserved for archaeological context only
+> — the wire-format examples below no longer match runtime behavior.
+
+> **Scope (historical)**: how custom external-GUI BLACS devices (`LaserLockDevice`, `RasteringDevice`, `BigSkyHub`) talked to their paired Qt GUIs over ZMQ before the v2 cutover. The 5-file device structure, the REQ-REP / PUB-SUB protocol, and the snapshot pattern for shot-h5 `monitor_values`.
 
 Auto-loaded by `.claude/rules/ref-remotecontrol-zmq.md` when editing under `userlib/user_devices/` or `GUIs/`. Cross-reference: `docs/external-guis-architecture.md` (three-GUI overview), `docs/blacs-state-machine.md` (BLACS-side lifecycle), `docs/shot-h5-layout.md` (where monitor snapshots land).
 

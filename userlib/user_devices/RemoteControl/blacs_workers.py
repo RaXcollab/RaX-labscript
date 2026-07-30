@@ -11,6 +11,20 @@ import json
 
 from labscript_utils.ls_zprocess import Event
 
+# v2 protocol foundation. PR 1 ships in master at commit ef24a6d
+# (refined cf394d3 — REQ transport TimeoutError translation).
+from external_gui_lib.zmq_v2 import (
+    InMemoryTransport,
+    PROTOCOL_VERSION,
+    RemoteControlServerBase,
+    RequestIdCounter,
+    ZmqReqTransport,
+    encode_reply,
+    encode_request,
+    handler,
+    parse_envelope,
+)
+
 # PUB-SUB monitor cache constants (see design spec Tasks 1, 2, 3, 6).
 PUBSUB_DRAIN_POLL_TIMEOUT_MS = 500   # max idle shutdown latency
 PUBSUB_SHUTDOWN_JOIN_TIMEOUT = 1.0   # seconds; daemon=True is the safety net
@@ -21,16 +35,109 @@ DEFAULT_TIMEOUT_MS = 5000        # General REQ-REP operations (HELLO, CHECK_VALU
 PROGRAM_TIMEOUT_MS = 120_000     # PROGRAM_VALUE with wait_for_lock — server may block up to 60s
 
 
+# Errors classed as "operational, not a crash". Worker code that catches
+# Exception around send_request results today expects raised Exceptions
+# on all non-SUCCESS replies; this base lives below the surface.
+class RemoteRequestError(Exception):
+    """Server replied with non-SUCCESS status. Carries the v2 error dict.
+
+    Status codes per spec section 1.3: ERROR, REJECTED, TIMEOUT,
+    UNKNOWN_CONNECTION.
+    """
+
+    def __init__(self, status, error_dict, context=""):
+        self.status = status
+        self.error_dict = error_dict or {}
+        self.code = self.error_dict.get("code", "unknown_code")
+        self.message = self.error_dict.get("message", "")
+        self.retryable = bool(self.error_dict.get("retryable", False))
+        super().__init__(
+            f"{context}: server {status} [{self.code}] {self.message}"
+        )
+
+
+class RemoteRetryableError(RemoteRequestError):
+    """v2 server reported a transient error (error.retryable == True).
+
+    Distinct subclass so a future retry layer can catch retryable failures
+    specifically (e.g. ``except RemoteRetryableError: retry_once_then_raise``)
+    without changing the v1 catch-all behavior. Today's BLACS callers
+    catch generic Exception around _check_response and treat all non-
+    SUCCESS as fatal — retry behavior is a deferred follow-up.
+    """
+
+
+class RemoteMalformedReplyError(RemoteRequestError):
+    """v2 reply could not be parsed as a valid envelope.
+
+    Distinguishes a server bug (garbled JSON, missing required keys)
+    from a transport timeout (which returns None). Surfaces the actual
+    parse error so debuggers don't waste time chasing a phantom timeout.
+    """
+
+    def __init__(self, parse_error, raw_bytes, context=""):
+        super().__init__(
+            status="ERROR",
+            error_dict={
+                "code": "malformed_reply",
+                "message": "could not parse v2 envelope: %s" % parse_error,
+                "retryable": False,
+            },
+            context=context,
+        )
+        self.parse_error = parse_error
+        self.raw_bytes = raw_bytes
+
+
+class _MockRemoteServer(RemoteControlServerBase):
+    """In-memory v2 mock server backing RemoteCommunication(mock=True).
+
+    Per Q4 hard sunset, BLACS-side ships v2-only — the v1
+    mock_request_handler is replaced by this v2 mini-server. The mock
+    is driven inline inside send_request via InMemoryTransport.pair():
+    no thread, no socket, deterministic single-step dispatch.
+    """
+
+    CAPABILITIES = frozenset()
+
+    def __init__(self, transport, child_connections, logger):
+        super().__init__("MockRemoteServer", transport)
+        self._dummy_values = {
+            conn: float(np.random.uniform(0.1, 0.2))
+            for conn in child_connections
+        }
+        self._logger = logger
+
+    @handler("PROGRAM_VALUE")
+    def _handle_program(self, connection, value, args, request_id):
+        self._dummy_values[connection] = value
+        if self._logger is not None:
+            self._logger.debug(f"Mock: programming {connection} = {value}")
+        return encode_reply(status="SUCCESS", request_id=request_id)
+
+    @handler("CHECK_VALUE")
+    def _handle_check(self, connection, value, args, request_id):
+        v = self._dummy_values.get(connection, 0.0)
+        return encode_reply(status="SUCCESS", request_id=request_id, value=v)
+
+
 class RemoteCommunication:
     """
-    ZMQ REQ-REP communication with a remote device server.
+    ZMQ REQ-REP v2 protocol client for a remote device server.
 
-    JSON Protocol:
-    ──────────────
-    Request:  {"action": str, "connection": str, "value": any, "wait_for_lock": bool}
-    Response: {"status": "SUCCESS"|"ERROR", "message": str, "value": any}
+    v2 envelope (spec section 1):
+      Request:  {"v": 2, "id": uint64, "action": str, "connection": str,
+                 "value": any, "args": {...}, "request_timestamp": float}
+      Reply:    {"v": 2, "id": uint64, "status": "SUCCESS"|"ERROR"|"REJECTED"|
+                 "TIMEOUT"|"UNKNOWN_CONNECTION", "value": any,
+                 "error": {"code": str, "message": str, "retryable": bool},
+                 "server_timestamp": float}
 
-    Actions: "HELLO", "PROGRAM_VALUE", "CHECK_VALUE"
+    Actions: "HELLO", "PROGRAM_VALUE", "CHECK_VALUE", "PING".
+
+    Q4 §10-resolved: this client ships v2-only. Servers refuse v1
+    envelopes; the cutover is atomic across all 3 GUI servers + this
+    client in one coordinated round.
     """
 
     def __init__(self, host=None, port=None, logger=None, child_connections=None,
@@ -43,175 +150,254 @@ class RemoteCommunication:
         self.timeout_ms = int(timeout_ms)
         self.program_timeout_ms = int(program_timeout_ms)
 
+        # Q2 §10-resolved: every BLACS-side request MUST carry an id.
+        self._id_counter = RequestIdCounter()
+
+        self._transport = None
+        self._mock_server = None
+
         if self.mock:
             self.logger.debug("Starting remote communication using a mock server")
-            self.dummy_values = {
-                conn: np.random.uniform(0.1, 0.2)
-                for conn in self.child_connections
-            }
+            client_t, server_t = InMemoryTransport.pair()
+            self._transport = client_t
+            self._mock_server = _MockRemoteServer(
+                server_t, self.child_connections, self.logger)
         else:
-            self.context = zmq.Context()
             self.host = host
             self.port = port
-            self.socket = None
 
-    # ── Socket lifecycle ─────────────────────────────────────────────
+    # ── Transport lifecycle ──────────────────────────────────────────
 
-    def _create_socket(self, timeout_ms=None):
-        """Create a fresh REQ socket.  Closes any existing one first."""
-        if not self.mock:
-            self._close_socket()
-            self.socket = self.context.socket(zmq.REQ)
-            t = timeout_ms or self.timeout_ms
-            self.socket.setsockopt(zmq.SNDTIMEO, t)
-            self.socket.setsockopt(zmq.RCVTIMEO, t)
-            self.socket.setsockopt(zmq.LINGER, 0)
-            self.socket.connect(f"tcp://{self.host}:{self.port}")
+    def _create_transport(self, timeout_ms=None):
+        """Create a fresh REQ transport. Closes any existing one first."""
+        if self.mock:
+            return  # InMemoryTransport pair is set up once in __init__.
+        self._close_transport()
+        t = timeout_ms or self.timeout_ms
+        self._transport = ZmqReqTransport(
+            f"tcp://{self.host}:{self.port}",
+            recv_timeout_ms=t,
+            send_timeout_ms=t,
+        )
 
-    def _close_socket(self):
-        if not self.mock and self.socket is not None:
+    def _close_transport(self):
+        if self.mock:
+            return  # paired InMemoryTransport closes with the object.
+        if self._transport is not None:
             try:
-                self.socket.close()
+                self._transport.close()
             except Exception:
                 pass
-            self.socket = None
+            self._transport = None
 
-    def _reset_socket(self):
-        """Destroy and recreate the socket (recovers from EAGAIN / broken state).
+    def _reset_transport(self):
+        """Destroy and recreate the transport (recovers from broken state).
 
         ZMQ REQ sockets enforce strict send-recv-send-recv ordering.
         After a timeout the socket is stuck waiting for a recv that will
-        never come — all subsequent sends fail.  The only recovery is to
-        tear down and rebuild the socket.
+        never come — all subsequent sends fail. The only recovery is to
+        tear down and rebuild the transport.
         """
-        self.logger.debug("Resetting REQ socket after failure")
-        self._create_socket()
+        if self.mock:
+            return
+        self.logger.debug("Resetting REQ transport after failure")
+        self._create_transport()
 
     # ── Connection ───────────────────────────────────────────────────
 
     def connect_to_remote(self):
-        """Send HELLO to verify connectivity.  Returns True/False."""
+        """Send HELLO to verify connectivity. Returns True/False."""
         if self.mock:
+            # Drive the mock server once to ack the HELLO; mock servers
+            # don't need a transport bind.
             self.connected = True
             return True
 
-        self._create_socket()
+        self._create_transport()
         self.logger.debug(f"Connecting to tcp://{self.host}:{self.port}")
 
-        response = self.send_request({"action": "HELLO", "connection": ""})
+        try:
+            response = self._raw_request("HELLO", connection="", args=None)
+        except RemoteRequestError as exc:
+            self.logger.debug(f"HELLO refused by server: {exc}")
+            self._close_transport()
+            self.connected = False
+            return False
+
         if response is None:
             self.logger.debug("Connection setup failed or timed out.")
-            self._close_socket()
+            self._close_transport()
             self.connected = False
         else:
-            self.logger.debug(f"Connection successful: {response}")
+            self.logger.debug(f"Connection successful: server={response.get('server')!r} "
+                              f"capabilities={response.get('capabilities')!r}")
             self.connected = True
 
         return self.connected
 
     # ── Core send/receive ────────────────────────────────────────────
 
-    def send_request(self, message, timeout_ms=None):
-        """
-        Send a JSON request and return the parsed response dict.
-        Returns None on timeout or error (instead of raising).
-        """
-        if self.mock:
-            return json.loads(self.mock_request_handler(json.dumps(message)))
+    def _raw_request(self, action, *, connection="", value=None, args=None,
+                     timeout_ms=None):
+        """Build v2 envelope, send via transport, parse reply.
 
-        if self.socket is None:
-            self.logger.error("send_request called with no socket — call connect_to_remote first")
+        Returns:
+          * parsed reply dict on SUCCESS.
+          * None on transport timeout or transport error.
+
+        Raises:
+          * RemoteRequestError on non-SUCCESS server reply (ERROR /
+            REJECTED / TIMEOUT / UNKNOWN_CONNECTION). Callers that
+            previously checked status manually can catch this and map
+            back to None / exception.
+        """
+        if self._transport is None:
+            self.logger.error(
+                "_raw_request called with no transport — call connect_to_remote first")
             return None
 
-        # Temporarily adjust timeout if requested
+        envelope = encode_request(
+            action=action,
+            request_id=self._id_counter.next_id(),
+            connection=connection,
+            value=value,
+            args=args,
+        )
         effective_timeout = timeout_ms or self.timeout_ms
-        self.socket.setsockopt(zmq.SNDTIMEO, effective_timeout)
-        self.socket.setsockopt(zmq.RCVTIMEO, effective_timeout)
 
         try:
-            self.socket.send_json(message)
-            response = self.socket.recv_json()
-            return response
-
-        except zmq.Again:
-            # Timeout — the REQ socket is now in a broken send/recv state.
-            # We must destroy and recreate it.
+            self._transport.send(envelope)
+            # Mock: drive the in-memory server inline. Paired-queue
+            # send_q feeds the server's recv; serve_once dispatches and
+            # writes the reply back; our recv below picks it up.
+            if self.mock:
+                self._mock_server.serve_once(timeout_ms=100)
+            raw_reply = self._transport.recv(timeout_ms=effective_timeout)
+        except TimeoutError:
             self.logger.error(
-                f"ZMQ timeout ({effective_timeout}ms) for action={message.get('action')} "
-                f"connection={message.get('connection')}"
-            )
-            self._reset_socket()
+                f"ZMQ timeout ({effective_timeout}ms) for action={action} "
+                f"connection={connection}")
+            self._reset_transport()
             return None
-
         except zmq.ZMQError as e:
             self.logger.error(f"ZMQ error during send/receive: {e}")
-            self._reset_socket()
+            self._reset_transport()
+            return None
+        except Exception as e:  # transport closed mid-call etc.
+            self.logger.error(f"Transport error during send/receive: {e}")
+            self._reset_transport()
             return None
 
-        finally:
-            # Restore default timeout
-            if self.socket is not None:
-                self.socket.setsockopt(zmq.SNDTIMEO, self.timeout_ms)
-                self.socket.setsockopt(zmq.RCVTIMEO, self.timeout_ms)
+        try:
+            reply = parse_envelope(raw_reply)
+        except ValueError as e:
+            self.logger.error(
+                f"Malformed v2 reply for action={action} connection={connection}: {e}")
+            # Raise (not return None) so the caller's _check_response
+            # surfaces "malformed_reply" instead of "timeout" -- a real
+            # server bug should not be diagnosed as a network problem.
+            raise RemoteMalformedReplyError(
+                parse_error=str(e), raw_bytes=raw_reply,
+                context=f"action={action} connection={connection}",
+            )
+
+        # Version enforcement was one-directional: the server refuses v1
+        # requests, but nothing checked the reply. A v1 GUI answering a v2
+        # client surfaced as a misleading 5s timeout on every setpoint.
+        if reply.get("v") != PROTOCOL_VERSION:
+            raise RemoteRequestError(
+                status="ERROR",
+                error_dict={
+                    "code": "protocol_version_mismatch",
+                    "message": (
+                        f"remote GUI replied with protocol v{reply.get('v')!r}, "
+                        f"expected v{PROTOCOL_VERSION} — that GUI is still on v1; "
+                        "complete the zmq v2 cutover on it "
+                        "(docs/zmq-v2-cutover-runbook.md)"
+                    ),
+                    "retryable": False,
+                },
+                context=f"action={action} connection={connection}",
+            )
+
+        status = reply.get("status", "")
+        if status == "SUCCESS":
+            return reply
+        err = reply.get("error") or {}
+        # Distinguish retryable failures so a future retry layer can
+        # catch RemoteRetryableError specifically. Today's BLACS callers
+        # catch the parent Exception class -- same behavior either way.
+        exc_cls = (RemoteRetryableError if err.get("retryable") is True
+                   else RemoteRequestError)
+        raise exc_cls(
+            status=status,
+            error_dict=err,
+            context=f"action={action} connection={connection}",
+        )
 
     # ── High-level actions ───────────────────────────────────────────
 
     def program_value(self, connection, value, wait_for_lock=False):
-        """
-        Send PROGRAM_VALUE to the remote server.
+        """Send PROGRAM_VALUE to the remote server.
 
         Args:
             connection: channel/port identifier
             value: setpoint value
             wait_for_lock: if True, tells the server to block until the
-                lock converges (used during buffered shots).  Uses the
-                extended timeout.  If False (default), the server sets the
+                lock converges (used during buffered shots). Uses the
+                extended timeout. If False (default), the server sets the
                 value and returns immediately (manual mode).
+
+        Returns parsed v2 reply dict on SUCCESS, or None on transport
+        timeout. Raises RemoteRequestError on non-SUCCESS server reply.
+
+        Q2 §10-resolved: wait_for_lock moves into the v2 `args` dict.
         """
-        message = {
-            "action": "PROGRAM_VALUE",
-            "connection": connection,
-            "value": value,
-            "wait_for_lock": wait_for_lock,
-        }
         timeout = self.program_timeout_ms if wait_for_lock else self.timeout_ms
-        self.logger.debug(f"program_value: {message} (timeout={timeout}ms)")
-        return self.send_request(message, timeout_ms=timeout)
+        # Always send the key explicitly -- absence must never be
+        # interpretable by servers (HF defaulted absent->True pre-2026-07-07).
+        # A single-key dict is truthy even when the value is False, so
+        # encode_request's `if args:` guard keeps it in the envelope.
+        args = {"wait_for_lock": bool(wait_for_lock)}
+        self.logger.debug(
+            f"program_value: connection={connection} value={value} "
+            f"wait_for_lock={wait_for_lock} timeout={timeout}ms")
+        try:
+            return self._raw_request(
+                "PROGRAM_VALUE",
+                connection=connection, value=value, args=args,
+                timeout_ms=timeout,
+            )
+        except RemoteRequestError as exc:
+            # Preserve historical interface: callers expect dict-or-None
+            # and inspect status themselves. Translate the raise back
+            # into a v1-shaped dict so callers don't need refactoring.
+            return {
+                "status": exc.status,
+                "value": None,
+                "error": exc.error_dict,
+                # v1 callers used `message`; keep a back-compat alias.
+                "message": exc.message,
+            }
 
     def check_remote_value(self, connection):
         """Send CHECK_VALUE with default (short) timeout."""
-        message = {"action": "CHECK_VALUE", "connection": connection}
-        return self.send_request(message)
-
-    # ── Mock ─────────────────────────────────────────────────────────
-
-    def mock_request_handler(self, message_json):
-        message = json.loads(message_json)
-        action = message.get("action")
-        connection = message.get("connection")
-        value = message.get("value")
-
-        if action == "HELLO":
-            return json.dumps({"status": "SUCCESS"})
-        elif action == "PROGRAM_VALUE":
-            self.logger.debug(f"Mock: programming {connection} = {value}")
-            self.dummy_values[connection] = value
-            return json.dumps({"status": "SUCCESS"})
-        elif action == "CHECK_VALUE":
-            v = self.dummy_values.get(connection, 0.0)
-            return json.dumps({"status": "SUCCESS", "value": v})
-        else:
-            return json.dumps({"status": "ERROR", "message": "Invalid action"})
+        try:
+            return self._raw_request(
+                "CHECK_VALUE", connection=connection, value=None, args=None,
+            )
+        except RemoteRequestError as exc:
+            return {
+                "status": exc.status,
+                "value": None,
+                "error": exc.error_dict,
+                "message": exc.message,
+            }
 
     # ── Cleanup ──────────────────────────────────────────────────────
 
     def shutdown(self):
-        self._close_socket()
-        if not self.mock and hasattr(self, 'context'):
-            try:
-                self.context.term()
-            except Exception:
-                pass
+        self._close_transport()
 
 
 class RemoteControlWorker(Worker):
@@ -316,14 +502,49 @@ class RemoteControlWorker(Worker):
     # ── Response handling ────────────────────────────────────────────
 
     def _check_response(self, response, context=""):
-        """Raise on None (timeout) or ERROR status."""
+        """Raise on None (timeout) or any non-SUCCESS status.
+
+        v2 statuses (spec §1.3): SUCCESS, ERROR, REJECTED, TIMEOUT,
+        UNKNOWN_CONNECTION. v2 errors live in
+        response['error']['{code,message,retryable}']. Falls back to v1
+        response['message'] for back-compat with the RemoteCommunication
+        translation layer.
+
+        Retry policy (NOT YET IMPLEMENTED): error.retryable is surfaced
+        in the raised exception's message + propagates via the upstream
+        RemoteRetryableError class. A future retry layer in program_manual
+        / buffered_program can catch RemoteRetryableError specifically and
+        retry once before bubbling to runmanager. Today's callers catch
+        Exception generically -- same behavior as v1.
+        """
         if response is None:
             raise Exception(f"No response from server (timeout). Context: {context}")
         status = response.get("status", "")
         if status == "SUCCESS":
             return
-        msg = response.get("message", "unknown error")
-        raise Exception(f"Server error ({context}): {msg}")
+        err = response.get("error") or {}
+        code = err.get("code", "")
+        msg = err.get("message") or response.get("message") or "unknown error"
+        prefix = f"[{code}] " if code else ""
+        retry_hint = " (retryable)" if err.get("retryable") is True else ""
+        raise Exception(
+            f"Server {status} ({context}): {prefix}{msg}{retry_hint}")
+
+    def _skip_non_success_read(self, connection, response, context):
+        """Read-path policy: a non-SUCCESS reply to a value CHECK means the
+        channel isn't readable yet (e.g. UNKNOWN_CONNECTION for an
+        un-programmed setpoint). Log and skip -- NEVER raise on a read (a
+        raising periodic poll bricks the tab with a persistent error banner).
+        Write paths keep using _check_response (raise). Single source of the
+        read policy for all subclasses. See
+        memory/feedback_remotecontrol-base-is-the-contract.
+        """
+        if response.get("status") == "SUCCESS":
+            return False
+        msg = (response.get("error") or {}).get("message") or response.get("message", "")
+        self.logger.warning(
+            f"{context}: skipping {connection} ({response.get('status')}: {msg})")
+        return True
 
     # ── Value checks ─────────────────────────────────────────────────
 
@@ -341,7 +562,8 @@ class RemoteControlWorker(Worker):
             if response is None:
                 self.logger.warning(f"check_remote_values: timeout for {connection}")
                 return None
-            self._check_response(response, f"check_remote_values({connection})")
+            if self._skip_non_success_read(connection, response, "check_remote_values"):
+                continue
             remote_values[connection] = float(response["value"])
         return remote_values
 
@@ -356,7 +578,8 @@ class RemoteControlWorker(Worker):
             if response is None:
                 self.logger.warning(f"check_all_remote_values: timeout for {connection}")
                 continue
-            self._check_response(response, f"check_all({connection})")
+            if self._skip_non_success_read(connection, response, "check_all_remote_values"):
+                continue
             remote_values[connection] = float(response["value"])
         return remote_values
 

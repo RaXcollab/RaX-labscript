@@ -2,7 +2,18 @@
 
 > **Scope**: per-GUI internals for the three registered external GUI codebases (`HF_Locking`, `rastering`, `BigSkyControl`). Shared patterns, Qt threading, file inventories, common pitfalls.
 
-Auto-loaded by `.claude/rules/ref-external-guis.md` when editing under `userlib/user_devices/` or `GUIs/`. Cross-reference: `docs/remotecontrol-zmq-protocol.md` (protocol spec), `docs/blacs-state-machine.md` (BLACS-side lifecycle).
+> **Protocol note** (2026-05-23): per-GUI REQ-REP action descriptions
+> below describe the **wire-level intent** (HELLO/CHECK_VALUE/PROGRAM_VALUE)
+> which is unchanged across v1 → v2. The envelope shape, dispatch
+> mechanism, and reply-status enum changed in the v2 cutover
+> ([`docs/remotecontrol-zmq-protocol-v2.md`](remotecontrol-zmq-protocol-v2.md) —
+> shipped on topic branches, awaiting coordinated merge per
+> [`docs/zmq-v2-cutover-runbook.md`](zmq-v2-cutover-runbook.md)).
+> Each GUI server is now an `@handler`-decorated `RemoteControlServerBase`
+> subclass; threading models remain divergent (HF: QThread, Rastering:
+> daemon thread, BigSky: daemon thread + futures).
+
+Auto-loaded by `.claude/rules/ref-external-guis.md` when editing under `userlib/user_devices/` or `GUIs/`. Cross-reference: `docs/remotecontrol-zmq-protocol-v2.md` (canonical v2 protocol spec), `docs/remotecontrol-zmq-protocol.md` (deprecated v1 reference), `docs/blacs-state-machine.md` (BLACS-side lifecycle).
 
 ## Common pattern
 

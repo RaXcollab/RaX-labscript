@@ -1,8 +1,18 @@
-# BLACS Communication Contract for External GUIs
+# BLACS Communication Contract for External GUIs — v1 (DEPRECATED 2026-05-23)
 
-**If you are an agent working on an external GUI that integrates with BLACS, read this document to understand the communication protocol.**
+> **STATUS**: **v1 is dead code after the v2 cutover lands**. The wire-
+> format examples below describe the OLD protocol. New client/server
+> code MUST use v2 — see
+> [`docs/remotecontrol-zmq-protocol-v2.md`](../../docs/remotecontrol-zmq-protocol-v2.md)
+> (canonical spec) and
+> [`docs/zmq-v2-cutover-runbook.md`](../../docs/zmq-v2-cutover-runbook.md)
+> (cutover sequence). v2 servers REFUSE v1 envelopes per Q4 hard sunset.
+> This doc is preserved for archaeological context of what the wire
+> format used to look like.
 
-This defines the ZMQ protocol contract between BLACS (the experiment control system) and external programs (laser lock GUIs, rastering GUIs, wavemeters, etc.). Both sides must follow this protocol exactly.
+**If you are an agent working on an external GUI that integrates with BLACS, read this document to understand the (historical) communication protocol; then read the v2 spec for the live wire format.**
+
+This defines the (historical v1) ZMQ protocol contract between BLACS (the experiment control system) and external programs (laser lock GUIs, rastering GUIs, wavemeters, etc.).
 
 ## ZMQ REQ-REP Protocol (Synchronous)
 

@@ -33,6 +33,36 @@ _WARMUP_CONTROLLED_SUFFIXES = {'lamps', 'shutter', 'qswitch', 'lamp_mode', 'qswi
 # Serial command delay — wait for BigSky to process stop before mode changes
 _CMD_DELAY_S = 0.2
 
+# Buffered-programming replies that mean "this laser isn't available" — warn
+# and continue the shot instead of aborting the whole queue.
+_SKIP_STATUSES = frozenset({"UNKNOWN_CONNECTION", "REJECTED"})
+_SKIP_ERROR_SUBSTRINGS = ("unknown connection", "laser disconnected", "rejected:")
+
+
+def should_skip_buffered_response(response):
+    """(skip, reason) for buffered programming replies.
+
+    Skip = laser not launched / interlock-rejected in the GUI: warn and
+    continue the shot. v2 servers say UNKNOWN_CONNECTION / REJECTED
+    (typed); the legacy/mock path says ERROR with a known message
+    substring. Anything else is a real fault -> do not skip.
+
+    RemoteCommunication.program_value translates a non-SUCCESS server
+    reply into a dict {"status", "error", "message"} (it does not raise),
+    so both the typed status and the flattened top-level `message` alias
+    are available here.
+    """
+    if not response:
+        return False, ""
+    status = response.get("status")
+    msg = (response.get("message")
+           or (response.get("error") or {}).get("message", "") or "")
+    if status in _SKIP_STATUSES:
+        return True, msg or status
+    if status == "ERROR" and any(s in msg for s in _SKIP_ERROR_SUBSTRINGS):
+        return True, msg
+    return False, ""
+
 
 class BigSkyWorker(RemoteControlWorker):
     """RemoteControlWorker subclass that enforces safe command ordering.
@@ -266,25 +296,8 @@ class BigSkyWorker(RemoteControlWorker):
             if response is None:
                 self.logger.warning(f"check_remote_values: timeout for {connection}")
                 return None
-            if response.get("status") != "SUCCESS":
-                msg = response.get("message", "")
-                if "unknown connection" in msg:
-                    self.logger.debug(
-                        f"check_remote_values: skipping {connection} (not registered in GUI)"
-                    )
-                    continue
-                if "laser disconnected" in msg:
-                    self.logger.warning(
-                        f"check_remote_values: skipping {connection} (laser disconnected)"
-                    )
-                    continue
-                if "rejected:" in msg:
-                    self.logger.warning(
-                        f"check_remote_values: {connection} rejected by GUI ({msg}), skipping"
-                    )
-                    continue
-                # Other errors: raise as usual
-                self._check_response(response, f"check_remote_values({connection})")
+            if self._skip_non_success_read(connection, response, "check_remote_values"):
+                continue
             remote_values[connection] = float(response["value"])
         # Seed last-sent tracking so program_manual knows the remote state
         self._last_sent_values.update(remote_values)
@@ -307,24 +320,8 @@ class BigSkyWorker(RemoteControlWorker):
             if response is None:
                 self.logger.warning(f"check_all_remote_values: timeout for {connection}")
                 continue
-            if response.get("status") != "SUCCESS":
-                msg = response.get("message", "")
-                if "unknown connection" in msg:
-                    self.logger.debug(
-                        f"check_all_remote_values: skipping {connection} (not registered in GUI)"
-                    )
-                    continue
-                if "laser disconnected" in msg:
-                    self.logger.warning(
-                        f"check_all_remote_values: skipping {connection} (laser disconnected)"
-                    )
-                    continue
-                if "rejected:" in msg:
-                    self.logger.warning(
-                        f"check_all_remote_values: {connection} rejected by GUI ({msg}), skipping"
-                    )
-                    continue
-                self._check_response(response, f"check_all({connection})")
+            if self._skip_non_success_read(connection, response, "check_all_remote_values"):
+                continue
             remote_values[connection] = float(response["value"])
         return remote_values
 
@@ -441,14 +438,14 @@ class BigSkyWorker(RemoteControlWorker):
                 response = self.remote_comms.program_value(
                     col, value, wait_for_lock=wait
                 )
-                # Gracefully skip lasers not registered in GUI
-                if response and response.get("status") == "ERROR":
-                    msg = response.get("message", "")
-                    if "unknown connection" in msg or "laser disconnected" in msg or "rejected:" in msg:
-                        self.logger.warning(
-                            f"transition_to_buffered: skipping {col} ({msg})"
-                        )
-                        continue
+                # Gracefully skip lasers not launched / interlock-rejected
+                # in the GUI (typed v2 statuses or legacy ERROR substrings).
+                skip, why = should_skip_buffered_response(response)
+                if skip:
+                    self.logger.warning(
+                        f"transition_to_buffered: skipping {col} ({why})"
+                    )
+                    continue
                 self._check_response(
                     response, f"buffered_program({col}={value})"
                 )
