@@ -64,7 +64,7 @@ def connection_table():
     RemoteAnalogOut(
         name='TiSa_1_Setpoint', 
         parent_device=LaserLockGUI, 
-        connection=4,
+        connection=1,
         units="THz",
         decimals=9
     )
@@ -81,7 +81,7 @@ def connection_table():
     RemoteAnalogMonitor(
         name='TiSa_1_Value', 
         parent_device=LaserLockGUI, 
-        connection=4,
+        connection=1,
         units="THz",
         decimals=9
     )

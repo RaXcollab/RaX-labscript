@@ -220,7 +220,7 @@ It's not in the shot file. The HF_Locking server publishes `freq_display` over P
 ### Other notes
 
 - `remote_device_operation` is **not** the full list of setpoints — it only holds values the script explicitly programmed via `RemoteAnalogOut(...).constant(...)` (or equivalent). Channels controlled solely from the BLACS GUI still have a `front_panel.base_value` row but no `remote_device_operation` entry.
-- **Channel ↔ name mapping**: only `/front_panel/front_panel` pairs the human name (`TiSa_1_Setpoint`) with the hardware channel (`'4'`). The other two datasets use channel as the column key. Join through front_panel to translate.
+- **Channel ↔ name mapping**: only `/front_panel/front_panel` pairs the human name (`TiSa_1_Setpoint`) with the hardware channel (`'4'` in that shot; TiSa_1 is ch1 since 2026-07-29). The other two datasets use channel as the column key. Join through front_panel to translate.
 - **This analysis is LaserLockGUI-specific.** See "RemoteControlTab vs LaserLockTab" below for how the general pattern works for BigSkyHub / RasteringGUI.
 
 ## RemoteControlTab vs LaserLockTab (inheritance + behavior)
@@ -262,7 +262,7 @@ For BigSkyHub / RasteringGUI (using base RemoteControlTab), the equivalent of st
 
 This is subtle. **Verified by reading [blacs_workers.py:268-281](userlib/user_devices/RemoteControl/blacs_workers.py#L268), the connection table for `LaserLockGUI`, and the HF_Locking server's REP handler at [GUIs/HF_Locking/workers.py:559-562](GUIs/HF_Locking/workers.py#L559).**
 
-The worker computes `child_connections = child_output_connections + child_monitor_connections` ([blacs_workers.py:216](userlib/user_devices/RemoteControl/blacs_workers.py#L216)). Both lists hold `parent_port` strings. **An output and a monitor that wrap the same hardware channel share the same `parent_port`** (e.g., `TiSa_1_Setpoint` and `TiSa_1_Value` both have `parent_port='4'`). So `child_connections` contains duplicates for LaserLockGUI: `['4', '6', '3', '4', '6']`.
+The worker computes `child_connections = child_output_connections + child_monitor_connections` ([blacs_workers.py:216](userlib/user_devices/RemoteControl/blacs_workers.py#L216)). Both lists hold `parent_port` strings. **An output and a monitor that wrap the same hardware channel share the same `parent_port`** (e.g., `TiSa_1_Setpoint` and `TiSa_1_Value` both have `parent_port='1'`). So `child_connections` contains duplicates for LaserLockGUI: `['1', '6', '3', '1', '6']`.
 
 `check_all_remote_values()` iterates this list and sends `CHECK_VALUE` to the server for each entry, storing responses in a Python dict keyed by `connection`. Duplicates collide — outputs are queried first, monitors second — but for HF_Locking it doesn't matter which query "wins" because the server returns the same value for the same `connection` regardless of whether the labscript-side caller was an output or a monitor.
 

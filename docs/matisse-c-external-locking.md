@@ -85,7 +85,7 @@ Measurement instead).  If it holds, no LabVIEW is needed.
 - **Wait-gate** `if wait and lock_enabled and dev_mode:` — for a Counterdrift/SCPI
   port the WS7 `deviation_mode` is OFF → gate False → `PROGRAM_VALUE` returns
   SUCCESS *without waiting for convergence* (the silent lock-bypass to fix).
-- Port map: **connection 4 = TiSa_1, connection 6 = TiSa_2** (`connection_table.py`
+- Port map: **connection 1 = TiSa_1, connection 6 = TiSa_2** (TiSa_1 moved ch4 → ch1 on 2026-07-29 to avoid crosstalk) (`connection_table.py`
   L56-95; GUI `CHANNEL_NAMES` labels port 6 "Ch_6" but BLACS names it TiSa_2);
   `LaserLockDevice(..., wait_for_lock=True)`.
 
@@ -209,10 +209,10 @@ WS7 (8-ch fiber switch, ~5 Hz/ch) ── wlmData.dll
        │ in HF_Locking WavemeterWorker thread
        ▼
 WS7 built-in 8-channel PID DAC card (Sirah-supplied wavemeter PID)
-   ch4 (TiSa_1) config: P=0.16, I=0.84, D=0.034, T=0.02, dt=0.01, UseTa=1,
+   ch1 (TiSa_1; was ch4 when these values were recorded) config: P=0.16, I=0.84, D=0.034, T=0.02, dt=0.01, UseTa=1,
                         Polarity=-1, SensitivityDim=-2, Bounds 0..9000 mV
        │
-       ▼ DAC voltage on ch4 (~0..5 V in practice)
+       ▼ DAC voltage on ch1 (~0..5 V in practice)
        │ rear-panel SMA cable
        ▼ Matisse C Reference Cell external input (item 13)
        │
@@ -254,13 +254,13 @@ only for GUI-side fixes (parameter bounds, persistence).
 
 ### Configuration (set-and-hold mode)
 
-- Front-panel cable: unchanged (WS7 ch4 still to rear-panel item 13) —
+- Front-panel cable: unchanged (WS7 ch1 — TiSa_1's output since 2026-07-29 — to rear-panel item 13) —
   cable serves no purpose now but doesn't interfere
-- Disable WS7 PID for ch4 (`SetDeviationMode(0)` via HF_Locking, or in
+- Disable WS7 PID for ch1 (`SetDeviationMode(0)` via HF_Locking, or in
   the WS7 native app)
 - Enable WM Selector (or HighFinesse) plug-in for the data layer, plus
   the Wavemeter plug-in for the umbrella
-- `Settings → WM Selector → Show Settings`: `Switch = TRUE`, `Channel = 4`,
+- `Settings → WM Selector → Show Settings`: `Switch = TRUE`, `Channel = 1` (was 4 pre-2026-07-29 — update the plug-in setting when first used),
   `Synchronous Wavemeter Readout? = ON` (required for 8-channel switched WS7)
 - Open `Plug-ins > Wavemeter > Counterdrift` dialog
 - Sirah-suggested start: **P=0, I=−0.5, D=0, Average=10, Update=300 ms**
@@ -505,7 +505,7 @@ behavior, not a single-axis maximum.
 
 **What happens when BLACS step-changes a setpoint:**
 
-1. BLACS writes new setpoint to WS7 ch4 via `SetPIDCourseNum`.
+1. BLACS writes new setpoint to WS7 ch1 via `SetPIDCourseNum`.
 2. WS7 PID sees ~5–10 MHz step error.
 3. WS7 PID drives ref-cell DAC voltage toward new equilibrium —
    aggressive because integral wind-up tuned for continuous tracking.

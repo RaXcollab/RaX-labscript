@@ -38,7 +38,7 @@ Auto-loaded by `.claude/rules/ref-main-experiment.md` when editing under `userli
 
 | CT name | BLACS device | Hardware | Ports | Notes |
 |---|---|---|---|---|
-| `LaserLockGUI` | `LaserLockDevice` | HighFinesse WS7-30 wavemeter + laser lock | 3796 / 3797 | `host=127.0.0.1`, `mock=False`, `wait_for_lock=True`. Children: `Vexlum_Setpoint` (conn 3), `TiSa_1_Setpoint` (conn 4), `TiSa_2_Setpoint` (conn 6) — units THz, decimals 9. Monitor children: `TiSa_1_Value`, `TiSa_2_Value`. No Vexlum monitor child |
+| `LaserLockGUI` | `LaserLockDevice` | HighFinesse WS7-30 wavemeter + laser lock | 3796 / 3797 | `host=127.0.0.1`, `mock=False`, `wait_for_lock=True`. Children: `Vexlum_Setpoint` (conn 3), `TiSa_1_Setpoint` (conn 1), `TiSa_2_Setpoint` (conn 6) — units THz, decimals 9. Monitor children: `TiSa_1_Value`, `TiSa_2_Value`. No Vexlum monitor child |
 | `RasteringGUI` | `RasteringDevice` | Thorlabs Z912 ×2 + IDS uEye camera | 55535 / 55536 | Children: `Raster_X`/`Raster_Y` (conn `laser_raster_x_coord`/`_y_coord`, units mm, limits 0–25), `Raster_X_Monitor`/`Raster_Y_Monitor` |
 | `BigSkyLasers` | `BigSkyHub(num_lasers=2, laser_prefix="YAG")` | Quantel Big Sky Nd:YAG ×2 | 55540 / 55541 | Auto-created children. Sequences reference `YAG_1_voltage`, `YAG_2_voltage` (set via `.constant(value)`). 10 writable params per laser including `keep_warm` |
 
