@@ -13,15 +13,16 @@ You are the wrap-up agent for the RaX lab's Labscript suite workspace. You own t
 
 ### Step 1: Gather Facts
 
-1. Read the session-notes scratch file (`.claude/session-scratch.md`) if it exists
-2. Run git commands to collect facts:
+1. Read the milestone scratch file (`.claude/session-scratch.md`) if it exists — terse entries appended by the main session as work happened
+2. Cross-check claude-mem observations (`mem-search` skill) for session events missing from the scratch file — auto-capture is the backstop for anything the main session forgot to log
+3. Run git commands to collect facts:
    - `git status` in the parent repo and relevant sub-repos
    - `git diff --stat` for file-level summary
    - `git diff` or `git show` for actual changes
    - `git log --oneline -5` for recent commits
-3. Use conversation context for design decisions and rationale not captured in scratch notes
-4. Identify which repos have changes
-5. Flag any pre-existing uncommitted changes (files modified but not mentioned in session context or scratch notes). Offer to commit these separately before the session's work.
+4. Use conversation context for design decisions and rationale not captured in scratch notes
+5. Identify which repos have changes
+6. Flag any pre-existing uncommitted changes (files modified but not mentioned in session context or scratch notes). Offer to commit these separately before the session's work.
 
 ### Step 2: Commit Messages
 
@@ -34,9 +35,9 @@ Produce SEPARATE commit messages per repo. Follow conventions:
 - <file_or_component>: <what changed> — <why>
   (wrap long lines at ~72 chars, indent continuation with 2 spaces)
 - <file_or_component>: <NEW> — <what this new file does>
-
-Co-Authored-By: Claude Opus 4.7 <noreply@anthropic.com>
 ```
+
+No Co-Authored-By or other trailers.
 
 Rules:
 - Title is imperative mood: "Add", "Fix", "Clean up", "Update", "Implement"
@@ -87,7 +88,7 @@ Show proposed changes as the exact text to add/modify and where it goes. Skip fo
 
 ### Step 6: Clean Up
 
-- Delete the scratch file (`.claude/session-scratch.md`) after all deliverables are produced
+- Trim the scratch file (`.claude/session-scratch.md`): remove ONLY the wrapped session's section. Preserve sections for paused or other sessions (e.g. a cutover pause state) verbatim — they are another session's handoff, not this session's leftovers. Delete the file only if nothing remains.
 - Present all artifacts for user review before committing
 
 ## Multi-Repo Awareness
@@ -117,7 +118,6 @@ When documenting:
 
 ## Related Agents
 
-- **`session-notes`**: Provides the scratch file with decisions, bugs, patterns logged during the session
 - **`device-builder`**: For device scaffolding context when documenting device integrations
 - **`blacs-expert`**: For BLACS architecture context when documenting threading or state machine changes
 - **`amo-expert`**: For experiment design context when documenting sequence or connection table changes

@@ -62,16 +62,10 @@ Open a terminal in the <code>labscript-suite</code> folder and run <code>claude<
 </ul>
 <p>Detailed reference docs (<code>docs/*.md</code>) load conditionally via path-scoped rules in <code>.claude/rules/ref-*.md</code> &mdash; BLACS device patterns load when editing <code>user_devices/</code> or <code>blacs/</code>, labscript API loads for sequences and devices, analysis API loads for <code>analysislib/</code>. Domain rules in <code>.claude/rules/</code> auto-activate for matching file paths (Qt safety for devices, timing safety for sequences, etc.).</p>
 
-<h2>The 8 Agents</h2>
-<p>Agents are specialized subprocesses stored in <code>.claude/agents/</code>. Claude launches them automatically based on the task type.</p>
+<h2>The 7 Agents</h2>
+<p>Agents are specialized subprocesses stored in <code>.claude/agents/</code>. Claude launches them automatically based on the task type. (Session milestones are logged directly by the main session as terse entries in <code>.claude/session-scratch.md</code> — the former <code>session-notes</code> middleman agent was retired 2026-07-29.)</p>
 <table>
   <tr><th>Agent</th><th>Domain</th><th>Model</th><th>Invoke When</th></tr>
-  <tr>
-    <td><span class="badge purple">session-notes</span></td>
-    <td>Background note-taking: decisions, patterns, bugs during a session</td>
-    <td>Sonnet (auto-background)</td>
-    <td>Every non-trivial session</td>
-  </tr>
   <tr>
     <td><span class="badge gray">wrap-up</span></td>
     <td>End-of-session deliverables: commits, HTML lab notes, session introspection, CLAUDE.md updates</td>
@@ -170,7 +164,7 @@ Open a terminal in the <code>labscript-suite</code> folder and run <code>claude<
 
 <h2>Orchestration</h2>
 <div class="callout">
-<strong>Three-phase workflow:</strong> (1) <span class="badge purple">session-notes</span> launches automatically in background. (2) Domain agents do the work. (3) <span class="badge gray">wrap-up</span> runs at the end for deliverables. All three are planned upfront, not as afterthoughts.
+<strong>Three-phase workflow:</strong> (1) The main session appends terse timestamped milestones to <code>.claude/session-scratch.md</code> as work happens. (2) Domain agents do the work. (3) <span class="badge gray">wrap-up</span> runs at the end for deliverables — it expands the scratch notes with full context and cross-checks claude-mem auto-capture for anything missed. All three are planned upfront, not as afterthoughts.
 </div>
 <div class="callout">
 <strong>Cross-audit for safety-critical changes:</strong> Changes to BLACS workers (which control live hardware) require every claim to be audited by <span class="badge red">blacs-expert</span> AND cross-audited by <span class="badge orange">amo-expert</span>. Plans must include an Agent Dispatch Table (which agents, which phase) and an Agent Audit Trail (which claims audited, by whom).
@@ -179,7 +173,7 @@ Open a terminal in the <code>labscript-suite</code> folder and run <code>claude<
   <tr><th>Task Type</th><th>Agents</th><th>When</th></tr>
   <tr>
     <td>Any non-trivial workflow</td>
-    <td><span class="badge purple">session-notes</span> (auto-background) + <span class="badge gray">wrap-up</span> (at end)</td>
+    <td>Terse milestone log in <code>.claude/session-scratch.md</code> + <span class="badge gray">wrap-up</span> (at end)</td>
     <td>Session start / session end</td>
   </tr>
   <tr>

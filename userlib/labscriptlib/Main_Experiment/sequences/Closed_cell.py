@@ -52,12 +52,12 @@ daq_ao0.constant(tstart, +2.5)
 daq_ao0.constant(tstart + 0.5e-3, -2.5)
 
 
-daq_ai0.acquire('Absorption0',tstart,tend)
-daq_ai1.acquire('Absorption1',tstart,tend)
+daq_ai0.acquire('Absorption0',tstart,tend)  
+daq_ai1.acquire('Absorption1',tstart,tend)  
 daq_ai2.acquire('Absorption2',tstart,tend) 
 daq_ai3.acquire('Absorption3',tstart,tend) 
-# daq_ai4.acquire('Absorption_DC_Cell',tstart,tend) 
-# daq_ai5.acquire('Absorption_DC_Front',tstart,tend) 
+daq_ai4.acquire('Absorption_ATOM',tstart,tend) 
+daq_ai5.acquire('Absorption_DC_Front',tstart,tend) 
 
 
 # stop(tend+ 50e-3)   # change to whatever you want

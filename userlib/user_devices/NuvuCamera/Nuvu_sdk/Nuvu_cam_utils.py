@@ -8,7 +8,6 @@
 
 from user_devices.NuvuCamera.Nuvu_sdk.nc_camera import *
 import numpy as np
-import time
 
 """
 TODO:
@@ -78,6 +77,11 @@ class NuvuCamUtils(nc_camera):
         def func(*args, **kwargs):
             try:
                 return f(*args, **kwargs)
+            except NuvuTimeout:
+                # Frame-wait timeout (SDK 214): the handle is still valid, so
+                # an emergency disconnect would only force a device restart.
+                # Propagate and leave the camera open.
+                raise
             except Exception as e:
                 args[0].closeCam()
                 args[0].logger.debug('Successfull emergency disconnect of Nuvu Camera')
@@ -210,19 +214,9 @@ class NuvuCamUtils(nc_camera):
         print("get_queued_image in user_devices/Nuvu_sdk/Nuvu_cam_utils.py")
         return self.getImg()
 
-    @disconnect_if_error
-    def get_bias(self):
-        exposure_old = self.exposureTime.value
-        self.setExposureTime(0)
-        time.sleep(0.1)
-        img = self.get_image()
-        self.setExposureTime(exposure_old)
-        self.getExposureTime()
-        return img
-
-    @disconnect_if_error
-    def get_bias64(self):
-        return self.get_bias().astype(np.float64)
+    # get_bias / get_bias64 deleted 2026-07-08: no callers anywhere in the
+    # package, and the exposure-restore path could mask the original error on
+    # a closed handle. Git history preserves them if bias frames are needed.
 
 import matplotlib.pyplot as plt
 

@@ -1,6 +1,6 @@
 ---
 name: device-builder
-description: "Use this agent when creating new BLACS device classes, scaffolding the 5-file RemoteControl subclass pattern, or integrating a new external GUI into BLACS. This includes labscript_devices.py, blacs_tabs.py, blacs_workers.py, register_classes.py, and connection table entries.\n\nExamples:\n\n- User: \"We need to add remote control support for our new wavemeter.\"\n  Assistant: \"I'll use the device-builder agent to scaffold the new device class.\"\n  (Launch device-builder to create the 5-file device under userlib/user_devices.)\n\n- User: \"Create a BLACS device for the BigSky YAG lasers.\"\n  Assistant: \"Let me use the device-builder agent to scaffold the BigSkyHub device.\"\n  (Launch device-builder to follow the RemoteControl subclass pattern.)\n\n- User: \"I need to override transition_to_buffered for our new device.\"\n  Assistant: \"I'll use the device-builder agent to implement the worker override.\"\n  (Launch device-builder — it knows the worker lifecycle and override patterns.)"
+description: "Use this agent when creating new BLACS device classes, scaffolding the 5-file RemoteControl subclass pattern, or integrating a new external GUI into BLACS. This includes labscript_devices.py, blacs_tabs.py, blacs_workers.py, register_classes.py, and connection table entries.\n\nExamples:\n\n- User: \"We need to add remote control support for our new wavemeter.\"\n  Assistant: \"I'll use the device-builder agent to scaffold the new device class.\"\n  (Launch device-builder to create the 5-file device under userlib/user_devices.)\n\n- User: \"Create a BLACS device for the BigSky YAG lasers.\"\n  Assistant: \"Let me use the device-builder agent to scaffold the BigSkyHub device.\"\n  (Launch device-builder to follow the RemoteControl subclass pattern.)"
 model: inherit
 color: "#0078D4"
 memory: project
@@ -112,7 +112,6 @@ For the full ZMQ protocol: `userlib/user_devices/BLACS_COMMUNICATION_CONTRACT.md
 
 - **`blacs-expert`**: For Qt thread safety, state machine event ordering, BLACS architecture questions
 - **`amo-expert`**: For connection table placement, experiment sequence integration
-- **`session-notes`**: For documenting the integration (should already be running)
 
 When building a new device, proactively consult `blacs-expert` for thread safety review and state machine integration, and `amo-expert` for connection table placement and how the device fits into the experiment sequence. These agents provide critical context that prevents integration bugs.
 

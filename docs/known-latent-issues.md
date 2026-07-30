@@ -18,6 +18,20 @@ This doc is the persistent record. Each entry: what / where / severity / when it
 
 ---
 
+## NuvuCamera — 215/216 no-close guarantee holds in `errorHandling` but not through `disconnect_if_error_real`
+
+**Where**: `userlib/user_devices/NuvuCamera/Nuvu_sdk/Nuvu_cam_utils.py` (`disconnect_if_error_real`, ~lines 75-89) vs `nc_camera.py` `errorHandling` 215/216 branch (added 2026-07-08).
+
+**What**: `errorHandling` raises 215 (`NC_ERROR_GRAB_NO_IMAGE`) / 216 (`NC_ERROR_GRAB_NOT_STOP`) without closing the camera, but on the manual `get_image` path the `disconnect_if_error_real` decorator spares only `NuvuTimeout` — a `NuvuException(215/216)` falls to its generic `except Exception` and closes the camera anyway. The buffered path (`get_queued_image`, no-op decorator) gets the full no-close benefit.
+
+**Severity**: LATENT-LOW — 215/216 have never been observed on this hardware (2 days of logs swept 2026-07-08). Even if one fires during manual operation, behavior is strictly better than pre-2026-07-08 (single clean close with the real message preserved, vs the old triple-close that masked the original error).
+
+**When it matters**: only if 215/216 starts occurring during manual snap / live view.
+
+**Fix sketch**: add a `NuvuTimeout`-sibling subclass (e.g. `NuvuGrabCondition`) raised by the 215/216 branch and spared by the decorator. The string-in-`.error` convention means the decorator can't cheaply check the numeric code, so the subclass is the clean route. (Audit ref: 2026-07-08 blacs-expert re-audit, finding 3.)
+
+---
+
 ## `labscript-devices/AlazarTechBoard.py` — uses `time.clock()` (removed in Py3.8+)
 
 **Where**: `labscript-devices/labscript_devices/AlazarTechBoard.py`

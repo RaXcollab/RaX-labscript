@@ -1,3 +1,6 @@
+## Sequence file for first open cell work in 38 oxford, 04/2026
+
+
 from labscript import *
 from labscriptlib.Main_Experiment.connection_table import connection_table
 from labscriptlib.Main_Experiment.subsequences.subsequences import digital_pulse, latch_digital

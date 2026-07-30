@@ -1,0 +1,156 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<style>
+  body { font-family: Calibri, Segoe UI, sans-serif; font-size: 11pt; color: #333; max-width: 900px; margin: 20px auto; }
+  h1 { font-size: 20pt; border-bottom: 2px solid #0078d4; padding-bottom: 6px; color: #0078d4; }
+  h2 { font-size: 14pt; color: #0078d4; margin-top: 24px; }
+  h3 { font-size: 12pt; color: #444; }
+  table { border-collapse: collapse; width: 100%; margin: 10px 0; }
+  th, td { border: 1px solid #ccc; padding: 6px 10px; text-align: left; vertical-align: top; }
+  th { background: #f0f0f0; font-weight: bold; }
+  code { font-family: Consolas, monospace; font-size: 10pt; background: #f4f4f4; padding: 1px 4px; border-radius: 3px; }
+  pre { background: #f4f4f4; border: 1px solid #ddd; border-radius: 4px; padding: 10px; font-family: Consolas, monospace; font-size: 10pt; overflow-x: auto; white-space: pre; }
+  .badge { display: inline-block; padding: 2px 8px; border-radius: 10px; color: white; font-size: 9pt; font-weight: bold; }
+  .green { background: #4CAF50; }
+  .orange { background: #F57C00; }
+  .yellow { background: #FFC107; color: #333; }
+  .blue { background: #0078d4; }
+  .purple { background: #9C27B0; }
+  .gray { background: #9E9E9E; }
+  .red { background: #f44336; }
+  .meta { color: #888; font-size: 10pt; }
+  ol, ul { margin: 6px 0; padding-left: 24px; }
+  li { margin: 3px 0; }
+  strong { color: #222; }
+  .callout { background: #e8f4fd; border-left: 4px solid #0078d4; padding: 8px 12px; margin: 10px 0; }
+  .warn { background: #fff3cd; border-left: 4px solid #ffc107; padding: 8px 12px; margin: 10px 0; }
+</style>
+</head>
+<body>
+
+<h1>ZMQ v2 Cutover &mdash; Code Shipped, Awaiting Operator Merge</h1>
+<p class="meta">
+  <strong>Date:</strong> 2026-05-23 &nbsp;&bull;&nbsp;
+  <strong>Repos:</strong> parent <code>RaX-labscript</code>, <code>BigSkyControl</code>, <code>HF_Locking</code>, <code>rastering</code> &nbsp;&bull;&nbsp;
+  <strong>Tips:</strong> parent <code>5863d35</code>, BigSky <code>df8be86</code>, HF <code>080f5c1</code>, rastering <code>1cc4c12</code> &nbsp;&bull;&nbsp;
+  <strong>Context:</strong> Item 2.2 PRs 2&ndash;4 + atomic client cutover for the RemoteControl ZMQ v2 protocol
+</p>
+
+<h2>TL;DR</h2>
+<div class="callout">
+  All v2 protocol code is implemented, code-reviewed, doc-synced, and pushed to RaXcollab as <strong>topic branches on all 4 repos</strong>. <strong>Master/main is unchanged.</strong> 105/105 tests pass across 4 conda envs. The only step left is the operator-supervised merge + 4-process restart per
+  <code>~/.claude/plans/zmq-v2-cutover-playbook.md</code>.
+</div>
+<p>The v2 protocol replaces v1 with a strict envelope schema (id-echoed, structured error codes, capabilities exchange, monitor snapshots on HELLO). Per the Q4 resolution there is <strong>no dual-path code</strong> &mdash; v2 servers refuse v1 envelopes outright. The cutover MUST be atomic: BLACS-side client + all 3 GUI servers swap together.</p>
+
+<h2>What Shipped</h2>
+<table>
+  <tr><th>Repo</th><th>Branch</th><th>Tip</th><th>Commits ahead</th><th>Tests</th><th>Env</th></tr>
+  <tr><td>parent <code>RaX-labscript</code></td><td><code>zmq-v2-cutover</code></td><td><code>5863d35</code></td><td>5 ahead of <code>master @ 1b0693a</code></td><td>31/31 V1&ndash;V11</td><td><code>labscript</code></td></tr>
+  <tr><td><code>GUIs/BigSkyControl</code></td><td><code>zmq-v2-port</code></td><td><code>df8be86</code></td><td>3 ahead of <code>main @ 24d174d</code></td><td>27/27 B1&ndash;B8</td><td><code>guis</code></td></tr>
+  <tr><td><code>GUIs/HF_Locking</code></td><td><code>zmq-v2-port</code></td><td><code>080f5c1</code></td><td>3 ahead of <code>main @ 3ac543b</code></td><td>19/19 H1&ndash;H7 (+4 new)</td><td><code>guis</code></td></tr>
+  <tr><td><code>GUIs/rastering</code></td><td><code>zmq-v2-port</code> (in worktree <code>GUIs/rastering-zmq-v2/</code>)</td><td><code>1cc4c12</code></td><td>3 ahead of <code>main @ bf9fee2</code></td><td>28/28</td><td><code>rastering</code></td></tr>
+</table>
+<p>Per-repo commit sequence (initial PR &rarr; review fixup &rarr; doc sync):</p>
+<table>
+  <tr><th>Repo</th><th>PR commit</th><th>Review fixup</th><th>Doc sync</th></tr>
+  <tr><td>parent</td><td><code>cf394d3</code> transport fix + <code>551a6c9</code> PR 4b atomic cutover</td><td><code>928d9f6</code> (<code>RemoteRetryableError</code> + <code>RemoteMalformedReplyError</code> + retryable hint)</td><td><code>2e751c5</code> + <code>5863d35</code></td></tr>
+  <tr><td>BigSky</td><td><code>9d30ac9</code> (composition, <code>_BigSkyV2Server</code>)</td><td><code>960b5b5</code> (<code>MAX_CONSECUTIVE_TRANSPORT_FAILURES=5</code>)</td><td><code>df8be86</code></td></tr>
+  <tr><td>HF_Locking</td><td><code>a0cd4b2</code> (composition + QThread)</td><td><code>21079b7</code> (port-range validation + <code>UNKNOWN_CONNECTION</code> on uninit setpoint + lock-bypass WARNING + 4 new tests)</td><td><code>080f5c1</code></td></tr>
+  <tr><td>rastering</td><td><code>51d47d1</code> (composition + <code>finished</code>/<code>mode</code> extras)</td><td><code>2295bc8</code> (<code>arm_raster</code> lock consolidation + <code>traceback.print_exc</code>)</td><td><code>1cc4c12</code></td></tr>
+</table>
+
+<h2>Cutover Deployment</h2>
+<p>Full procedure in <code>~/.claude/plans/zmq-v2-cutover-playbook.md</code>. Short form:</p>
+<ol>
+  <li>Pre-flight: BLACS queue idle; all 4 GUIs closed; <code>master</code>/<code>main</code> clean on all 4 repos (operator edits to <code>BaF_globals.h5</code>/<code>Closed_cell.py</code> can remain unstaged).</li>
+  <li>Merge per-repo with <code>git merge --no-ff &lt;topic-branch&gt;</code>. Order does NOT matter (Q4: no v1&harr;v2 negotiation). Push to origin.</li>
+  <li>For rastering: merge from the worktree at <code>GUIs/rastering-zmq-v2/</code>, then optionally <code>git worktree remove ../rastering-zmq-v2</code>.</li>
+  <li><strong>Restart all 4 processes</strong> (BLACS + BigSky hub + HF_Locking + rastering GUI) before any new shot is queued. <em>This is the atomic step.</em></li>
+</ol>
+<div class="warn">
+  Running mixed v1/v2 between BLACS and any single GUI yields immediate <code>v1_protocol_refused</code> errors on every <code>CHECK_VALUE</code>/<code>PROGRAM_VALUE</code>. There is no graceful degradation.
+</div>
+
+<h3>Smoke Tests After Cutover</h3>
+<ol>
+  <li>All 3 RemoteControl tabs in BLACS show GREEN connection status (LaserLockGUI, RasteringGUI, BigSkyLasers).</li>
+  <li>Manually program a setpoint on each tab &mdash; should accept without error.</li>
+  <li><code>logs/BLACS.log</code> shows v2 structured log lines: <code>remotecontrol.{ServerName}.req action=... id=N status=SUCCESS latency_ms=X.X error_code=</code>.</li>
+  <li>One test shot through RunManager &rarr; HDF5 has intact <code>initial_monitor_values</code>/<code>final_monitor_values</code> groups for all RemoteControl devices.</li>
+</ol>
+
+<h3>Rollback</h3>
+<p>If any smoke test fails: <code>git revert -m 1 &lt;merge-sha&gt;</code> on each repo (preserves the merge as a recorded rollback), push, restart all 4 processes again. Topic branches stay on origin so a fixed re-attempt is possible. Full procedure in the playbook.</p>
+
+<h2>What Changed for Daily Workflow</h2>
+<div class="callout">
+  <strong>After merge + restart: nothing visible changes.</strong> All BLACS tabs behave identically. Setpoints program the same. Monitor values flow the same. Sequences compile and run the same.
+</div>
+<p>The one user-facing difference: any <em>external script</em> (outside our 3 GUIs) that speaks v1 envelopes directly to a RemoteControl ZMQ port will get a <code>v1_protocol_refused</code> error. There are no known such scripts in this lab, but worth flagging if any ad-hoc tooling exists.</p>
+
+<h2>Architecture &mdash; Composition Pattern</h2>
+<p>Pre-coding audit by <span class="badge blue">blacs-expert</span> ruled out multi-inheritance (Qt + custom server base) due to MRO ambiguity around <code>QObject</code>. Instead, each GUI server <strong>composes</strong> the v2 base:</p>
+<pre>class BigSkyZmqServer(QtCore.QObject):
+    def __init__(self, ...):
+        super().__init__()
+        self._v2 = _BigSkyV2Server(handlers=self._build_handlers(), ...)
+        # _v2 owns the socket loop; this shell owns Qt signals
+</pre>
+<p>Same shape held across all 3 GUIs. The HF_Locking variant runs <code>_v2</code> inside its existing <code>QThread</code>; BigSky and rastering run it as a daemon thread inside the GUI process. PUB-SUB on HF_Locking stays bare-integer (Q2 vs Q4 trade documented in the spec).</p>
+
+<h2>Bugs Found &amp; Fixed</h2>
+<div class="warn">
+  <strong>HF_Locking C2 (Critical)</strong> &mdash; silent lock-bypass when a lock-targeted setpoint command arrived while the channel was in manual mode. Reviewer caught it in the parallel pass. Fix: explicit <code>WARNING</code> log + reject with structured error. Plus 4 new regression tests pinning the behavior.
+</div>
+<div class="warn">
+  <strong>PR 1 transport bug</strong> &mdash; <code>ZmqReq/RepTransport.recv()</code> did not translate <code>zmq.error.Again</code> to <code>TimeoutError</code>. Would have bitten the first real consumer. Fixed pre-merge in <code>cf394d3</code>.
+</div>
+<table>
+  <tr><th>Repo</th><th>Severity</th><th>Issue</th><th>Fix</th></tr>
+  <tr><td>HF_Locking</td><td>Critical (C2)</td><td>Silent lock-bypass on manual-mode setpoint</td><td>WARNING + reject + 4 tests (<code>21079b7</code>)</td></tr>
+  <tr><td>HF_Locking</td><td>Important</td><td>Port range not validated; <code>UNKNOWN_CONNECTION</code> not emitted on uninitialized setpoint</td><td>Both fixed in <code>21079b7</code></td></tr>
+  <tr><td>parent</td><td>Important</td><td>No <code>RemoteRetryableError</code> distinction; <code>_check_response</code> didn't surface retryable hint</td><td>New exception subclasses + flag (<code>928d9f6</code>)</td></tr>
+  <tr><td>BigSky</td><td>Important</td><td>No transport circuit breaker</td><td><code>MAX_CONSECUTIVE_TRANSPORT_FAILURES=5</code> (<code>960b5b5</code>)</td></tr>
+  <tr><td>rastering</td><td>Important</td><td><code>arm_raster</code> lock scope incomplete; exceptions swallowed silently</td><td>Lock consolidation + <code>traceback.print_exc</code> (<code>2295bc8</code>)</td></tr>
+  <tr><td>parent</td><td>Reviewer false positive (I1)</td><td>Claimed rastering <code>finished</code> extra was fabricated</td><td>Verified canonical v2 idiom via <code>encode_reply(extra=...)</code>; no change needed</td></tr>
+</table>
+
+<h2>Patterns Observed</h2>
+<ul>
+  <li><strong>Cross-audit-then-execute</strong> &mdash; the pre-coding <code>blacs-expert</code> audit clarified composition-over-multi-inheritance, HF PUB-SUB shape, mock strategy, and HELLO emit-before-reply ordering. Zero rework on the initial PR scope.</li>
+  <li><strong>Parallel reviewer pattern (4 agents, ~2 min wall time)</strong> &mdash; one fresh (non-fork) general-purpose reviewer per repo, post-push, pre-merge. Caught 1 Critical + 5 Important + several Minor. Reviewers also caught a false positive (rastering I1), which itself validates the pattern.</li>
+  <li><strong><code>InMemoryTransport</code>-based mock mini-server</strong> &mdash; deterministic test pattern that replaces real ZMQ sockets at the transport layer. Allows full request/reply flow + handler dispatch testing in-process. Pattern in <code>userlib/external_gui_lib/zmq_v2.py</code>; reused across 4 test suites.</li>
+  <li><strong>Atomic cutover discipline</strong> &mdash; no master/main mutation across 4 repos until the operator says go. Topic branches + pre-merge code review + doc sync land before the human-in-the-loop step.</li>
+</ul>
+
+<h2>Docs Synced</h2>
+<table>
+  <tr><th>Doc</th><th>Change</th></tr>
+  <tr><td><code>docs/remotecontrol-zmq-protocol-v2.md</code></td><td>Status: IMPLEMENTED + post-fixup commit tips + review summary</td></tr>
+  <tr><td><code>docs/remotecontrol-zmq-protocol.md</code></td><td>DEPRECATED banner pointing to v2</td></tr>
+  <tr><td><code>userlib/user_devices/BLACS_COMMUNICATION_CONTRACT.md</code></td><td>DEPRECATED banner pointing to v2</td></tr>
+  <tr><td><code>docs/external-guis-architecture.md</code></td><td>Protocol-note banner explaining v1&rarr;v2 transition</td></tr>
+  <tr><td><code>CLAUDE.md</code> (parent)</td><td>Reference Documentation table: v2 canonical, v1 DEPRECATED</td></tr>
+  <tr><td><code>.claude/rules/ref-remotecontrol-zmq.md</code></td><td>Auto-loads BOTH v2 (first) + v1 (context)</td></tr>
+  <tr><td>Per-GUI <code>CLAUDE.md</code> &times; 3</td><td>ZMQ Protocol section now describes v2 composition + capabilities + quirks</td></tr>
+</table>
+
+<h2>Future Work</h2>
+<ul>
+  <li><strong>Operator merge + 4-process restart</strong> &mdash; per the playbook.</li>
+  <li><strong>Item 2.8c</strong> &mdash; pre-push CI hook + userlib worker tests (<code>LaserLockDevice</code>, <code>NI_SCOPE</code>, <code>NuvuCamera</code>). Independent of v2; would have caught the NuvuCamera ctypes regression structurally.</li>
+  <li><strong>Minor review follow-ups</strong> (not blocking):
+    <ul>
+      <li>BigSky M3 &mdash; extract the <code>10s</code> magic constant.</li>
+      <li>HF M6 &mdash; footnote on lock-bypass test.</li>
+      <li>BigSky M4 &mdash; add disconnect-during-call test case.</li>
+      <li>BigSky I1 &mdash; replace <code>"rejected"</code> prefix string-sniffing with controllers returning <code>REJECTED</code> directly.</li>
+    </ul>
+  </li>
+</ul>
+
+</body>
+</html>

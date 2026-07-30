@@ -1,0 +1,60 @@
+#!/bin/bash
+# Parent-repo pre-push hook: run userlib pytest suite, block push on failure.
+# bash (not sh): PIPESTATUS below is a bashism; under dash it is a hard error.
+#
+# INSTALL (one-time per checkout):
+#   cp .githooks/pre-push .git/hooks/pre-push
+#   chmod +x .git/hooks/pre-push
+#
+# Git refuses to share hooks via the working tree (security), so the
+# source-of-truth lives at .githooks/pre-push and operators install it
+# manually. Re-run the install line after a fresh clone.
+#
+# Logs to .git/hooks/pre-push.log; that path is inside .git/ so git
+# ignores it automatically. No .gitignore entry needed.
+#
+# Item 2.8c (Phase 6 hardening plan, plans/look-up-all-recent-purrfect-starfish.md).
+
+set -e
+
+# Derive the log dir: in a linked worktree `.git` is a FILE and the private
+# gitdir (.git/worktrees/<name>/) has no hooks/ subdir — the old literal
+# ".git/hooks/pre-push.log" crashed the hook there and blocked the push.
+LOG_DIR="$(git rev-parse --git-dir)/hooks"
+mkdir -p "$LOG_DIR"
+LOG="$LOG_DIR/pre-push.log"
+echo "=== pre-push @ $(date) ===" >> "$LOG"
+
+# Source conda. The `labscript` env owns:
+#   - userlib/external_gui_lib/tests/  (V1-V11 v2 protocol contract)
+#   - userlib/user_devices/*/tests/    (per-device pure-Python helpers)
+CONDA_BASE="$HOME/miniconda"
+if [ -f "$CONDA_BASE/etc/profile.d/conda.sh" ]; then
+    . "$CONDA_BASE/etc/profile.d/conda.sh"
+    if ! conda activate labscript 2>>"$LOG"; then
+        echo "pre-push: 'labscript' conda env exists but FAILED TO ACTIVATE — userlib tests skipped, push allowed. Fix the env; conda's error is in $LOG" | tee -a "$LOG" >&2
+        exit 0
+    fi
+else
+    echo "pre-push: conda not found at $CONDA_BASE — skipping userlib tests." | tee -a "$LOG"
+    exit 0
+fi
+
+echo "Running userlib tests in env: $CONDA_DEFAULT_ENV" | tee -a "$LOG"
+# external_gui_lib/tests/ was rolled back with ZMQ-v2 (2026-05-26); the guard
+# re-enables it automatically when the revival restores that tree.
+TEST_PATHS="userlib/user_devices/NuvuCamera/tests/ userlib/user_devices/NI_SCOPE/tests/"
+if [ -d "userlib/external_gui_lib/tests" ]; then
+    TEST_PATHS="userlib/external_gui_lib/tests/ $TEST_PATHS"
+fi
+python -m pytest -q $TEST_PATHS 2>&1 | tee -a "$LOG"
+
+RESULT=${PIPESTATUS[0]}
+if [ "$RESULT" -ne 0 ]; then
+    echo "pre-push: userlib tests failed (exit $RESULT). Push blocked." | tee -a "$LOG"
+    echo "         See full log: $LOG" >&2
+    exit "$RESULT"
+fi
+
+echo "pre-push: userlib tests passed." | tee -a "$LOG"
+exit 0

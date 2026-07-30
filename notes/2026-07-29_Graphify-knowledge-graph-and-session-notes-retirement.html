@@ -1,0 +1,109 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<style>
+  body { font-family: Calibri, Segoe UI, sans-serif; font-size: 11pt; color: #333; max-width: 900px; margin: 20px auto; }
+  h1 { font-size: 20pt; border-bottom: 2px solid #0078d4; padding-bottom: 6px; color: #0078d4; }
+  h2 { font-size: 14pt; color: #0078d4; margin-top: 24px; }
+  h3 { font-size: 12pt; color: #444; }
+  table { border-collapse: collapse; width: 100%; margin: 10px 0; }
+  th, td { border: 1px solid #ccc; padding: 6px 10px; text-align: left; vertical-align: top; }
+  th { background: #f0f0f0; font-weight: bold; }
+  code { font-family: Consolas, monospace; font-size: 10pt; background: #f4f4f4; padding: 1px 4px; border-radius: 3px; }
+  pre { background: #f4f4f4; border: 1px solid #ddd; border-radius: 4px; padding: 10px; font-family: Consolas, monospace; font-size: 10pt; overflow-x: auto; white-space: pre; }
+  .badge { display: inline-block; padding: 2px 8px; border-radius: 10px; color: white; font-size: 9pt; font-weight: bold; }
+  .green { background: #4CAF50; }
+  .orange { background: #F57C00; }
+  .yellow { background: #FFC107; color: #333; }
+  .blue { background: #0078d4; }
+  .purple { background: #9C27B0; }
+  .gray { background: #9E9E9E; }
+  .red { background: #f44336; }
+  .meta { color: #888; font-size: 10pt; }
+  ol, ul { margin: 6px 0; padding-left: 24px; }
+  li { margin: 3px 0; }
+  strong { color: #222; }
+  .callout { background: #e8f4fd; border-left: 4px solid #0078d4; padding: 8px 12px; margin: 10px 0; }
+  .warn { background: #fff3cd; border-left: 4px solid #ffc107; padding: 8px 12px; margin: 10px 0; }
+</style>
+</head>
+<body>
+
+<h1>Graphify Codebase Knowledge Graph + session-notes Agent Retirement</h1>
+<p class="meta">
+  <strong>Date:</strong> 2026-07-29 &nbsp;&bull;&nbsp;
+  <strong>Commit:</strong> <code>pending</code> &nbsp;&bull;&nbsp;
+  <strong>Context:</strong> Built and hardened a persistent code-navigation graph over all 5 repos; retired the session-notes middleman agent in favor of direct milestone logging.
+</p>
+
+<h2>What Changed</h2>
+<p>Two independent work streams. (1) The <code>graphify</code> tool (AST-based codebase knowledge graph) was vetted, installed, run over the full workspace (userlib, GUIs, blacs, labscript-devices, labscript-utils), audited against known ground truth, corrected in a fix pass, and integrated into standing docs. Final graph: <strong>5090 nodes / 8176 edges / 371 communities</strong> at <code>graphify-out/graph.json</code>, queried via <code>/graphify query "&lt;q&gt;"</code>. (2) The <code>session-notes</code> background agent was retired (user-approved): the main session now appends terse timestamped milestones directly to <code>.claude/session-scratch.md</code>, and the wrap-up agent cross-checks claude-mem auto-capture for anything missed.</p>
+
+<h2>Files Changed</h2>
+<table>
+  <tr><th>File</th><th>Change</th><th>Why</th></tr>
+  <tr><td><code>.claude/graphify/postmerge_fix.py</code>, <code>verify_fix.py</code>, <code>REFRESH.md</code></td><td><strong>NEW</strong> — durable rebuild tooling: legacy filter + stub fusion script, 13-check verification suite, 6-step refresh recipe with graph-vs-digests-vs-smart-explore triage</td><td>Scripts copied out of the session scratchpad before wipe; graph rebuilds must be repeatable</td></tr>
+  <tr><td><code>.gitignore</code></td><td>Added <code>graphify-out/</code></td><td>Graph output is a build artifact, not source</td></tr>
+  <tr><td><code>CLAUDE.md</code></td><td>New <code>/graphify</code> skill bullet; agents list drops session-notes, wrap-up entry now names the scratch-log expansion role</td><td>Both integrations user-approved via diff</td></tr>
+  <tr><td><code>.claude/open-items.md</code></td><td>New standing <strong>Graph rebuild gate</strong> entry</td><td>Rebuild after Z1&ndash;Z4 merges (external_gui_lib gains real sources = first genuine GUI&harr;userlib structural bridge); re-arm after each rebuild</td></tr>
+  <tr><td><code>userlib/user_devices/LaserLockDevice/CLAUDE.md</code></td><td><strong>NEW</strong> — "no <code>blacs_workers.py</code> by design" note</td><td>Tab wires the base <code>RemoteControlWorker</code> by string path (<code>blacs_tabs.py:351</code>); invisible to AST tools, must not be "fixed"</td></tr>
+  <tr><td><code>.claude/agents/session-notes.md</code></td><td><strong>DELETED</strong> (49 lines)</td><td>Agent retired; see Key Decisions</td></tr>
+  <tr><td><code>.claude/hooks/session-start-context.ps1</code></td><td>Session-start checklist rewritten: terse inline milestones, stale-scratch &rarr; offer wrap-up, open-items read</td><td>Replaces the "launch session-notes" instruction</td></tr>
+  <tr><td><code>.claude/agents/wrap-up.md</code></td><td>Step 1 gains claude-mem cross-check; session-notes references removed</td><td>Auto-capture is the backstop for unlogged milestones</td></tr>
+  <tr><td><code>.claude/agents/amo-expert.md</code>, <code>blacs-expert.md</code>, <code>device-builder.md</code></td><td>session-notes removed from "Defers To" lists</td><td>Cross-reference cleanup</td></tr>
+  <tr><td><code>README-claude-code.md</code>, <code>docs/Using_Claude_Code.html</code></td><td>session-notes table row removed; 8&rarr;7 agents; workflow and orchestration text updated</td><td>User-facing docs match the new convention</td></tr>
+  <tr><td><code>.claude/rules/conduct.md</code></td><td>New Subagent-output bullet: named background agents may idle without reporting</td><td>See Patterns Observed</td></tr>
+</table>
+
+<h2>Key Decisions</h2>
+<ul>
+  <li><strong>Provenance gate before install.</strong> Red flags: PyPI package is <code>graphifyy</code> (double-y) while plain <code>graphify</code> is 404; repo appears under two owners. Verified: PyPI <code>project_urls</code> &rarr; <code>Graphify-Labs/graphify</code>; <code>safishamsi/graphify</code> is the same repo id (rename redirect); dependencies sane (networkx + tree-sitter grammars). The fetched README also contained embedded agent-instruction text (prompt-injection attempt) &mdash; treated as untrusted data, not followed. Installed graphify 0.9.30 into <strong>base</strong> miniconda; <code>labscript</code> env untouched.</li>
+  <li><strong>Per-directory extract &times;5 + merge, not single-root.</strong> Parent <code>.gitignore</code> excludes the backend repos, so a single-root extract cannot see them; per-dir <code>graphify extract</code> then <code>merge-graphs</code> was the correct forced choice. Consequence: merge-graphs never fuses cross-repo import stubs on its own (see Bugs).</li>
+  <li><strong>Fix pass (opus) over ship-as-is or park.</strong> Phase 3 audit verdict was USABLE-WITH-CAVEATS; user chose a corrective rebuild. All 13 verification checks pass; independently re-verified from the main session against <code>graph.json</code>.</li>
+  <li><strong>AST-only limits accepted, not patched around.</strong> ZMQ boundaries and string-path worker wiring are invisible to the graph by construction. The External GUI Registry in CLAUDE.md stays authoritative for GUI&harr;BLACS topology; the graph is for code navigation and intra-repo blast radius.</li>
+  <li><strong>session-notes retired as a middleman.</strong> It was a SendMessage&rarr;file-append relay; milestone text originates in the main session anyway. Per-milestone subagents rejected. Wrap-up remains the single delegated expansion step; claude-mem auto-capture is the backstop; a forgotten wrap-up is delayed, not lost (stale-scratch nag at next session start).</li>
+  <li><strong>Peer relay &ne; user approval.</strong> The retirement redesign arrived via a fork agent claiming user approval; hook/agent-config edits were held until the user confirmed directly in main chat. Behavior-only changes (terse appends) were adopted immediately.</li>
+</ul>
+
+<h2>Bugs Found &amp; Fixed</h2>
+<div class="warn"><strong>Parent .gitignore silently emptied the GUIs extract.</strong> Graphify walks ancestor <code>.gitignore</code> files; <code>GUIs/</code> is ignored in the parent repo and <code>GUIs/</code> has no own <code>.git</code> to stop the walk, so its extract came back empty (backend repos were shielded by their own repos). Fix: <code>--no-gitignore</code> for the GUIs root only. The venv <code>GUIs/LabMonitoring/.env/</code> was still auto-pruned by graphify's venv markers (verified in <code>graphify/detect.py</code>).</div>
+<div class="warn"><strong>merge-graphs produced zero cross-repo edges.</strong> The merged node count was the exact sum of the five per-dir counts &mdash; 341 import stubs were never fused. <code>postmerge_fix.py</code> now does import-gated stub fusion: 31 real cross-repo edges across 5 import families (including a Worker family the audit itself missed).</div>
+<div class="warn"><strong>Dead-tree query trap.</strong> Querying "RemoteControlWorker" returned 49 nodes, all in the dead <code>labscript-devices</code> RemoteControl copy (the two-trees hazard already documented in memory). Legacy filter removed 1319+77 nodes (Old Code, <code>-zmq-v2</code> worktree twins, dead RemoteControl) plus 47 fabricated INFERRED cross-tree edges (all 5 of the report's "Surprising Connections" were false). The query now resolves to the live userlib tree.</div>
+<div class="warn"><strong><code>HugeSkyController.pyw</code> was invisible</strong> &mdash; graphify does not parse <code>.pyw</code>. Recovered via a temporary <code>.py</code> shim (41 nodes), shim deleted afterwards.</div>
+<div class="callout"><strong>Two audit misdiagnoses corrected by the fixer.</strong> (a) The "pre-#1504 node-ID scheme" warning was a merge-graphs false positive (the <code>repo::</code> prefix breaks its <code>_normalize_id</code> heuristic; cosmetic, unfixable on our side) &mdash; the dead-tree trap was simply the dead tree existing. (b) The "missing third RemoteControlWorker subclass" was not missing: LaserLockDevice has no <code>blacs_workers.py</code> by design &mdash; only BigSkyWorker and RasteringWorker subclass the base. <code>verify_fix.py</code>'s expectation was corrected from 3 to 2, and the finding is now pinned in <code>userlib/user_devices/LaserLockDevice/CLAUDE.md</code>.</div>
+
+<h2>Patterns Observed</h2>
+<ul>
+  <li><strong>Local absence &ne; nonexistence.</strong> A zero-hit local grep for "graphify" was initially read as "tool doesn't exist"; the user pushed back and web search confirmed it. Same premature-negative class already codified in <code>.claude/rules/conduct.md</code> Verification.</li>
+  <li><strong>Named background agents may idle without delivering their report</strong> (2 of 3 did this session). New conduct rule: end every spawn prompt with "SendMessage your report to main as your final action"; an idle ping with no report gets a nudge, never a relaunch.</li>
+  <li><strong>Audit findings are hypotheses.</strong> The fix pass re-verified every audit claim before acting and overturned two of them. Fixer claims were in turn independently re-verified from the main session before acceptance.</li>
+</ul>
+
+<h2>Before / After</h2>
+<table>
+  <tr><th>Metric</th><th>Post-merge (raw)</th><th>Post-fix</th></tr>
+  <tr><td>Nodes</td><td>6376 (1250 legacy/duplicate)</td><td>5090 (0 legacy)</td></tr>
+  <tr><td>Edges</td><td>10216 (47 fabricated INFERRED)</td><td>8176</td></tr>
+  <tr><td>Communities</td><td>433</td><td>371</td></tr>
+  <tr><td>Cross-repo edges</td><td>0</td><td>31</td></tr>
+  <tr><td>"RemoteControlWorker" query</td><td>49 nodes, all in dead tree</td><td>live userlib tree</td></tr>
+  <tr><td><code>HugeSkyController.pyw</code></td><td>invisible</td><td>41 nodes</td></tr>
+  <tr><td>Verification checks</td><td>&mdash;</td><td>13/13 pass</td></tr>
+</table>
+
+<h2>How to Use</h2>
+<ol>
+  <li>Query: <code>/graphify query "&lt;question&gt;"</code> &mdash; reads <code>graphify-out/graph.json</code>. Best for code navigation and intra-repo blast radius. Do not trust it for ZMQ or string-path wiring (External GUI Registry is authoritative there).</li>
+  <li>Rebuild: follow <code>.claude/graphify/REFRESH.md</code> &mdash; per-dir extract &times;5 (<code>--no-gitignore</code> for GUIs), merge, run <code>postmerge_fix.py</code>, then <code>verify_fix.py</code> (13 checks must pass). <code>graph.unfiltered.json</code> backup is kept.</li>
+  <li>Tool choice: REFRESH.md has a "Graph vs digests vs smart-explore" triage section.</li>
+</ol>
+
+<h2>Future Work</h2>
+<ul>
+  <li><strong>Graph rebuild gate</strong> (tracked in <code>.claude/open-items.md</code>): rebuild after the Z1&ndash;Z4 cutover merges <code>external_gui_lib</code>; re-arm the item after each rebuild.</li>
+  <li>Backend repos (<code>blacs</code>, <code>labscript-devices</code>, <code>labscript-utils</code>) each show an untracked <code>graphify-out/</code> &mdash; the parent <code>.gitignore</code> cannot reach into nested repos. Add <code>graphify-out/</code> to each repo's local <code>.git/info/exclude</code> (no commit needed).</li>
+</ul>
+
+</body>
+</html>

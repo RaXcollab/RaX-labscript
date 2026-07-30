@@ -22,6 +22,79 @@ Sources:
   (and Sirah-2)
 - Addon zips containing official Sirah Python + LabVIEW examples
 
+## 2026-07-15 — UI automation ruled out; SCPI/Network-Server path VERIFIED
+
+Empirical results from live read-only probing (TiSa-2 / Sirah-2, C-S now at
+736 nm for BaF X(1)-B(0)). Supersedes the "three theoretical paths" pessimism
+in §1 for the *no-LabVIEW* case, and corrects the earlier assumption that
+Counterdrift shares Candidate W's fragility — the operator bench-tested
+Counterdrift holding through setpoint steps where the WS7-direct PID breaks.
+
+### Dead ends (verified this session)
+- **Counterdrift GUI is NOT automatable.** Matisse Commander is a LabVIEW app;
+  its front panel — including the live Counter Drift dialog — is a single drawn
+  canvas exposing **0** controls to both Windows UI Automation *and* Win32
+  child-window enumeration (verified on both instances + the actual dialog).
+  pywinauto/UIA is a dead end; do not attempt it.
+- **No `COUNTERDRIFT:*` command** exists in the full 306-command device set
+  (Programmer's Guide Ch. 6). Counterdrift's setpoint is reachable ONLY via a
+  custom LabVIEW plug-in. LabVIEW 2020 32-bit is NOT installed here (only
+  2023-2026 folders, none with LabVIEW.exe) — the plug-in path is blocked until it is.
+- **No VI-Server / ActiveX / OLE channel** — the app configs carry no
+  `server.tcp.*` / `server.ole.*` keys and expose no such listening port.
+
+### The working no-LabVIEW channel: Matisse Network Server (SCPI)
+- Per Matisse Commander instance; **default OFF**. Enable via
+  `Matisse > Communication Options`: Network Client = **Use VISA**, Network
+  Server = **Enable Server** (default port 30000). Both installs default to
+  30000 → on one PC they collide; give each a distinct port.
+- **Wire framing = LabVIEW length-prefixed, NOT newline SCPI:**
+  send `struct.pack('>L', len(payload)) + payload` (ASCII, no newline); recv a
+  4-byte big-endian length then that many bytes; close gracefully with
+  `Close_Network_Connection` + 300 ms. Raw newline SCPI → server **Error 56**
+  ("TCP Read exceeded time limit") + aborted connection. Reference client:
+  `nelsond/sirah-matisse-commander` (endorsed by Programmer's Guide Ch. 3).
+- Read-only probe: `GUIs/HF_Locking/tools/matisse_scpi_probe.py` (queries only;
+  safe on a live, locked laser).
+
+### Verified reads (TiSa-2)
+- `SCAN:DEVICE = 2` → scan master is the **reference-cell piezo** (the actuator
+  Counterdrift drives). Scan limits 0.1-0.9; `SCAN:RISINGSPEED = 1e-3`.
+- `SCAN:NOW` and `REFERENCECELL:NOW` **read identical at one instant** (0.261683);
+  likely the same underlying value, but that is a single sample, not proof.
+- So the ref-cell position *appears* remotely settable via `SCAN:NOW` /
+  `REFERENCECELL:NOW` — no LabVIEW, no GUI.
+- `IDN?` is **unreliable on TiSa-2** (reports "Matisse TR / S/N 99-99-99"; it is
+  a real **C-S**, real S/N 24/38/18 — firmware serial bug; TiSa-1 reports fine).
+  Never gate logic on IDN for this unit.
+
+### Candidate path (untested — needs pump ON + laser locked)
+Drive `SCAN:NOW` for the coarse, gentle frequency hop (the Matisse's native
+tuning path, which the internal lock is designed to follow) + keep the existing
+WS7/HF_Locking wavemeter servo for drift/hold. Integrate as a per-channel
+backend in HF_Locking (`workers.py`) for ports 4 (TiSa_1) / 6 (TiSa-2).
+**Open questions:** does an arbitrary-order `SCAN:NOW` step hold the internal
+lock (vs WS7 steps that break it)? position→THz calibration
+(`SCAN:REFERENCECALIBRATION?` returned a syntax error; use Control Scan
+Measurement instead).  If it holds, no LabVIEW is needed.
+
+### Verified 2026-07-15 (code-read)
+- ZMQ is **v1**; command surface is exactly `HELLO` / `CHECK_VALUE` /
+  `PROGRAM_VALUE` — **no lock enable/disable command** (arming is GUI-manual-only).
+  `workers.py:_handle_msg` (L565-602).
+- **Wait-gate** `if wait and lock_enabled and dev_mode:` — for a Counterdrift/SCPI
+  port the WS7 `deviation_mode` is OFF → gate False → `PROGRAM_VALUE` returns
+  SUCCESS *without waiting for convergence* (the silent lock-bypass to fix).
+- Port map: **connection 1 = TiSa_1, connection 6 = TiSa_2** (TiSa_1 moved ch4 → ch1 on 2026-07-29 to avoid crosstalk) (`connection_table.py`
+  L56-95; GUI `CHANNEL_NAMES` labels port 6 "Ch_6" but BLACS names it TiSa_2);
+  `LaserLockDevice(..., wait_for_lock=True)`.
+
+### Still unverified — confirm before building
+- `SCAN:NOW == REFERENCECELL:NOW` being the *same* actuator — one coincident read;
+  confirm by moving one and reading the other (part of the gated write test).
+- LaserLockDevice `transition_to_manual` no-op / `post_experiment` teardown —
+  recon claim; verify in `LaserLockDevice/blacs_workers.py` before relying.
+
 ## Lab-confirmed operating context
 
 | | |
@@ -136,10 +209,10 @@ WS7 (8-ch fiber switch, ~5 Hz/ch) ── wlmData.dll
        │ in HF_Locking WavemeterWorker thread
        ▼
 WS7 built-in 8-channel PID DAC card (Sirah-supplied wavemeter PID)
-   ch4 (TiSa_1) config: P=0.16, I=0.84, D=0.034, T=0.02, dt=0.01, UseTa=1,
+   ch1 (TiSa_1; was ch4 when these values were recorded) config: P=0.16, I=0.84, D=0.034, T=0.02, dt=0.01, UseTa=1,
                         Polarity=-1, SensitivityDim=-2, Bounds 0..9000 mV
        │
-       ▼ DAC voltage on ch4 (~0..5 V in practice)
+       ▼ DAC voltage on ch1 (~0..5 V in practice)
        │ rear-panel SMA cable
        ▼ Matisse C Reference Cell external input (item 13)
        │
@@ -181,13 +254,13 @@ only for GUI-side fixes (parameter bounds, persistence).
 
 ### Configuration (set-and-hold mode)
 
-- Front-panel cable: unchanged (WS7 ch4 still to rear-panel item 13) —
+- Front-panel cable: unchanged (WS7 ch1 — TiSa_1's output since 2026-07-29 — to rear-panel item 13) —
   cable serves no purpose now but doesn't interfere
-- Disable WS7 PID for ch4 (`SetDeviationMode(0)` via HF_Locking, or in
+- Disable WS7 PID for ch1 (`SetDeviationMode(0)` via HF_Locking, or in
   the WS7 native app)
 - Enable WM Selector (or HighFinesse) plug-in for the data layer, plus
   the Wavemeter plug-in for the umbrella
-- `Settings → WM Selector → Show Settings`: `Switch = TRUE`, `Channel = 4`,
+- `Settings → WM Selector → Show Settings`: `Switch = TRUE`, `Channel = 1` (was 4 pre-2026-07-29 — update the plug-in setting when first used),
   `Synchronous Wavemeter Readout? = ON` (required for 8-channel switched WS7)
 - Open `Plug-ins > Wavemeter > Counterdrift` dialog
 - Sirah-suggested start: **P=0, I=−0.5, D=0, Average=10, Update=300 ms**
@@ -432,7 +505,7 @@ behavior, not a single-axis maximum.
 
 **What happens when BLACS step-changes a setpoint:**
 
-1. BLACS writes new setpoint to WS7 ch4 via `SetPIDCourseNum`.
+1. BLACS writes new setpoint to WS7 ch1 via `SetPIDCourseNum`.
 2. WS7 PID sees ~5–10 MHz step error.
 3. WS7 PID drives ref-cell DAC voltage toward new equilibrium —
    aggressive because integral wind-up tuned for continuous tracking.

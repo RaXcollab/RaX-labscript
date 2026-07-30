@@ -95,7 +95,33 @@
       "Bash(git -C * show *)",
       "Bash(git -C * status *)",
       "Bash(git -C * diff *)",
-      "Bash(git -C * rev-parse *)"
+      "Bash(git -C * rev-parse *)",
+      "mcp__plugin_claude-mem_mcp-search__search",
+      "Bash(git -C * ls-remote *)",
+      "Bash(git range-diff *)",
+      "mcp__plugin_claude-mem_mcp-search__smart_outline",
+      "mcp__plugin_claude-mem_mcp-search__smart_search",
+      "mcp__plugin_context-mode_context-mode__ctx_insight",
+      "mcp__plugin_context-mode_context-mode__ctx_purge",
+      "mcp__plugin_claude-mem_mcp-search__timeline",
+      "mcp__plugin_claude-mem_mcp-search__smart_unfold",
+      "mcp__plugin_claude-mem_mcp-search__get_observations",
+      "mcp__plugin_claude-mem_mcp-search__observation_search",
+      "mcp__plugin_claude-mem_mcp-search__observation_context",
+      "mcp__plugin_claude-mem_mcp-search__observation_add",
+      "mcp__plugin_claude-mem_mcp-search__observation_record_event",
+      "mcp__plugin_claude-mem_mcp-search__observation_generation_status",
+      "mcp__plugin_claude-mem_mcp-search__query_corpus",
+      "mcp__plugin_claude-mem_mcp-search__list_corpora",
+      "mcp__plugin_claude-mem_mcp-search__build_corpus",
+      "mcp__plugin_claude-mem_mcp-search__rebuild_corpus",
+      "mcp__plugin_claude-mem_mcp-search__prime_corpus",
+      "mcp__plugin_claude-mem_mcp-search__reprime_corpus",
+      "mcp__plugin_claude-mem_mcp-search__session_start_context",
+      "Read",
+      "WebSearch",
+      "mcp__plugin_context7_context7__query-docs",
+      "mcp__plugin_context7_context7__resolve-library-id"
     ],
     "additionalDirectories": [
       "c:\\Users\\radmo\\labscript-suite\\.claude\\skills",
@@ -105,13 +131,144 @@
     ]
   },
   "hooks": {
+    "SubagentStart": [
+      {
+        "matcher": "claude-code-guide|general-purpose|Explore|Plan",
+        "hooks": [
+          {
+            "type": "command",
+            "shell": "powershell",
+            "command": "& \"$env:CLAUDE_PROJECT_DIR\\.claude\\hooks\\subagent-source-discipline.ps1\"",
+            "timeout": 15
+          }
+        ]
+      }
+    ],
+    "SessionStart": [
+      {
+        "matcher": "startup|resume|clear",
+        "hooks": [
+          {
+            "type": "command",
+            "shell": "powershell",
+            "command": "& \"$env:CLAUDE_PROJECT_DIR\\.claude\\hooks\\session-start-context.ps1\"",
+            "timeout": 15,
+            "statusMessage": "Injecting session-start checklist"
+          }
+        ]
+      }
+    ],
+    "PostToolUse": [
+      {
+        "matcher": "Edit|Write",
+        "hooks": [
+          {
+            "type": "command",
+            "shell": "powershell",
+            "if": "Edit(userlib/user_devices/**)",
+            "command": "& \"$env:CLAUDE_PROJECT_DIR\\.claude\\hooks\\mark-device-edit.ps1\"",
+            "timeout": 15,
+            "async": true
+          },
+          {
+            "type": "command",
+            "shell": "powershell",
+            "if": "Edit(blacs/**)",
+            "command": "& \"$env:CLAUDE_PROJECT_DIR\\.claude\\hooks\\mark-device-edit.ps1\"",
+            "timeout": 15,
+            "async": true
+          },
+          {
+            "type": "command",
+            "shell": "powershell",
+            "if": "Edit(labscript-devices/**)",
+            "command": "& \"$env:CLAUDE_PROJECT_DIR\\.claude\\hooks\\mark-device-edit.ps1\"",
+            "timeout": 15,
+            "async": true
+          },
+          {
+            "type": "command",
+            "shell": "powershell",
+            "if": "Edit(labscript-utils/**)",
+            "command": "& \"$env:CLAUDE_PROJECT_DIR\\.claude\\hooks\\mark-device-edit.ps1\"",
+            "timeout": 15,
+            "async": true
+          },
+          {
+            "type": "command",
+            "shell": "powershell",
+            "if": "Write(userlib/user_devices/**)",
+            "command": "& \"$env:CLAUDE_PROJECT_DIR\\.claude\\hooks\\mark-device-edit.ps1\"",
+            "timeout": 15,
+            "async": true
+          },
+          {
+            "type": "command",
+            "shell": "powershell",
+            "if": "Write(blacs/**)",
+            "command": "& \"$env:CLAUDE_PROJECT_DIR\\.claude\\hooks\\mark-device-edit.ps1\"",
+            "timeout": 15,
+            "async": true
+          },
+          {
+            "type": "command",
+            "shell": "powershell",
+            "if": "Write(labscript-devices/**)",
+            "command": "& \"$env:CLAUDE_PROJECT_DIR\\.claude\\hooks\\mark-device-edit.ps1\"",
+            "timeout": 15,
+            "async": true
+          },
+          {
+            "type": "command",
+            "shell": "powershell",
+            "if": "Write(labscript-utils/**)",
+            "command": "& \"$env:CLAUDE_PROJECT_DIR\\.claude\\hooks\\mark-device-edit.ps1\"",
+            "timeout": 15,
+            "async": true
+          }
+        ]
+      }
+    ],
+    "SubagentStop": [
+      {
+        "matcher": "blacs-expert",
+        "hooks": [
+          {
+            "type": "command",
+            "shell": "powershell",
+            "command": "& \"$env:CLAUDE_PROJECT_DIR\\.claude\\hooks\\mark-audit-ran.ps1\"",
+            "timeout": 15,
+            "async": true
+          }
+        ]
+      }
+    ],
+    "Stop": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "shell": "powershell",
+            "command": "& \"$env:CLAUDE_PROJECT_DIR\\.claude\\hooks\\check-audit-gate.ps1\"",
+            "timeout": 15
+          }
+        ]
+      }
+    ],
     "PreToolUse": [
       {
         "matcher": "Bash",
         "hooks": [
           {
             "type": "command",
-            "command": "bash -c 'INPUT=$(cat); CMD=$(echo \"$INPUT\" | python -c \"import sys,json; print(json.load(sys.stdin).get(\\\"tool_input\\\",{}).get(\\\"command\\\",\\\"\\\"))\"); if echo \"$CMD\" | grep -qE \"git push\"; then if echo \"$CMD\" | grep -qE \"(blacs|labscript-devices|labscript-utils)\"; then echo \"Blocked: pushing to backend repo. Use explicit user confirmation.\" >&2; exit 2; fi; fi; if echo \"$CMD\" | grep -qE \"rm\\s+-(rf|r|fr)\\s\"; then echo \"BLOCKED: rm -r/rm -rf requires explicit user approval. Ask first.\" >&2; exit 2; fi; if echo \"$CMD\" | grep -qE \"^mv\\s.*/$\"; then echo \"BLOCKED: mv on directories requires explicit user approval. Ask first.\" >&2; exit 2; fi; exit 0'"
+            "command": "bash -c 'INPUT=$(cat); CMD=$(echo \"$INPUT\" | python -c \"import sys,json; print(json.load(sys.stdin).get(\\\"tool_input\\\",{}).get(\\\"command\\\",\\\"\\\"))\"); if echo \"$CMD\" | grep -qE \"rm\\s+-(rf|r|fr)\\s\"; then echo \"BLOCKED: rm -r/rm -rf requires explicit user approval. Ask first.\" >&2; exit 2; fi; if echo \"$CMD\" | grep -qE \"^mv\\s.*/$\"; then echo \"BLOCKED: mv on directories requires explicit user approval. Ask first.\" >&2; exit 2; fi; exit 0'"
+          },
+          {
+            "type": "command",
+            "shell": "powershell",
+            "if": "Bash(git *)",
+            "command": "& \"$env:CLAUDE_PROJECT_DIR\\.claude\\hooks\\warn-git-chain.ps1\"",
+            "timeout": 15
           }
         ]
       }

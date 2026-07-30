@@ -3,11 +3,12 @@ from labscriptlib.Main_Experiment.subsequences.subsequences import digital_pulse
 from labscript_devices.PrawnBlaster.labscript_devices import PrawnBlaster
 from labscript_devices.NI_DAQmx.models.NI_PXIe_6361 import NI_PXIe_6361
 from labscript_devices.NI_DAQmx.models.NI_PXIe_6535 import NI_PXIe_6535
-from user_devices.NI_SCOPE.labscript_devices import NI_SCOPE
+# from user_devices.NI_SCOPE.labscript_devices import NI_SCOPE
 from user_devices.RemoteControl.labscript_devices import RemoteAnalogOut, RemoteAnalogMonitor
 from user_devices.LaserLockDevice.labscript_devices import LaserLockDevice
 from user_devices.RasteringDevice.labscript_devices import RasteringDevice
 from user_devices.BigSkyHub.labscript_devices import BigSkyHub
+from user_devices.NuvuCamera.labscript_devices import NuvuCamera
 
 def connection_table():
     # === Initialize pseudoclock ===
@@ -63,7 +64,7 @@ def connection_table():
     RemoteAnalogOut(
         name='TiSa_1_Setpoint', 
         parent_device=LaserLockGUI, 
-        connection=4,
+        connection=1,
         units="THz",
         decimals=9
     )
@@ -80,7 +81,7 @@ def connection_table():
     RemoteAnalogMonitor(
         name='TiSa_1_Value', 
         parent_device=LaserLockGUI, 
-        connection=4,
+        connection=1,
         units="THz",
         decimals=9
     )
@@ -141,32 +142,60 @@ def connection_table():
     )
 
     # === BigSky YAG Laser Communication === #
-    BigSkyHub(name='BigSkyLasers', num_lasers=2, laser_prefix="YAG", host="127.0.0.1")
+    BigSkyHub(name='BigSkyLasers', num_lasers=1, laser_prefix="YAG", host="127.0.0.1")
     # All channels auto-created
 
     # Define digital output lines on PXIe-6535
-    DigitalOut('LIF_shutter', ni_6535, 'port0/line0')
     DigitalOut('YAG1_line', ni_6535, 'port0/line1')
-    DigitalOut('YAG2_line', ni_6535, 'port0/line2')
+    DigitalOut('YAG2_trig', ni_6535, 'port0/line2')
     DigitalOut('ENH_line', ni_6535, 'port0/line3')
     # DigitalOut('dummy_line', ni_6535, 'port0/line4')    #for even number
 
-    # Register latched lines — pre-set during transition_to_buffered,
-    # restored to manual-mode state after the shot:
-    ni_6535.set_property('latched_lines', ['port0/line0'], location='device_properties')
+    # no latched lines in open-cell CT -- line0 is now the camera trigger (was LIF_shutter)
+    ni_6535.set_property('latched_lines', [], location='device_properties')
 
 
-    NI_SCOPE(
-        name='NI_SCOPE',
-        MAX_name='PXI1Slot2',
-        vertical_range=[0.5, 0.1],         # Vpp for [Ch0, Ch1]
-        vertical_coupling=['DC', 'DC'],      # Supported strings: 'DC', 'AC', 'GND', 'HF_REJECT', 'LF_REJECT'. (Need to check if working..)
-        min_sample_rate=1_000_000,             # Hz
-        min_num_pts=200_000,                 # record length
-        trigger_source='TRIG',
-        trigger_level=1.0,           # triggers at +1V
-        trigger_delay=0.0,            # 0s time offset between trigger event and when sampling starts
-        channels_to_save=[0, 1],      # which NI-5922 channels to save to h5
+#     # NI_SCOPE(
+#     #     name='NI_SCOPE',
+#     #     MAX_name='PXI1Slot2',
+#     #     vertical_range=[0.5, 0.1],         # Vpp for [Ch0, Ch1]
+#     #     vertical_coupling=['DC', 'DC'],      # Supported strings: 'DC', 'AC', 'GND', 'HF_REJECT', 'LF_REJECT'. (Need to check if working..)
+#     #     min_sample_rate=1_000_000,             # Hz
+#     #     min_num_pts=200_000,                 # record length
+#     #     trigger_source='TRIG',
+#     #     trigger_level=1.0,           # triggers at +1V
+#     #     trigger_delay=0.0,            # 0s time offset between trigger event and when sampling starts
+#     #     channels_to_save=[0, 1],      # which NI-5922 channels to save to h5
+#     # )
+
+    # Nuvu Camera
+    # NOTE: The initialization of the NuvuCamera creates an implicit DO under the name "camera_trigger" at the specified connection.
+    camera = NuvuCamera(
+    name="camera",
+    parent_device=ni_6535,
+    connection="port0/line0", 
+    serial_number=0xDEADBEEF, # NUVU camera initialization does not require serial_number, no need to touch this
+    camera_attributes={
+        "readoutMode":1, #1 = EM
+        "exposure_time":20, #Shafin: "Um miliseconds?"
+        "timeout": 5000, # ms; SDK frame-wait before error 214 — must outlast normal arm-to-trigger latency; grab_multiple retries on expiry
+        "square_bin": 1, #NxN bin size
+        'target_detector_temp':-60, 
+        "emccd_gain": 500, #Max 5000
+        "trigger_mode":2, # 1 = EXT_LOW_HIGH, #0 = INT, 2 "EXT_LOW_HIGH_EXP" (minus for HIGH_LOW),
+        "shutter_mode": 1,
+    },
+    manual_mode_camera_attributes={
+        "readoutMode":1,
+        "exposure_time":20,
+        "timeout": 5000,
+        "square_bin": 1,
+        'target_detector_temp':-60,
+        "emccd_gain": 500,
+        "trigger_mode":0, # INT in manual mode so snap/continuous self-trigger (Lyman convention); buffered attrs above set 2 = EXT per shot
+        "shutter_mode":1,
+    },
+    mock=False #True
     )
 
 
@@ -174,12 +203,13 @@ def connection_table():
     AnalogIn('daq_ai1',ni_6361,'ai1')
     AnalogIn('daq_ai2',ni_6361,'ai2')
     AnalogIn('daq_ai3',ni_6361,'ai3')
-    AnalogIn('daq_ai4',ni_6361,'ai4')
-    AnalogIn('daq_ai5',ni_6361,'ai5')
+    # AnalogIn('daq_ai4',ni_6361,'ai4')
+    # AnalogIn('daq_ai5',ni_6361,'ai5')
 
-    AnalogOut('daq_ao0',ni_6361,'ao0') #Used for NI-5922 TRIG
-    AnalogOut('daq_ao1',ni_6361,'ao1') # not used
+    # AnalogOut('daq_ao0',ni_6361,'ao0') #Used for NI-5922 TRIG
+    # AnalogOut('daq_ao1',ni_6361,'ao1') # not used
     return
+
 
 if __name__ == '__main__':
     # Begin issuing labscript primitives
