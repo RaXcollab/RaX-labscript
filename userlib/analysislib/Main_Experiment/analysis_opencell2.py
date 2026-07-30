@@ -7,18 +7,24 @@ import numpy as np
 import matplotlib.pyplot as plt
 import matplotlib.gridspec as gridspec
 import matplotlib.transforms as transforms
+from matplotlib.ticker import MaxNLocator
+from mpl_toolkits.axes_grid1 import make_axes_locatable
 from filtering import process_trace
 
 # --- Plot constants ---
 XLIM_MS_ABS = 100    # ms, absorption subplots
 XLIM_MS_TRIG = 100   # ms, trigger subplot (covers the 20 ms EMCCD trigger)
-CMAP_VMIN, CMAP_VMAX = 1568, 1700   # EMCCD display range — adjust to LIF probe power
-PHOTON_COUNT_THRESHOLD = 1690       # 1810 for 1x1 binning
+# CMAP_VMIN, CMAP_VMAX = 1568, 1700   # EMCCD display range — adjust to LIF probe power
+CMAP_VMIN, CMAP_VMAX = 1700, 1750  
+PHOTON_COUNT_THRESHOLD = 1700       # 1810 for 1x1 binning
 
 # --- Sequence timing constants (mirror Open_cell2.py) ---
 YAG_PULSE = 0.5e-3    # s, YAG1_line pulse width
-EMCCD_DELAY = 0.1e-3  # s, camera_trig delay after tYAG
-EMCCD_TRIG = 20e-3    # s, camera_trig pulse width
+# EMCCD trigger timing comes from the shot globals (tEMCCD, trigger_duration).
+# NOTE: shots compiled before those globals existed will KeyError — re-enable the
+# commented .get(...) fallbacks (here and at the global_dict reads) for old shots.
+# EMCCD_DELAY_FALLBACK = 0.1e-3  # s, camera_trig delay after tYAG_1
+# EMCCD_TRIG_FALLBACK = 20e-3    # s, camera_trig pulse width
 
 # --- Annotation helper ---
 def _annotate_ax(ax, tYAG_1, enh_start_ms, enh_end_ms):
@@ -102,7 +108,10 @@ if not camera_failed:
 # --- Globals ---
 global_dict = run.get_globals()
 tYAG_1 = float(global_dict['tYAG_1'])
-tYAG = float(global_dict.get('tYAG', tYAG_1))  # sequence times the EMCCD trigger off tYAG
+# tEMCCD = float(global_dict.get('tEMCCD', tYAG_1 + EMCCD_DELAY_FALLBACK))
+# emccd_trig_duration = float(global_dict.get('trigger_duration', EMCCD_TRIG_FALLBACK))
+tEMCCD = float(global_dict['tEMCCD'])
+emccd_trig_duration = float(global_dict['trigger_duration'])
 ENH_START = float(global_dict['ENH_START'])
 ENH_DURATION = float(global_dict['ENH_DURATION'])
 ENH_SHUTTER_DELAY = float(global_dict['ENH_SHUTTER_DELAY'])
@@ -131,7 +140,12 @@ ax1 = fig.add_subplot(gs[0, 0])
 if 'Absorption0' in trace_data:
     times_dc = trace_data['Absorption0'][0].flatten()
     values_dc = trace_data['Absorption0'][1].flatten()
-    ax1.plot(times_dc * 1000, values_dc, 'b')
+    ax1.plot(times_dc * 1000, values_dc, 'b', label='Absorption0')
+if 'Absorption3' in trace_data:
+    times_dc3 = trace_data['Absorption3'][0].flatten()
+    values_dc3 = trace_data['Absorption3'][1].flatten()
+    ax1.plot(times_dc3 * 1000, values_dc3, 'r', label='Absorption3')
+ax1.legend(fontsize=10)
 
 ax1.set_xlim([0, XLIM_MS_ABS])
 ax1.set_xlabel('Time [ms]', fontsize=12)
@@ -187,7 +201,7 @@ if tstart is not None and tend is not None:
 
     yag1 = _step(t_ms, tYAG_1, YAG_PULSE)
     enh = _step(t_ms, ENH_SHUTTER_DELAY + ENH_START, ENH_DURATION)
-    emccd = _step(t_ms, tYAG + EMCCD_DELAY, EMCCD_TRIG)
+    emccd = _step(t_ms, tEMCCD, emccd_trig_duration)
 
     ax3_top.step(t_ms, yag1, 'b-', where='post', label='YAG1')
     ax3_bot.step(t_ms, enh, 'g-', where='post', label='enhancement')
@@ -214,6 +228,19 @@ if image_data is not None:
     ny, nx = image_data.shape
     ax4.imshow(image_data, extent=[0, nx, 0, ny], cmap='magma',
                vmin=CMAP_VMIN, vmax=CMAP_VMAX)
+
+    # x-integrated profile vs y, height-aligned with the image
+    divider = make_axes_locatable(ax4)
+    ax4_prof = divider.append_axes('right', size='22%', pad=0.08, sharey=ax4)
+    profile = image_data.sum(axis=1)
+    # origin='upper': row i renders centered at y = ny - i - 0.5
+    y_centers = ny - np.arange(ny) - 0.5
+    ax4_prof.plot(profile, y_centers, color='m', linewidth=1)
+    ax4_prof.tick_params(labelleft=False)
+    ax4_prof.xaxis.set_major_locator(MaxNLocator(2))
+    ax4_prof.ticklabel_format(axis='x', style='sci', scilimits=(0, 0))
+    ax4_prof.set_xlabel(r'$\Sigma_x$', fontsize=10)
+    ax4_prof.grid(True)
 else:
     placeholder = 'EMCCD image\nnot available'
     if image_unavailable_reason:
