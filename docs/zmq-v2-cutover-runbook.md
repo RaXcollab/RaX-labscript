@@ -77,7 +77,8 @@ Parent worktree: `.claude/worktrees/zmq-v2-cutover`. GUI worktrees:
 
 ### Phase 1 — push everything, merge nothing
 
-- [ ] `git push` HF `main` (6 commits), rastering `main` (2), BigSky `main` (1).
+- [ ] `git push` HF `main` (6 commits), rastering `main` (2), BigSky `main` (1),
+      parent `master` (28 as of 2026-07-30 — recount before pushing).
 - [ ] Push the three GUI port branches. HF `zmq-v2-port` has diverged from its
       remote (ahead 6 / behind 3) — needs `--force-with-lease=zmq-v2-port:<the
       SHA you just read from origin>`, never a bare `--force`.
