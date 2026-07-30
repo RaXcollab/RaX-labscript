@@ -4,6 +4,10 @@
 # silently (markers skipped, gate failed open). Output likewise forced to UTF-8.
 Set-StrictMode -Off
 $ErrorActionPreference = 'Stop'
+# TRAP: on PS 7.3+ ($PSNativeCommandUseErrorActionPreference), 'Stop' turns a native
+# command's stderr output into a terminating exception. Hooks that run a native
+# command which writes stderr must save/scope $ErrorActionPreference = 'Continue'
+# around that call and restore it after (see check-py-syntax.ps1).
 try { [Console]::OutputEncoding = [Text.Encoding]::UTF8 } catch {}
 
 function Read-HookInput {

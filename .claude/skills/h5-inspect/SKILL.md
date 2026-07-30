@@ -29,7 +29,12 @@ else:
     if not candidates:
         print(f"ERROR: no .h5 shots found under {ROOT}")
         sys.exit(1)
-    path = max(candidates, key=os.path.getmtime)
+    def safe_mtime(p):  # a candidate can vanish between glob and stat (Dropbox sync)
+        try:
+            return os.path.getmtime(p)
+        except OSError:
+            return 0.0
+    path = max(candidates, key=safe_mtime)
 
 st = os.stat(path)
 print(f"FILE  {path}")
@@ -90,3 +95,9 @@ Summarize: the file identity line, the device list found under `/devices/`, and 
 `remote_device_operation` scan channels/values (these are the authoritative scan
 x-axis — full float64 labscript intent). Relay the full tree only if the user asked
 for structure; otherwise keep it to the summary. The file was opened read-only.
+
+If a path argument was given, confirm the printed `FILE` line matches the requested
+path; if it doesn't (argument substitution failed), re-run the block with the literal
+path in place of `$ARGUMENTS`. An `unable to lock file` error means the shot is still
+being written by BLACS/lyse — retry after the shot completes; do NOT pass
+`locking=False` (risks reading torn data).

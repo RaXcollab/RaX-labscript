@@ -15,6 +15,9 @@ if ($p -notmatch '\.py$') { exit 0 }
 if (-not (Test-Path -LiteralPath $p)) { exit 0 }
 
 $pythonExe = 'C:\Users\radmo\miniconda\envs\labscript\python.exe'
+# Fail open if the env was moved/renamed: without this, $LASTEXITCODE stays null
+# below and every .py edit gets a phantom "SYNTAX ERROR" with an empty reason.
+if (-not (Test-Path -LiteralPath $pythonExe)) { exit 0 }
 # _hook-common.ps1 sets ErrorActionPreference=Stop; on PS 7.3+ that turns a
 # native command's stderr output into a terminating error. Scope it off here
 # so a py_compile syntax error is just captured output, not a thrown exception.

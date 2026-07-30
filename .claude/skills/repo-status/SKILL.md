@@ -3,13 +3,13 @@ name: repo-status
 description: Show branch, ahead/behind, dirty count, and worktree relationships for every repo in the labscript-suite workspace
 ---
 
-One-shot status table across every git repo and linked worktree in the workspace: current branch, ahead/behind the last-fetched upstream, dirty file count (excluding the always-dirty `calibration_data.json`), and which main repo a worktree belongs to.
+One-shot status table across every git repo and linked worktree in the workspace: current branch, ahead/behind the last-fetched upstream, dirty entry count (porcelain lines — an untracked directory counts as one entry — excluding the always-dirty `calibration_data.json`), and which main repo a worktree belongs to.
 
 ## How repos are discovered
 
-Walks the workspace up to depth 3, same exclusions as `revert-to-main` (`node_modules`, `__pycache__`, `.ipynb_checkpoints`, `worktrees`). Unlike `revert-to-main`, a `.git` **file** (linked worktree) counts as well as a `.git` directory — each candidate is confirmed with `git -C <dir> rev-parse --show-toplevel` equal to `<dir>` itself, never by name pattern. That confirmation is what keeps `GUIs/rastering-stepping`, `GUIs/envs`, and `GUIs/graphify-out` out of the table even though they live next to real repos.
+Walks the workspace up to depth 3, same exclusions as `revert-to-main` (`node_modules`, `__pycache__`, `.ipynb_checkpoints`, `worktrees`). Unlike `revert-to-main`, a `.git` **file** (linked worktree) counts as well as a `.git` directory. Non-repos like `GUIs/rastering-stepping`, `GUIs/envs`, and `GUIs/graphify-out` are excluded by that `.git`-existence test (they have none); each surviving candidate is additionally confirmed with `git -C <dir> rev-parse --show-toplevel` equal to `<dir>` itself — belt-and-braces against nested/submodule directories — and never by name pattern.
 
-The 15 expected repos (CLAUDE.md "Repository Structure" + "External GUI Registry", plus the two linked worktrees) are hardcoded. Any expected repo not found gets a `MISSING` row instead of being silently dropped — that's how a deleted worktree shows up.
+The 15 expected repos are hardcoded from the 2026-07-30 workspace scan (plan Phase 0 of `2026-07-30-claude-automation-upgrades`) — note this is broader than CLAUDE.md's External GUI Registry, which lists only the three BLACS-integrated GUIs. Any expected repo not found gets a `MISSING` row instead of being silently dropped — that's how a deleted worktree shows up. New repos are discovered automatically; add them to the hardcoded list to get MISSING protection.
 
 ## Read-only
 
@@ -79,9 +79,9 @@ for repo in sorted(set(EXPECTED) | discovered, key=lambda p: (p != '.', p)):
         worktree_of = '-'
     rows.append((repo, branch, ab, str(dirty), worktree_of))
 
-w = max(len(r[0]) for r in rows)
-bw = max(len(r[1]) for r in rows)
-abw = max(len(r[2]) for r in rows)
+w = max([len('REPO')] + [len(r[0]) for r in rows])
+bw = max([len('BRANCH')] + [len(r[1]) for r in rows])
+abw = max([len('AHEAD/BEHIND')] + [len(r[2]) for r in rows])
 print('REPO'.ljust(w) + '  ' + 'BRANCH'.ljust(bw) + '  ' + 'AHEAD/BEHIND'.ljust(abw) + '  DIRTY  WORKTREE-OF')
 for repo, branch, ab, dirty, wof in rows:
     print(f'{repo:<{w}}  {branch:<{bw}}  {ab:<{abw}}  {dirty:<5}  {wof}')
