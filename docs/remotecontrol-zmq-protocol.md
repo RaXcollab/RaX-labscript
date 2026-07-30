@@ -3,7 +3,7 @@
 > **STATUS**: **v1 is dead code after the v2 cutover lands**
 > ([`remotecontrol-zmq-protocol-v2.md`](remotecontrol-zmq-protocol-v2.md) is
 > the live protocol — shipped on topic branches awaiting coordinated
-> merge per [`~/.claude/plans/zmq-v2-cutover-playbook.md`](../../../.claude/plans/zmq-v2-cutover-playbook.md)).
+> merge per [`docs/zmq-v2-cutover-runbook.md`](zmq-v2-cutover-runbook.md)).
 > v2 servers REFUSE v1 envelopes (Q4 hard sunset); the BLACS-side
 > `RemoteCommunication` client emits v2-only. New device or external-tool
 > code MUST use v2. This doc is preserved for archaeological context only

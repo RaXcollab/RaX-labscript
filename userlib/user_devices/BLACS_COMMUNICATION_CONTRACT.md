@@ -5,7 +5,7 @@
 > code MUST use v2 — see
 > [`docs/remotecontrol-zmq-protocol-v2.md`](../../docs/remotecontrol-zmq-protocol-v2.md)
 > (canonical spec) and
-> [`~/.claude/plans/zmq-v2-cutover-playbook.md`](../../../.claude/plans/zmq-v2-cutover-playbook.md)
+> [`docs/zmq-v2-cutover-runbook.md`](../../docs/zmq-v2-cutover-runbook.md)
 > (cutover sequence). v2 servers REFUSE v1 envelopes per Q4 hard sunset.
 > This doc is preserved for archaeological context of what the wire
 > format used to look like.

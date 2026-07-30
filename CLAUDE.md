@@ -133,7 +133,7 @@ Each GUI codebase carries its own `.claude/agents/` domain agent: `HF_Locking`�
 ## Reference Documentation
 
 - `docs/*.md` auto-load via path-scoped rules — the doc↔path map is `.claude/rules/ref-*.md`
-- `docs/remotecontrol-zmq-protocol-v2.md` — **canonical** v2 protocol for external-GUI devices: JSON envelope with `id`/`status` enum/`error.{code,message,retryable}`, `@handler` dispatch via `RemoteControlServerBase`, `InMemoryTransport` mock for tests. Shipped on topic branches awaiting coordinated cutover (`~/.claude/plans/zmq-v2-cutover-playbook.md`).
+- `docs/remotecontrol-zmq-protocol-v2.md` — **canonical** v2 protocol for external-GUI devices: JSON envelope with `id`/`status` enum/`error.{code,message,retryable}`, `@handler` dispatch via `RemoteControlServerBase`, `InMemoryTransport` mock for tests. Shipped on topic branches awaiting coordinated cutover (`docs/zmq-v2-cutover-runbook.md`).
 - `docs/remotecontrol-zmq-protocol.md` — **DEPRECATED** v1 reference (archaeological only; v2 servers refuse v1 envelopes per Q4 hard sunset)
 - `docs/known-latent-issues.md` — latent-bug catalog, reference-on-demand (no auto-load)
 - `Labscript-Confluence-2026-02-11.pdf` — lab Confluence export

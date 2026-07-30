@@ -8,7 +8,7 @@
 > mechanism, and reply-status enum changed in the v2 cutover
 > ([`docs/remotecontrol-zmq-protocol-v2.md`](remotecontrol-zmq-protocol-v2.md) —
 > shipped on topic branches, awaiting coordinated merge per
-> [`~/.claude/plans/zmq-v2-cutover-playbook.md`](../../.claude/plans/zmq-v2-cutover-playbook.md)).
+> [`docs/zmq-v2-cutover-runbook.md`](zmq-v2-cutover-runbook.md)).
 > Each GUI server is now an `@handler`-decorated `RemoteControlServerBase`
 > subclass; threading models remain divergent (HF: QThread, Rastering:
 > daemon thread, BigSky: daemon thread + futures).

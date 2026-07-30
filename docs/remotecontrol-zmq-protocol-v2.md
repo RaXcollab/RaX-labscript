@@ -34,7 +34,7 @@ Review fixups summary:
 
 **Deployment**: branches stay on origin until the operator runs the
 coordinated merge + restart sequence in
-[`~/.claude/plans/zmq-v2-cutover-playbook.md`](../../../.claude/plans/zmq-v2-cutover-playbook.md).
+[`docs/zmq-v2-cutover-runbook.md`](zmq-v2-cutover-runbook.md).
 After merge, BLACS + all 3 GUI processes must restart in any order;
 no asymmetric-version window exists.
 
