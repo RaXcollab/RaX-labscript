@@ -1,0 +1,83 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<style>
+  body { font-family: Calibri, Segoe UI, sans-serif; font-size: 11pt; color: #333; max-width: 900px; margin: 20px auto; }
+  h1 { font-size: 20pt; border-bottom: 2px solid #0078d4; padding-bottom: 6px; color: #0078d4; }
+  h2 { font-size: 14pt; color: #0078d4; margin-top: 24px; }
+  h3 { font-size: 12pt; color: #444; }
+  table { border-collapse: collapse; width: 100%; margin: 10px 0; }
+  th, td { border: 1px solid #ccc; padding: 6px 10px; text-align: left; vertical-align: top; }
+  th { background: #f0f0f0; font-weight: bold; }
+  code { font-family: Consolas, monospace; font-size: 10pt; background: #f4f4f4; padding: 1px 4px; border-radius: 3px; }
+  pre { background: #f4f4f4; border: 1px solid #ddd; border-radius: 4px; padding: 10px; font-family: Consolas, monospace; font-size: 10pt; overflow-x: auto; white-space: pre; }
+  .badge { display: inline-block; padding: 2px 8px; border-radius: 10px; color: white; font-size: 9pt; font-weight: bold; }
+  .green { background: #4CAF50; }
+  .orange { background: #F57C00; }
+  .yellow { background: #FFC107; color: #333; }
+  .blue { background: #0078d4; }
+  .gray { background: #9E9E9E; }
+  .meta { color: #888; font-size: 10pt; }
+  ol, ul { margin: 6px 0; padding-left: 24px; }
+  li { margin: 3px 0; }
+  strong { color: #222; }
+  .callout { background: #e8f4fd; border-left: 4px solid #0078d4; padding: 8px 12px; margin: 10px 0; }
+  .warn { background: #fff3cd; border-left: 4px solid #ffc107; padding: 8px 12px; margin: 10px 0; }
+</style>
+</head>
+<body>
+
+<h1>Claude Automation Upgrades: py_compile Hook + /repo-status + /h5-inspect</h1>
+<p class="meta">
+  <strong>Date:</strong> 2026-07-30 &nbsp;&bull;&nbsp;
+  <strong>Branch:</strong> <code>claude-automation-upgrades</code> (parent repo, off <code>master</code> @ <code>58544c7</code>) &nbsp;&bull;&nbsp;
+  <strong>Commits:</strong> <code>c2b0449</code>, <code>8d79565</code>, <code>2915973</code> + deliverables commit &nbsp;&bull;&nbsp;
+  <strong>Context:</strong> Executed the <code>/claude-automation-recommender</code> plan (<code>~/.claude/plans/2026-07-30-claude-automation-upgrades.md</code>) via subagent-driven development, hybrid after user authorized direct execution.
+</p>
+
+<h2>What Changed</h2>
+<p>Three new Claude Code automations for this workspace, all in the parent repo. (1) A <strong>PostToolUse hook</strong> (<code>check-py-syntax.ps1</code>) that runs <code>py_compile</code> on every edited/written <code>.py</code> file, so device-class typos surface at edit time instead of on BLACS restart. (2) A <strong><code>/repo-status</code> skill</strong>: one-shot table of branch, ahead/behind, dirty count, and worktree-of across all 15 repos/worktrees in the workspace. (3) An <strong><code>/h5-inspect</code> skill</strong>: read-only shot-file dump (tree, root attrs, and the authoritative <code>remote_device_operation</code> scan values) — an in-session replacement for opening HDFView.</p>
+
+<h2>Files Changed</h2>
+<table>
+  <tr><th>File</th><th>Change</th><th>Why</th></tr>
+  <tr><td><code>.claude/hooks/check-py-syntax.ps1</code></td><td><strong>NEW</strong> (36 lines) — PostToolUse Edit|Write hook: fail-open filters, direct <code>labscript</code>-env <code>python.exe -m py_compile</code>, exit-0 JSON <code>additionalContext</code> on syntax error</td><td>Syntax feedback lands in-session immediately; PostToolUse cannot block, so feedback is JSON, never exit 2</td></tr>
+  <tr><td><code>.claude/settings.json</code></td><td>+1 PostToolUse entry (matcher <code>Edit|Write</code>, powershell, timeout 15, synchronous); 8 existing marker entries untouched</td><td>Wire the hook per local idiom; extension filtering happens in-script, not via <code>"if"</code></td></tr>
+  <tr><td><code>.claude/skills/repo-status/SKILL.md</code></td><td><strong>NEW</strong> (95 lines) — python engine adapted from <code>revert-to-main</code></td><td>Worktree-aware discovery (<code>.git</code> file OR dir), repo confirmed via <code>rev-parse --show-toplevel</code> — never name patterns; hardcoded 15-repo expected list prints <code>MISSING</code> rows; <code>calibration_data.json</code> excluded from dirty counts; never fetches</td></tr>
+  <tr><td><code>.claude/skills/h5-inspect/SKILL.md</code></td><td><strong>NEW</strong> (92 lines) — h5py inline script via canonical conda wrapper</td><td>Opens <code>"r"</code> only (BLACS/lyse also write shot files); no <code>labscript_utils</code> import (setuptools_scm tag fragility); blank arg resolves newest shot via the real <code>&lt;Experiment&gt;\YYYY\MM\DD\&lt;seq#&gt;</code> layout</td></tr>
+  <tr><td><code>CLAUDE.md</code></td><td>Skill list +<code>/repo-status</code>, +<code>/h5-inspect</code>; shot-storage layout corrected to <code>&lt;Experiment&gt;\YYYY\MM\DD\&lt;seq#&gt;\</code></td><td>The old "<code>YYYY/MM/DD</code>" line was incomplete — plan discovery confirmed the experiment folder comes first</td></tr>
+</table>
+
+<h2>Key Decisions</h2>
+<ul>
+  <li><strong>Phase 2 (hardening <code>warn-git-chain.ps1</code> G3) skipped.</strong> The plan marks its two bypasses (PowerShell-tool git calls; <code>git tag -m</code> name hiding) as deliberate accepted gaps; nothing signaled the team changed its mind. Re-runnable later as its own slice.</li>
+  <li><strong>PostToolUse feedback = exit 0 + JSON <code>additionalContext</code>.</strong> PostToolUse cannot block (tool already ran); exit 2 there is a dead-end error notice. The <code>decision</code>-block key is reserved for hard failures, not syntax errors.</li>
+  <li><strong>Direct interpreter path for py_compile</strong> (<code>miniconda\envs\labscript\python.exe</code>) — no conda activation needed since <code>py_compile</code> needs no env vars; keeps the hook fast and synchronous.</li>
+  <li><strong>Repo detection by <code>git rev-parse --show-toplevel</code> equality, never name patterns</strong> — keeps non-repos (<code>rastering-stepping</code>, <code>envs</code>, <code>graphify-out</code>) out even though they sit beside real repos.</li>
+  <li><strong>Original plan rec #1 (backend tag-guard hook) was dropped at planning time</strong> — it already exists as <code>warn-git-chain.ps1</code> gate G3.</li>
+</ul>
+
+<h2>Bugs Found &amp; Fixed</h2>
+<div class="warn"><strong><code>$ErrorActionPreference = 'Stop'</code> (set by <code>_hook-common.ps1</code>) turns native-command stderr into a terminating exception</strong> on PS 7.3+ (<code>$PSNativeCommandUseErrorActionPreference</code>). A failing <code>py_compile</code> crashed the hook instead of yielding captured text. Fix: save/restore EAP, scope <code>'Continue'</code> around only the native call (<code>check-py-syntax.ps1:21-25</code>). <em>Any future hook that shells out to a native command writing stderr will hit the same trap.</em></div>
+<div class="warn"><strong>Em-dash in a python print header mojibaked</strong> (<code>&#65533;</code>) through the Git Bash console codepage during <code>/h5-inspect</code> testing — swapped for an ASCII hyphen. Prefer ASCII in skill-script output headers.</div>
+
+<h2>Verification</h2>
+<table>
+  <tr><th>Artifact</th><th>Check</th><th>Result</th></tr>
+  <tr><td><code>check-py-syntax.ps1</code></td><td>4 stdin unit tests: bad .py / good .py / .md path / null file_path; settings.json revalidated as JSON; independent reviewer (spec + quality)</td><td><span class="badge green">PASS</span> — JSON escaping of quotes/newlines in stderr empirically confirmed; review: Approved, 0 blocking findings</td></tr>
+  <tr><td><code>/repo-status</code></td><td>Live run: exactly 15 rows; zmq-v2 rows show <code>zmq-v2-port</code> + worktree-of; rastering dirty = porcelain minus <code>calibration_data.json</code> (2 vs 3); non-repos absent</td><td><span class="badge green">PASS</span></td></tr>
+  <tr><td><code>/h5-inspect</code></td><td>Sample shot (<code>2026-07-22_0073_Open_cell2_74.h5</code>): 124-line dump, 0 tracebacks, scan values found (BigSkyLasers <code>YAG_1_voltage</code>, LaserLockGUI ch 1/3/6); no-arg finds newest shot in ~10 s; bad path → one-line error, exit 1</td><td><span class="badge green">PASS</span></td></tr>
+  <tr><td>Anti-pattern grep (plan Phase 5)</td><td><code>"(approve|block|permit|reject)"|MultiEdit|hookType|user-only|model-only|fork: true</code> over the 4 new/changed files</td><td><span class="badge green">ZERO HITS</span> (one comment reworded to keep the grep clean)</td></tr>
+</table>
+
+<h2>Outstanding</h2>
+<ul>
+  <li><span class="badge orange">FRESH SESSION</span> Live hook verification requires a new session (hook config snapshots at session start): edit a scratch <code>.py</code> with <code>def f(:</code> → expect syntax feedback; fix → silence; edit one non-<code>.py</code> file → hook stays silent. Run <code>/h5-inspect</code> <strong>with an explicit path argument</strong> and confirm the printed <code>FILE</code> line matches — this is the only check that settles whether <code>$ARGUMENTS</code> substitutes inside a command line (all prior local uses were in prose). Also regression-check existing hooks (device-edit marker, <code>warn-git-chain</code> G1) and that <code>/check-guis</code>, <code>/debug-blacs</code>, <code>/repo-status</code>, <code>/h5-inspect</code> all list.</li>
+  <li><span class="badge green">FIXED IN REVIEW</span> Final review promoted the "no runtime check on <code>python.exe</code>" minor to Important: with EAP scoped to Continue, a missing exe leaves <code>$LASTEXITCODE</code> null and the hook emits a <em>phantom syntax error with an empty reason on every .py edit</em> (not a crash). Fixed with a fail-open <code>Test-Path -LiteralPath</code> guard; the EAP-vs-native-stderr trap is now documented in <code>_hook-common.ps1</code>'s header for future hook authors.</li>
+  <li><span class="badge gray">DEFERRED MINOR</span> Theoretical stderr mis-decode for non-ASCII source syntax errors (console codepage vs UTF-8).</li>
+  <li><span class="badge blue">NOT PUSHED</span> Branch <code>claude-automation-upgrades</code> is local-only per plan; merge/push is a user decision.</li>
+</ul>
+
+</body>
+</html>

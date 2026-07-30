@@ -46,7 +46,7 @@ labconfig/
 
 - Shot h5 files: `C:\Users\radmo\MIT Dropbox\Shungo Fukaya\Experiments\Main_Experiment\`
 - Configured in `labconfig/RaX-Control.ini` as `experiment_shot_storage`
-- Organized by `YYYY/MM/DD/`
+- Organized by `<Experiment>\YYYY\MM\DD\<seq#>\` (experiment folder first, then date, then shot sequence number)
 
 ## Python Environment
 
@@ -115,6 +115,8 @@ Each GUI codebase carries its own `.claude/agents/` domain agent: `HF_Locking`�
 - `/check-sequence` — validate sequence globals, devices, structure before compilation
 - `/check-guis` — ping ZMQ ports to verify external GUIs are running
 - `/debug-blacs` — standardized BLACS triage workflow (logs → routing → diagnosis)
+- `/repo-status` — branch, ahead/behind, dirty count, worktree-of for all 15 workspace repos (read-only, no fetch)
+- `/h5-inspect [path]` — read-only shot h5 dump: tree, root attrs, `remote_device_operation` scan values (blank = latest shot)
 - `/new-device` — scaffold a new external GUI BLACS integration (5-file pattern)
 - `/github-auth-triage` — deterministic GitHub auth/MCP failure triage (never credential surgery first)
 - `/graphify query "<q>"` — code navigation + intra-repo blast radius via `graphify-out/graph.json` (userlib, 3 backend repos, GUIs). AST-only: ZMQ + string-path worker wiring invisible — External GUI Registry stays authoritative. Caveats/rebuild: `.claude/graphify/REFRESH.md`
