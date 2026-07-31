@@ -46,3 +46,16 @@ def test_init_is_wired_before_super():
     import inspect
     src = inspect.getsource(RemoteControlTab.__init__)
     assert src.index("_init_subscriber_registry") < src.index("super().__init__")
+
+
+def test_initialise_workers_forwards_wait_for_lock():
+    # wait_for_lock is a connection-table property read by the worker via
+    # getattr(self, 'wait_for_lock', False) — it only exists on the worker
+    # if workerargs forward it. Dead-knob regression found 2026-07-30
+    # (connection_table wait_for_lock=True silently ignored since ~Feb 2026).
+    import inspect
+    from user_devices.LaserLockDevice.blacs_tabs import LaserLockTab
+    from user_devices.BigSkyHub.blacs_tabs import BigSkyTab
+    for tab_cls in (RemoteControlTab, LaserLockTab, BigSkyTab):
+        src = inspect.getsource(tab_cls.initialise_workers)
+        assert '"wait_for_lock"' in src, tab_cls.__name__

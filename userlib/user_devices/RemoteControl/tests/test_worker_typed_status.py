@@ -63,3 +63,23 @@ def test_check_all_remote_values_skips_and_continues():
     w.child_connections = ["4", "6"]
     out = w.check_all_remote_values()
     assert out == {"6": 348.686}
+
+
+def test_check_remote_values_skips_success_with_no_value():
+    # v2 encode_reply omits "value" when it is None (rastering CHECK_VALUE
+    # before the first position read). Must skip, not KeyError (2026-07-30).
+    w = _bare_worker({
+        "x": {"status": "SUCCESS"},
+        "y": {"status": "SUCCESS", "value": 1.5},
+    })
+    w.child_output_connections = ["x", "y"]
+    assert w.check_remote_values() == {"y": 1.5}
+
+
+def test_check_status_skips_success_with_no_value():
+    w = _bare_worker({
+        "x": {"status": "SUCCESS"},
+        "y": {"status": "SUCCESS", "value": 2.0},
+    })
+    w.child_monitor_connections = ["x", "y"]
+    assert w.check_status() == {"y": 2.0}

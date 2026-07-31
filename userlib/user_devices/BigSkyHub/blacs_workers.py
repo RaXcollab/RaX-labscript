@@ -529,6 +529,12 @@ class BigSkyWorker(RemoteControlWorker):
                     f"_verify_armed_state: failed to check {connection}: {msg}"
                 )
                 return False
+            if response.get("value") is None:
+                self.logger.info(
+                    f"_verify_armed_state: {connection} returned SUCCESS "
+                    "with no value"
+                )
+                return False
             actual = float(response["value"])
             if actual != expected_val:
                 self.logger.info(

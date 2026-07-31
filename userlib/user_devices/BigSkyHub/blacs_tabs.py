@@ -843,6 +843,9 @@ class BigSkyTab(RemoteControlTab):
             "user_devices.BigSkyHub.blacs_workers.BigSkyWorker",
             {
                 "mock": self.mock,
+                # Connection-table property; read by BigSkyWorker's buffered
+                # program path via getattr. Dead knob if omitted.
+                "wait_for_lock": self.properties.get("wait_for_lock", False),
                 "host": self.host,
                 "port": self.reqrep_port,
                 "child_output_connections": self.child_output_connections,

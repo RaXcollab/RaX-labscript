@@ -538,8 +538,19 @@ class RemoteControlWorker(Worker):
         Write paths keep using _check_response (raise). Single source of the
         read policy for all subclasses. See
         memory/feedback_remotecontrol-base-is-the-contract.
+
+        Also skips SUCCESS replies with no usable value: v2 encode_reply
+        omits the "value" key when it is None (v1 kept ``value: null``),
+        e.g. rastering CHECK_VALUE before the first position read. Callers
+        do float(response["value"]) — skipping here prevents a KeyError
+        from bricking the periodic poll.
         """
         if response.get("status") == "SUCCESS":
+            if response.get("value") is None:
+                self.logger.warning(
+                    f"{context}: skipping {connection} "
+                    "(SUCCESS with no value — channel not readable yet)")
+                return True
             return False
         msg = (response.get("error") or {}).get("message") or response.get("message", "")
         self.logger.warning(
@@ -594,6 +605,10 @@ class RemoteControlWorker(Worker):
             if response is None:
                 continue
             self._check_response(response, f"check_status({connection})")
+            if response.get("value") is None:
+                self.logger.warning(
+                    f"check_status: skipping {connection} (SUCCESS with no value)")
+                continue
             responses[connection] = float(response["value"])
         return responses
 
