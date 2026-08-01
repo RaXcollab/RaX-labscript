@@ -44,6 +44,13 @@ def boom(comms):
     raise Exception("transport down")
 
 
+STEPPED = {
+    "status": "SUCCESS", "point_index": 3, "path_len": 10,
+    "target_xy": [1.5, 2.5],
+    "calibration_matrix": [[2.0, 0.0], [0.0, 2.0]], "calibration_offset": [1.0, 2.0],
+}
+
+
 def make_worker(shots_per_step=1, replies=None, **workerargs):
     w = RasteringWorker.__new__(RasteringWorker)
     w.logger = logging.getLogger("test_raster_stepping")
@@ -275,3 +282,20 @@ def test_lazy_arm_n_failure_does_not_fail_the_shot():
     w._advance_raster()                   # must not raise
     assert w._raster_armed is True
     assert len(w.remote_comms.sent("move_to_next")) == 1
+
+
+# --- raster provenance stashed from the step reply, held across the group ---
+
+def test_advance_raster_stashes_point_meta_and_holds_it_across_the_group():
+    """transition_to_buffered stamps _raster_meta onto every shot, so it must
+    survive the non-stepping shots of a group and carry no envelope fields."""
+    w = make_worker(shots_per_step=2, replies={"move_to_next": STEPPED})
+    w._advance_raster()
+    assert w._raster_meta == {k: STEPPED[k] for k in (
+        "point_index", "path_len", "target_xy",
+        "calibration_matrix", "calibration_offset")}
+    assert "status" not in w._raster_meta
+
+    w._advance_raster()                   # second shot of the group: no step
+    assert len(w.remote_comms.sent("move_to_next")) == 1
+    assert w._raster_meta["point_index"] == 3

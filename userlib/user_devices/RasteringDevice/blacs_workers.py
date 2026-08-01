@@ -3,6 +3,12 @@ import h5py
 
 from user_devices.RemoteControl.blacs_workers import RemoteControlWorker
 
+# Raster provenance the GUI piggybacks on the move_to_next reply
+# (SystemController.raster_point_meta). Whitelisted so envelope fields
+# (status, id, ...) never leak into the shot record.
+RASTER_META_KEYS = ("point_index", "path_len", "target_xy",
+                    "calibration_matrix", "calibration_offset")
+
 
 class RasteringWorker(RemoteControlWorker):
     """
@@ -36,6 +42,9 @@ class RasteringWorker(RemoteControlWorker):
         self._raster_armed = False
         # Last N the GUI acknowledged; None means "the GUI doesn't know N".
         self._last_synced_shots_per_step = None
+        # Provenance of the point the current group stepped to (see
+        # RASTER_META_KEYS); every shot in the group is stamped with it.
+        self._raster_meta = {}
 
     def connect_to_remote(self):
         """Connect, then push the current raster controls to the GUI.
@@ -203,6 +212,9 @@ class RasteringWorker(RemoteControlWorker):
             # (handles ERROR/REJECTED/TIMEOUT/UNKNOWN_CONNECTION uniformly).
             self._check_response(response, "raster_move_to_next")
 
+            self._raster_meta = {k: response[k] for k in RASTER_META_KEYS
+                                 if k in response}
+
             self.logger.debug(f"Raster move_to_next: {response}")
 
         # Advance the counter only after a successful step (or on a
@@ -254,6 +266,14 @@ class RasteringWorker(RemoteControlWorker):
             f"initial_monitor_values: "
             f"{len(self.initial_monitor_values)} channels"
         )
+
+        # Step 4: stamp which raster point this shot was fired at. Every shot of
+        # the group carries the point its group stepped to; the calibration
+        # rides along so target coords stay interpretable if it changes later.
+        if self.raster_mode and self._raster_meta:
+            with h5py.File(h5_filepath, 'a') as f:
+                group = f.require_group(f'/data/{self.device_name}/raster')
+                group.attrs.update(self._raster_meta)
 
         return {}
 
