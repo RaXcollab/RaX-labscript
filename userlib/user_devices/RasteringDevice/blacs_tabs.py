@@ -187,8 +187,24 @@ class RasteringTab(RemoteControlTab):
 
         position_group.setLayout(position_layout)
 
-        # ── 7. Raster Mode checkbox ──
+        # ── 7. Raster Mode checkbox + shots-per-step ──
         self.raster_check_box = QtWidgets.QCheckBox("Raster Mode (advance per shot)")
+
+        self.shots_per_step_box = QtWidgets.QSpinBox()
+        self.shots_per_step_box.setRange(1, 1000)
+        self.shots_per_step_box.setValue(1)
+        self.shots_per_step_box.setToolTip(
+            "Number of shots taken at each raster position before advancing\n"
+            "Changes made while a queue is running take effect only once the "
+            "queue ends (BLACS back in manual mode)."
+        )
+
+        raster_row = QtWidgets.QHBoxLayout()
+        raster_row.setSpacing(8)
+        raster_row.addWidget(self.raster_check_box)
+        raster_row.addWidget(QtWidgets.QLabel("Shots per step:"))
+        raster_row.addWidget(self.shots_per_step_box)
+        raster_row.addStretch()
 
         # ── 8. Status indicators panel ──
         status_frame = QtWidgets.QFrame()
@@ -222,11 +238,12 @@ class RasteringTab(RemoteControlTab):
         content_layout.setContentsMargins(2, 2, 2, 2)
         content_layout.setSpacing(4)
         content_layout.addWidget(position_group)
-        content_layout.addWidget(self.raster_check_box)
+        content_layout.addLayout(raster_row)
         content_layout.addWidget(status_frame)
         self._position_widget.setLayout(content_layout)
 
         self.raster_check_box.toggled.connect(self.on_raster_toggled)
+        self.shots_per_step_box.valueChanged.connect(self.on_shots_per_step_changed)
 
         # ── 10. Reconnect buttons ──
         self.reconnect_reqrep_button = QtWidgets.QPushButton(
@@ -324,6 +341,12 @@ class RasteringTab(RemoteControlTab):
                 "port": self.reqrep_port,
                 "child_output_connections": self.child_output_connections,
                 "child_monitor_connections": self.child_monitor_connections,
+                # restore_save_data runs before initialise_workers
+                # (device_base_class.py:62-64), so the restored control
+                # state is final here — this is what keeps the worker in
+                # sync with a restored-checked box across BLACS restarts.
+                "raster_mode": self.raster_check_box.isChecked(),
+                "shots_per_step": self.shots_per_step_box.value(),
             },
         )
         self.primary_worker = "main_worker"
@@ -345,9 +368,23 @@ class RasteringTab(RemoteControlTab):
 
     @define_state(MODE_MANUAL, True)
     def on_raster_toggled(self, state):
+        # define_state bodies run off the GUI thread — read the sibling
+        # control via inmain.
+        shots_per_step = inmain(self.shots_per_step_box.value)
         yield (
             self.queue_work(
-                self.primary_worker, 'update_raster_mode', raster_mode=state
+                self.primary_worker, 'update_raster_mode',
+                raster_mode=state, shots_per_step=shots_per_step,
+            )
+        )
+
+    @define_state(MODE_MANUAL, True)
+    def on_shots_per_step_changed(self, value):
+        raster_mode = inmain(self.raster_check_box.isChecked)
+        yield (
+            self.queue_work(
+                self.primary_worker, 'update_raster_mode',
+                raster_mode=raster_mode, shots_per_step=value,
             )
         )
 
@@ -377,28 +414,35 @@ class RasteringTab(RemoteControlTab):
     # ── Save / restore (BLACS-restart persistence) ───────────────────
 
     def get_save_data(self):
-        """Persist the raster-mode checkbox across BLACS restarts.
+        """Persist the raster controls across BLACS restarts.
 
         DeviceTab base's get_save_data returns {} (no AO/DO snapshot —
         those go through the separate front-panel mechanism). Only the
-        raster_check_box state has no other persistence channel today;
-        before this hook, operator had to re-tick after every restart.
+        raster controls have no other persistence channel; before this
+        hook, operator had to re-tick after every restart.
         """
         return {
             'raster_mode': self.raster_check_box.isChecked(),
+            'shots_per_step': self.shots_per_step_box.value(),
         }
 
     def restore_save_data(self, data):
-        """Restore raster-mode checkbox without firing the worker.
+        """Restore raster controls without firing the worker.
 
         ``restore_save_data`` is called from ``DeviceTab.__init__``
         BETWEEN ``initialise_GUI`` and ``initialise_workers`` — the
-        worker does NOT exist yet. ``on_raster_toggled`` queues work to
-        the worker, so we MUST suppress the ``toggled`` signal here via
-        ``blockSignals``. The worker's raster-mode state will sync on
-        first ``program_device`` or via REQ-REP poll on connect.
+        worker does NOT exist yet. The change handlers queue work to
+        the worker, so we MUST suppress the widget signals here via
+        ``blockSignals``. The worker picks the restored state up via
+        workerargs in ``initialise_workers`` (which runs after this,
+        device_base_class.py:62-64).
         """
         raster_mode = bool(data.get('raster_mode', False))
         self.raster_check_box.blockSignals(True)
         self.raster_check_box.setChecked(raster_mode)
         self.raster_check_box.blockSignals(False)
+
+        shots_per_step = max(1, int(data.get('shots_per_step', 1)))
+        self.shots_per_step_box.blockSignals(True)
+        self.shots_per_step_box.setValue(shots_per_step)
+        self.shots_per_step_box.blockSignals(False)
