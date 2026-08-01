@@ -18,34 +18,34 @@ def connection_table():
         num_pseudoclocks=2
     )
 
-    ni_6361_clockline = pb.clocklines[0] 
-    ni_6535_clockline = pb.clocklines[1] 
+    # ni_6361_clockline = pb.clocklines[0] 
+    # ni_6535_clockline = pb.clocklines[1] 
 
-    # === NI 6361 Setup ===
-    ni_6361_max_name = "PXI1Slot8"
+    # # === NI 6361 Setup ===
+    # ni_6361_max_name = "PXI1Slot8"
 
-    ni_6361 = NI_PXIe_6361(
-        name='ni_6361', 
-        parent_device=ni_6361_clockline, #Pseudoclock 0
-        clock_terminal=f'/{ni_6361_max_name}/PFI1',
-        MAX_name=f'{ni_6361_max_name}',
-        acquisition_rate=100e3,
-        stop_order=-1,
-        AI_term = 'Diff',
-        num_AI = 6,
-        num_AO = 2
-    )
+    # ni_6361 = NI_PXIe_6361(
+    #     name='ni_6361', 
+    #     parent_device=ni_6361_clockline, #Pseudoclock 0
+    #     clock_terminal=f'/{ni_6361_max_name}/PFI1',
+    #     MAX_name=f'{ni_6361_max_name}',
+    #     acquisition_rate=100e3,
+    #     stop_order=-1,
+    #     AI_term = 'Diff',
+    #     num_AI = 6,
+    #     num_AO = 2
+    # )
 
-    # === NI 6535 Setup ===
-    ni_6535_max_name = "PXI1Slot5"
+    # # === NI 6535 Setup ===
+    # ni_6535_max_name = "PXI1Slot5"
 
-    ni_6535 = NI_PXIe_6535(
-        name='ni_6535',
-        parent_device=ni_6535_clockline,  #Pseudoclock 1
-        clock_terminal=f'/{ni_6535_max_name}/PFI4',  # adjust if needed
-        MAX_name=ni_6535_max_name,
-        stop_order=1
-    )
+    # ni_6535 = NI_PXIe_6535(
+    #     name='ni_6535',
+    #     parent_device=ni_6535_clockline,  #Pseudoclock 1
+    #     clock_terminal=f'/{ni_6535_max_name}/PFI4',  # adjust if needed
+    #     MAX_name=ni_6535_max_name,
+    #     stop_order=1
+    # )
 
 
     # === Laser Lock Communication === #
@@ -146,13 +146,13 @@ def connection_table():
     # All channels auto-created
 
     # Define digital output lines on PXIe-6535
-    DigitalOut('YAG1_line', ni_6535, 'port0/line1')
-    DigitalOut('YAG2_trig', ni_6535, 'port0/line2')
-    DigitalOut('ENH_line', ni_6535, 'port0/line3')
-    # DigitalOut('dummy_line', ni_6535, 'port0/line4')    #for even number
+    # DigitalOut('YAG1_line', ni_6535, 'port0/line1')
+    # DigitalOut('YAG2_trig', ni_6535, 'port0/line2')
+    # DigitalOut('ENH_line', ni_6535, 'port0/line3')
+    # # DigitalOut('dummy_line', ni_6535, 'port0/line4')    #for even number
 
-    # no latched lines in open-cell CT -- line0 is now the camera trigger (was LIF_shutter)
-    ni_6535.set_property('latched_lines', [], location='device_properties')
+    # # no latched lines in open-cell CT -- line0 is now the camera trigger (was LIF_shutter)
+    # ni_6535.set_property('latched_lines', [], location='device_properties')
 
 
 #     # NI_SCOPE(
@@ -168,41 +168,41 @@ def connection_table():
 #     #     channels_to_save=[0, 1],      # which NI-5922 channels to save to h5
 #     # )
 
-    # Nuvu Camera
-    # NOTE: The initialization of the NuvuCamera creates an implicit DO under the name "camera_trigger" at the specified connection.
-    camera = NuvuCamera(
-    name="camera",
-    parent_device=ni_6535,
-    connection="port0/line0", 
-    serial_number=0xDEADBEEF, # NUVU camera initialization does not require serial_number, no need to touch this
-    camera_attributes={
-        "readoutMode":1, #1 = EM
-        "exposure_time":20, #Shafin: "Um miliseconds?"
-        "timeout": 5000, # ms; SDK frame-wait before error 214 — must outlast normal arm-to-trigger latency; grab_multiple retries on expiry
-        "square_bin": 1, #NxN bin size
-        'target_detector_temp':-60, 
-        "emccd_gain": 500, #Max 5000
-        "trigger_mode":2, # 1 = EXT_LOW_HIGH, #0 = INT, 2 "EXT_LOW_HIGH_EXP" (minus for HIGH_LOW),
-        "shutter_mode": 1,
-    },
-    manual_mode_camera_attributes={
-        "readoutMode":1,
-        "exposure_time":20,
-        "timeout": 5000,
-        "square_bin": 1,
-        'target_detector_temp':-60,
-        "emccd_gain": 500,
-        "trigger_mode":0, # INT in manual mode so snap/continuous self-trigger (Lyman convention); buffered attrs above set 2 = EXT per shot
-        "shutter_mode":1,
-    },
-    mock=False #True
-    )
+    # # Nuvu Camera
+    # # NOTE: The initialization of the NuvuCamera creates an implicit DO under the name "camera_trigger" at the specified connection.
+    # camera = NuvuCamera(
+    # name="camera",
+    # parent_device=ni_6535,
+    # connection="port0/line0", 
+    # serial_number=0xDEADBEEF, # NUVU camera initialization does not require serial_number, no need to touch this
+    # camera_attributes={
+    #     "readoutMode":1, #1 = EM
+    #     "exposure_time":20, #Shafin: "Um miliseconds?"
+    #     "timeout": 5000, # ms; SDK frame-wait before error 214 — must outlast normal arm-to-trigger latency; grab_multiple retries on expiry
+    #     "square_bin": 1, #NxN bin size
+    #     'target_detector_temp':-60, 
+    #     "emccd_gain": 500, #Max 5000
+    #     "trigger_mode":2, # 1 = EXT_LOW_HIGH, #0 = INT, 2 "EXT_LOW_HIGH_EXP" (minus for HIGH_LOW),
+    #     "shutter_mode": 1,
+    # },
+    # manual_mode_camera_attributes={
+    #     "readoutMode":1,
+    #     "exposure_time":20,
+    #     "timeout": 5000,
+    #     "square_bin": 1,
+    #     'target_detector_temp':-60,
+    #     "emccd_gain": 500,
+    #     "trigger_mode":0, # INT in manual mode so snap/continuous self-trigger (Lyman convention); buffered attrs above set 2 = EXT per shot
+    #     "shutter_mode":1,
+    # },
+    # mock=False #True
+    # )
 
 
-    AnalogIn('daq_ai0',ni_6361,'ai0') 
-    AnalogIn('daq_ai1',ni_6361,'ai1')
-    AnalogIn('daq_ai2',ni_6361,'ai2')
-    AnalogIn('daq_ai3',ni_6361,'ai3')
+    # AnalogIn('daq_ai0',ni_6361,'ai0') 
+    # AnalogIn('daq_ai1',ni_6361,'ai1')
+    # AnalogIn('daq_ai2',ni_6361,'ai2')
+    # AnalogIn('daq_ai3',ni_6361,'ai3')
     # AnalogIn('daq_ai4',ni_6361,'ai4')
     # AnalogIn('daq_ai5',ni_6361,'ai5')
 
