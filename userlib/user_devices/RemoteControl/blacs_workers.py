@@ -9,7 +9,7 @@ import h5py
 import zmq
 import json
 
-from labscript_utils.ls_zprocess import Event
+from labscript_utils.ls_zprocess import Event, ProcessTree
 
 # v2 protocol foundation. PR 1 ships in master at commit ef24a6d
 # (refined cf394d3 — REQ transport TimeoutError translation).
@@ -432,17 +432,20 @@ class RemoteControlWorker(Worker):
         self._monitor_event = None
         self._pubsub_thread = None
         if self.child_monitor_connections:
+            event_name = f'{self.device_name}_pubsub_monitor'
             try:
-                self._monitor_event = Event(
-                    f'{self.device_name}_pubsub_monitor',
-                    role='wait',
-                )
+                self._monitor_event = Event(event_name, role='wait')
             except TimeoutError as e:
                 # Event() raises TimeoutError if it can't connect to the broker
-                # within 5 seconds (zprocess.process_tree:334). Should not happen
-                # in practice — broker is local and check_broker() ran at module
-                # import time. If it does, log and continue without the cache;
-                # the worker is still functional, monitor_values just stay empty.
+                # within 5 seconds (zprocess.process_tree:334). Should not happen:
+                # ProcessTree.subprocess() calls check_broker() (:1286) before it
+                # serialises the broker ports into our parentinfo (:1328-1330), so
+                # a worker always inherits a live broker. If it does, log and
+                # continue without the cache; the worker is still functional,
+                # monitor_values just stay empty.
+                # NB a TimeoutError is NOT the Bug B signature — a process with no
+                # inherited ports builds its OWN broker and connects happily
+                # (check_broker :1205-1213). Compare the logged ports, not this.
                 self.logger.error(
                     f"PUB-SUB drain init failed (broker unreachable): {e}. "
                     f"monitor_values will be empty for this worker session."
@@ -454,9 +457,15 @@ class RemoteControlWorker(Worker):
                 name=f'{self.device_name}_pubsub_drain',
             )
             self._pubsub_thread.start()
+            # Broker ports identify WHICH EventBroker this end attached to. The
+            # tab logs the same pair for its post Event; if they differ, the two
+            # ends are on separate brokers and no monitor value can ever cross.
+            pt = ProcessTree.instance()
             self.logger.info(
                 f"PUB-SUB drain thread started for "
-                f"{len(self.child_monitor_connections)} monitor channels"
+                f"{len(self.child_monitor_connections)} monitor channels; "
+                f"wait Event '{event_name}' broker "
+                f"in={pt.broker_in_port} out={pt.broker_out_port}"
             )
 
     def _pubsub_drain_loop(self):
@@ -467,6 +476,7 @@ class RemoteControlWorker(Worker):
         are received. Verified empirically (Tests 1, 2): zero loss at 10 kHz
         aggregate, zero cross-leak between devices.
         """
+        received_any = False
         while not self._pubsub_stop.is_set():
             try:
                 with self._monitor_event.sublock:
@@ -476,6 +486,14 @@ class RemoteControlWorker(Worker):
                         continue
                     _, event_id, data = self._monitor_event.sub.recv_multipart()
                 self._pubsub_cache[event_id.decode('utf8')] = pickle.loads(data)
+                if not received_any:
+                    # Silence here is the whole of Bug B: it separates "nothing
+                    # is being posted" from "posted, but not reaching us".
+                    received_any = True
+                    self.logger.info(
+                        f"first monitor value drained: "
+                        f"{event_id.decode('utf8')}"
+                    )
             except zmq.ContextTerminated:
                 # Socket is dead (process shutting down). Exit cleanly.
                 return

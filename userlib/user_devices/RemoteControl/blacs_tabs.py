@@ -327,9 +327,15 @@ class RemoteControlTab(DeviceTab):
         # reconnect. The hasattr guard is required: connecting the same Qt
         # slot twice causes duplicate fires (verified Test 4 T3.4).
         if not hasattr(self, '_monitor_event'):
-            self._monitor_event = Event(
-                f'{self.device_name}_pubsub_monitor',
-                role='post',
+            event_name = f'{self.device_name}_pubsub_monitor'
+            self._monitor_event = Event(event_name, role='post')
+            # Broker ports identify WHICH EventBroker this end attached to. The
+            # worker logs the same pair; if they differ, the two ends are on
+            # separate brokers and no monitor value can ever cross.
+            pt = ProcessTree.instance()
+            self.logger.info(
+                f"post Event '{event_name}' broker "
+                f"in={pt.broker_in_port} out={pt.broker_out_port}"
             )
             self._pubsub_bridge.monitor_value_received.connect(
                 self._post_to_internal_broker
@@ -603,19 +609,39 @@ class RemoteControlTab(DeviceTab):
         must override this method. (Empirically all current devices are
         numeric: THz, V, A, deg C, raster coords.)
         """
+        if not hasattr(self, '_posted_connections'):
+            self._posted_connections = set()
+        seen = self._posted_connections
         try:
             value = float(value_str)
         except (ValueError, TypeError):
-            return  # non-numeric, silently dropped per contract
+            # Dropped per contract, but announce the first one per connection:
+            # a silent drop here is indistinguishable from never being called.
+            if f'reject:{connection}' not in seen:
+                seen.add(f'reject:{connection}')
+                self.logger.warning(
+                    f"_post_to_internal_broker: {connection} is non-numeric "
+                    f"({value_str!r}); dropping this and all further values"
+                )
+            return
         try:
             self._monitor_event.post(connection, value)
         except Exception as e:
-            # post() should not fail (PUSH is non-blocking, broker is local).
-            # Log loudly if it does so we notice broken plumbing.
+            # send_multipart carries no NOBLOCK flag (zprocess process_tree.py
+            # :355), so this WOULD block if the broker endpoint were dead. It
+            # does not raise when nobody is subscribed: the broker's XPUB drops
+            # unmatched topics silently, by design. So an exception here means
+            # the plumbing itself is broken — log loudly.
             self.logger.error(
                 f"_post_to_internal_broker: post failed for "
                 f"{connection}={value}: {type(e).__name__}: {e}"
             )
+        else:
+            if connection not in seen:
+                seen.add(connection)
+                self.logger.info(
+                    f"first monitor post: {connection}={value}"
+                )
 
     # ── GUI status management ────────────────────────────────────────
 
