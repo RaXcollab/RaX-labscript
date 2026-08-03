@@ -267,13 +267,31 @@ class RasteringWorker(RemoteControlWorker):
             f"{len(self.initial_monitor_values)} channels"
         )
 
-        # Step 4: stamp which raster point this shot was fired at. Every shot of
-        # the group carries the point its group stepped to; the calibration
-        # rides along so target coords stay interpretable if it changes later.
-        if self.raster_mode and self._raster_meta:
-            with h5py.File(h5_filepath, 'a') as f:
+        return {}
+
+    def post_experiment(self):
+        """Stamp which raster point this shot was fired at.
+
+        The stamp must land here, not in transition_to_buffered: /data is
+        owned by the queue manager, which creates it unconditionally once
+        the shot finishes (blacs/blacs/experiment_queue.py). A device that
+        creates /data earlier crashes the queue manager and pauses the queue.
+        """
+        result = super().post_experiment()
+
+        # Every shot of the group carries the point its group stepped to; the
+        # calibration rides along so target coords stay interpretable if it
+        # changes later.
+        if self.raster_mode and self._raster_meta and self.h5_filepath:
+            with h5py.File(self.h5_filepath, 'a') as f:
                 group = f.require_group(f'/data/{self.device_name}/raster')
                 group.attrs.update(self._raster_meta)
 
-        return {}
+        # A comms-disabled shot returns from transition_to_buffered before it
+        # assigns h5_filepath, and _raster_meta deliberately survives the shot
+        # group — so without this clear, that shot re-stamps the PREVIOUS
+        # shot's file.
+        self.h5_filepath = None
+
+        return result
 

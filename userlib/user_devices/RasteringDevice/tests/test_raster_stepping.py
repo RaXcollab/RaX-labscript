@@ -11,6 +11,10 @@ import pytest
 
 from user_devices.RasteringDevice.blacs_workers import RasteringWorker
 
+# After the worker import, never before: blacs_workers pulls in
+# labscript_utils.h5_lock, which refuses to load once h5py is imported.
+import h5py  # noqa: E402
+
 
 SUCCESS = {"status": "SUCCESS"}
 ARMED_STEP = {"status": "SUCCESS", "mode": "step"}
@@ -299,3 +303,63 @@ def test_advance_raster_stashes_point_meta_and_holds_it_across_the_group():
     w._advance_raster()                   # second shot of the group: no step
     assert len(w.remote_comms.sent("move_to_next")) == 1
     assert w._raster_meta["point_index"] == 3
+
+
+# --- /data belongs to the queue manager until the shot is over ---
+
+def _shot_worker(tmp_path, shot_name="shot.h5"):
+    """Worker + an empty shot file, wired for the h5-writing lifecycle calls."""
+    w = make_worker(replies={"move_to_next": STEPPED})
+    w.enable_comms = True
+    w.device_name = "RasteringGUI"
+    w._pubsub_cache = {}
+    w.initial_monitor_values = {}         # base post_experiment: nothing to save
+    h5_path = tmp_path / shot_name
+    with h5py.File(h5_path, "w") as f:
+        f.create_group("devices/RasteringGUI")
+    w.h5_filepath = str(h5_path)
+    return w, h5_path
+
+
+def test_transition_to_buffered_leaves_data_group_to_blacs(tmp_path):
+    """Creating /data before the shot ends aborts the shot at
+    experiment_queue.py:910 (ValueError: name already exists)."""
+    w, h5_path = _shot_worker(tmp_path)
+    w.transition_to_buffered("RasteringGUI", str(h5_path), {}, True)
+    with h5py.File(h5_path, "r") as f:
+        assert "data" not in f["/"]
+
+
+def test_post_experiment_stamps_the_point_after_blacs_makes_data(tmp_path):
+    w, h5_path = _shot_worker(tmp_path)
+    w.transition_to_buffered("RasteringGUI", str(h5_path), {}, True)
+    with h5py.File(h5_path, "r+") as f:   # stand in for experiment_queue.py:910
+        f["/"].require_group("data")
+
+    w.post_experiment()
+
+    with h5py.File(h5_path, "r") as f:
+        attrs = dict(f["/data/RasteringGUI/raster"].attrs)
+    assert attrs["point_index"] == 3
+    assert list(attrs["target_xy"]) == [1.5, 2.5]
+
+
+def test_comms_disabled_shot_does_not_restamp_the_previous_shot(tmp_path):
+    """With comms off, transition_to_buffered returns before it assigns
+    h5_filepath, and _raster_meta deliberately survives the shot group. A
+    stale path would send the stamp back into the already-finished shot."""
+    w, first = _shot_worker(tmp_path, "first.h5")
+    w.transition_to_buffered("RasteringGUI", str(first), {}, True)
+    with h5py.File(first, "r+") as f:     # stand in for experiment_queue.py:910
+        f["/"].require_group("data")
+    w.post_experiment()
+
+    with h5py.File(first, "r+") as f:     # BLACS never revisits a finished shot
+        del f["/data"]
+
+    w.enable_comms = False
+    w.transition_to_buffered("RasteringGUI", str(tmp_path / "second.h5"), {}, True)
+    w.post_experiment()
+
+    with h5py.File(first, "r") as f:
+        assert "data" not in f["/"]

@@ -15,7 +15,7 @@ shot_file.h5
 │
 ├── /  (root attrs: 'n_runs', 'run number', 'run time', 'script_basename',
 │                   'sequence_date', 'sequence_id', 'sequence_index')
-│       'run time' set by BLACS at experiment_queue.py:903
+│       'run time' set by BLACS at experiment_queue.py:915
 │
 ├── connection_table              shape=(N_devices,) compound dtype
 │                                 dtype: name|class|parent|parent port|
@@ -64,7 +64,7 @@ shot_file.h5
 │
 ├── front_panel/                  ← BLACS GUI state captured PER SHOT
 │   │   Writer: blacs/blacs/front_panel_settings.py:331-376
-│   │           (store_front_panel_in_h5, called from experiment_queue.py:899)
+│   │           (store_front_panel_in_h5, called from experiment_queue.py:908)
 │   ├── front_panel               shape=(N,) compound[name, device_name, channel,
 │   │                                                  base_value(float64), locked(bool),
 │   │                                                  base_step_size(float64),
@@ -106,22 +106,43 @@ shot_file.h5
 │   │
 │   └── {acquisition-only}/       e.g., NI_SCOPE — empty group, attrs only
 │
-├── data/                         ── ONE SUBGROUP PER DEVICE ──
-│   │                                Writer: BLACS creates the parent group ONCE per shot at
-│   │                                blacs/blacs/experiment_queue.py:901. Per-device subgroups
-│   │                                and datasets are written by individual device workers in
-│   │                                transition_to_buffered / post_experiment.
+├── data/                         ── WRITTEN AFTER THE SHOT; SOME SUBGROUPS SHARED ──
+│   │                                Writer: the queue manager creates the parent group once per
+│   │                                shot at blacs/blacs/experiment_queue.py:913 — after the run,
+│   │                                before any device post_experiment (dispatched at :938).
+│   │                                Subgroups are written by device workers in post_experiment /
+│   │                                transition_to_manual — never in transition_to_buffered:
+│   │                                /data's presence IS BLACS's "shot has been run" marker (:387),
+│   │                                so a worker creating it early makes an un-run file resubmit as
+│   │                                a stripped _rep copy — and crashes the post-run bookkeeping
+│   │                                AFTER the shot has already fired: front_panel (already saved
+│   │                                at :908) is discarded by the error-path clean_h5_file copy,
+│   │                                'run time' (:915) and every device's post_experiment write
+│   │                                (:938) never happen, and the queue pauses.
+│   │                                :913 is a bare create_group ON PURPOSE. That crash is the
+│   │                                only detector for a device breaking this rule — it caught
+│   │                                RasteringDevice within a day (2026-08-02). Fix the device,
+│   │                                never soften :913. Durable guards: the /data invariant in
+│   │                                .claude/rules/device-lifecycle.md and the RasteringDevice
+│   │                                regression tests.
+│   │                                Shared subgroup: traces/ (NI_DAQmx, NI_SCOPE, TekScope,
+│   │                                AlazarTechBoard — each creates-if-absent). waits is a
+│   │                                DATASET, not a group: exactly one wait-monitor device per
+│   │                                shot creates /data/waits (NI_DAQmx :1222, PrawnBlaster :468,
+│   │                                or Cicero :661 — unconditional create_dataset, so a second
+│   │                                writer would raise).
 │   │
 │   ├── {RemoteControl device}/
-│   │   └── monitor_values/                Writer: userlib/user_devices/RemoteControl/blacs_workers.py:382
+│   │   └── monitor_values/                Writer: userlib/user_devices/RemoteControl/blacs_workers.py:714
+│   │                                              (_save_monitor_values_to_hdf5, from post_experiment:687)
 │   │       ├── initial_monitor_values     shape=(1,) compound  per-col dtype: float64
 │   │       │                              (was float32 prior to 2026-04-29; see "Precision warning" below)
 │   │       │                              Captured AFTER programming, BEFORE shot
-│   │       │                              Source: blacs_workers.py:350 (via check_all_remote_values
-│   │       │                              at line 268; serialised at line 384)
+│   │       │                              Source: blacs_workers.py:676 (_pubsub_cache snapshot in
+│   │       │                              transition_to_buffered; written at :700)
 │   │       └── final_monitor_values       shape=(1,) compound  per-col dtype: float64
 │   │                                      Captured in post_experiment after the shot
-│   │                                      Source: blacs_workers.py:356 (write at line 363)
+│   │                                      Source: blacs_workers.py:693 (write at :703)
 │   │
 │   │       ⚠ COLUMN SEMANTICS — important and non-obvious. See "Monitor_values column rules" below.
 │   │
@@ -156,10 +177,11 @@ shot_file.h5
 │   │                             same (name, frametype) → stacked into a single dataset of
 │   │                             shape (N, H, W) by the worker.)
 │   │
-│   └── (For NuvuCamera ONLY) — adds a sibling
-│       /data/cam_info/{device_name}/ group with per-shot scalars/attrs
-│       (temps, EM gains, exposure, readout mode). Written by
-│       userlib/user_devices/NuvuCamera/blacs_workers.py post_experiment.
+│   └── (For NuvuCamera ONLY) — adds a sibling flat group
+│       /data/cam_info/ holding per-shot scalar DATASETS {detectorTemp,
+│       rawEMGain, calibratedEmGain, exposureTime, currentReadoutMode}
+│       — no {device_name} level, no attrs. Written by
+│       userlib/user_devices/NuvuCamera/blacs_workers.py:339-343 (post_experiment).
 │
 └── results/                      ── ONE SUBGROUP PER LYSE ANALYSIS SCRIPT ──
                                      Writer: lyse creates parent group on Run() instantiation
@@ -178,7 +200,7 @@ shot_file.h5
 
 ## Where do I find setpoint X? (LaserLockGUI case study)
 
-For LaserLockGUI, three places store frequency values per shot. **All three are setpoint-flavored, none is the wavemeter measurement.** The wavemeter reading is displayed in the BLACS GUI but **not persisted to any shot-file dataset**.
+For LaserLockGUI, three places store frequency values per shot. **Two are setpoint-flavored; `monitor_values` holds the wavemeter measurement** — since the 2026-05-06 PUB-SUB-cache fix. Before that fix all three were setpoint-flavored and the wavemeter reading was not persisted anywhere; see "Known bugs" below.
 
 ### The visible BLACS GUI for LaserLockGUI
 
@@ -193,12 +215,12 @@ These are independent state. The setpoint AnalogOutput is **never updated by PUB
 | Path | What it contains | Source |
 |---|---|---|
 | `/devices/LaserLockGUI/remote_device_operation['{ch}'][0]` | The **exact labscript-commanded setpoint** for this shot (the scan value, full float64) | Written by `RemoteControl.generate_code` from `RemoteAnalogOut.static_value` at compile time ([userlib/user_devices/RemoteControl/labscript_devices.py:286-291](userlib/user_devices/RemoteControl/labscript_devices.py#L286)). Only channels with `value_set()=True` appear. |
-| `/front_panel/front_panel.base_value` (rows where `device_name=='LaserLockGUI'`) | The **HF_Locking server's stored setpoint as of the last periodic poll** — i.e., a slightly stale CHECK_VALUE response, possibly several seconds behind the current shot's commanded value | float64. Mechanism: `get_front_panel_values()` at [device_base_class.py:400-401](blacs/blacs/device_base_class.py#L400) returns `self._AO[conn].value`. For LaserLockTab, `self._AO[conn]` is the output AnalogOutput, updated by `_update_ao_widgets` ([LaserLockDevice/blacs_tabs.py:316-323](userlib/user_devices/LaserLockDevice/blacs_tabs.py#L316)) from the periodic 5-s `check_remote_values` poll ([RemoteControl/blacs_tabs.py:295-323](userlib/user_devices/RemoteControl/blacs_tabs.py#L295)) which queries `CHECK_VALUE` ([blacs_workers.py:250-266](userlib/user_devices/RemoteControl/blacs_workers.py#L250)). Captured per shot at [experiment_queue.py:899](blacs/blacs/experiment_queue.py#L899). |
-| `/data/LaserLockGUI/monitor_values/{initial,final}_monitor_values['{ch}'][0]` | The **HF_Locking server's stored setpoint immediately after this shot's PROGRAM_VALUE** — and (per "Known bugs" below) the same value pre and post | per-column float64 (post-2026-04-29) / float32 (pre). Captured via REQ-REP `CHECK_VALUE` in `check_all_remote_values()` ([blacs_workers.py:268-281](userlib/user_devices/RemoteControl/blacs_workers.py#L268)). Server handler at [HF_Locking/workers.py:559-562](GUIs/HF_Locking/workers.py#L559) returns `st.get("setpoint", 0.0)` — the server's record of the most recently programmed value, possibly quantized by the DLL decimal-string round-trip. |
+| `/front_panel/front_panel.base_value` (rows where `device_name=='LaserLockGUI'`) | The **HF_Locking server's stored setpoint as of the last periodic poll** — i.e., a slightly stale CHECK_VALUE response, possibly several seconds behind the current shot's commanded value | float64. Mechanism: `get_front_panel_values()` at [device_base_class.py:400-401](blacs/blacs/device_base_class.py#L400) returns `self._AO[conn].value`. For LaserLockTab, `self._AO[conn]` is the output AnalogOutput, updated by `_update_ao_widgets` ([LaserLockDevice/blacs_tabs.py:316-323](userlib/user_devices/LaserLockDevice/blacs_tabs.py#L316)) from the periodic 5-s `check_remote_values` poll ([RemoteControl/blacs_tabs.py:357-371](userlib/user_devices/RemoteControl/blacs_tabs.py#L357)) which queries `CHECK_VALUE` ([blacs_workers.py:387](userlib/user_devices/RemoteControl/blacs_workers.py#L387)). Captured per shot at [experiment_queue.py:908](blacs/blacs/experiment_queue.py#L908). |
+| `/data/LaserLockGUI/monitor_values/{initial,final}_monitor_values['{ch}'][0]` | The **wavemeter reading (`freq_display`) as of shot start and shot end** — the newest PUB-SUB sample held at each moment, so it lags the live stream by at most one publish period (HF_Locking publishes at 10 Hz, [workers.py:514-519](GUIs/HF_Locking/workers.py#L514)). Shots before 2026-05-06 hold the server's stored setpoint here instead — and **no shot found since 2026-05-07 actually carries these datasets (active Bug B below: the cache is empty in production, so the write is skipped)**. | per-column float64 (post-2026-04-29) / float32 (pre). Snapshotted from the worker's `_pubsub_cache` in `transition_to_buffered` ([blacs_workers.py:676](userlib/user_devices/RemoteControl/blacs_workers.py#L676)) and `post_experiment` ([:693](userlib/user_devices/RemoteControl/blacs_workers.py#L693)). The cache is filled by a daemon drain thread ([:462](userlib/user_devices/RemoteControl/blacs_workers.py#L462)) fed from the tab's PUB-SUB subscriber through the BLACS-internal EventBroker ([blacs_tabs.py:594](userlib/user_devices/RemoteControl/blacs_tabs.py#L594)). |
 
-### Why all three differ even though all are "the setpoint"
+### Why all three differ even though all are "the setpoint" (April-2026 shots)
 
-Empirical evidence from `Open_cell/2026/04/28/0015`, channel `'4'` (TiSa_1, ~348.666 THz, 5 MHz/shot scan):
+Empirical evidence from `Open_cell/2026/04/28/0015`, channel `'4'` (TiSa_1, ~348.666 THz, 5 MHz/shot scan). **These shots predate the 2026-05-06 fix, so `monitor_values` below is the server's stored setpoint** — in shots taken since, that column holds the wavemeter reading instead and this three-way setpoint comparison only applies to the other two datasets:
 
 Shot 011:
 - `remote_device_operation['4']` = `348.6663020` (labscript intent — exact float64)
@@ -215,7 +237,7 @@ In scan 0015 across 183 shots, 132/183 had `front_panel ≠ remote_device_operat
 
 ### Where to find the wavemeter reading
 
-It's not in the shot file. The HF_Locking server publishes `freq_display` over PUB-SUB on port 3797 ([HF_Locking/workers.py:486-489](GUIs/HF_Locking/workers.py#L486)), the LaserLockTab subscribes and displays it in `self._monitor_labels[conn]`, and that's the end of the data path. To capture it per-shot, see "Known bugs" below.
+`/data/LaserLockGUI/monitor_values/{initial,final}_monitor_values` — since 2026-05-06 **by design; in practice no shot found since 2026-05-07 carries these datasets (active Bug B below)**. The HF_Locking server publishes `freq_display` per port over PUB-SUB on port 3797 ([HF_Locking/workers.py:514-519](GUIs/HF_Locking/workers.py#L514)); the LaserLockTab subscribes, displays it in `self._monitor_labels[conn]` ([LaserLockDevice/blacs_tabs.py:327-337](userlib/user_devices/LaserLockDevice/blacs_tabs.py#L327)), and the base tab additionally forwards it into the BLACS-internal EventBroker ([RemoteControl/blacs_tabs.py:594](userlib/user_devices/RemoteControl/blacs_tabs.py#L594)) where the worker's drain thread caches it for the per-shot snapshots. It is still **not** in `/front_panel/front_panel` for LaserLockGUI (no monitor AnalogOutput exists). See "Known bugs" below.
 
 ### Other notes
 
@@ -229,8 +251,8 @@ It's not in the shot file. The HF_Locking server publishes `freq_display` over P
 
 | Base `RemoteControlTab` | LaserLockTab override |
 |---|---|
-| Calls `create_analog_outputs(AO_prop)` for outputs ([blacs_tabs.py:133](userlib/user_devices/RemoteControl/blacs_tabs.py#L133)) **and** `create_analog_outputs(AM_prop)` for monitors ([blacs_tabs.py:151](userlib/user_devices/RemoteControl/blacs_tabs.py#L151)) | Calls only the output one ([LaserLockDevice/blacs_tabs.py:76](userlib/user_devices/LaserLockDevice/blacs_tabs.py#L76)). `self.AM_widgets = {}` empty. Wavemeter values land in plain QLabels (`self._monitor_labels`) instead. |
-| `_on_monitor_value_received` writes PUB-SUB values into `self._AO[monitor_port].set_value(...)` ([blacs_tabs.py:478-486](userlib/user_devices/RemoteControl/blacs_tabs.py#L478)) | Override writes only to QLabel + recomputes error display ([LaserLockDevice/blacs_tabs.py:327-337](userlib/user_devices/LaserLockDevice/blacs_tabs.py#L327)) |
+| Calls `create_analog_outputs(AO_prop)` for outputs ([blacs_tabs.py:171](userlib/user_devices/RemoteControl/blacs_tabs.py#L171)) **and** `create_analog_outputs(AM_prop)` for monitors ([blacs_tabs.py:189](userlib/user_devices/RemoteControl/blacs_tabs.py#L189)) | Calls only the output one ([LaserLockDevice/blacs_tabs.py:76](userlib/user_devices/LaserLockDevice/blacs_tabs.py#L76)). `self.AM_widgets = {}` empty. Wavemeter values land in plain QLabels (`self._monitor_labels`) instead. |
+| `_on_monitor_value_received` writes PUB-SUB values into `self._AO[monitor_port].set_value(...)` ([blacs_tabs.py:578-592](userlib/user_devices/RemoteControl/blacs_tabs.py#L578)) | Override writes only to QLabel + recomputes error display ([LaserLockDevice/blacs_tabs.py:327-337](userlib/user_devices/LaserLockDevice/blacs_tabs.py#L327)) |
 | If output and monitor share `parent_port`: the second `create_analog_outputs` overwrites `self._AO[<port>]` → output AnalogOutput is unreachable through `self._AO` | No overwrite possible (monitor AnalogOutputs not created) |
 
 **Consequence for `front_panel/front_panel` rows** (verified empirically for shot 182):
@@ -243,47 +265,40 @@ It's not in the shot file. The HF_Locking server publishes `freq_display` over P
 
 For BigSky and Rastering, the scheme works because monitor `parent_port`s are distinct from output `parent_port`s (`YAG_1_voltage` vs `YAG_1_voltage_monitor`, `Raster_X` vs `Raster_X_Monitor`). For LaserLockGUI, output and monitor intentionally share `parent_port` so the spinbox and wavemeter label can be paired in the GUI — but that means the base-class `create_analog_outputs(AM_prop)` would clobber the output AnalogOutput, hence the LaserLockTab override.
 
-**So if you want the wavemeter reading per shot for LaserLockGUI, it isn't there.** For BigSky-style sensor readings per shot, look at `monitor` rows in `/front_panel/front_panel`.
+**So the LaserLockGUI wavemeter reading is not in `front_panel`** — it lands in `/data/LaserLockGUI/monitor_values/` instead. For BigSky-style sensor readings per shot, look at `monitor` rows in `/front_panel/front_panel`.
 
-## Known bugs (LaserLockGUI, as of 2026-05-01)
+## Known bugs (LaserLockGUI)
 
-**Bug A: `initial_monitor_values` and `final_monitor_values` carry no temporal information.** Verified: in scan 0015 channel `'4'`, 172/183 shots had `initial == final` *exactly*; the 11 divergent shots all differed by exactly +30.518 MHz (i.e., the setpoint was re-programmed mid-shot for those). The intent of the pre/post snapshot was to compare the **wavemeter measurement** before vs after the shot, so a drifted lock could be detected and the shot requeued (TODO at [blacs_workers.py:306](userlib/user_devices/RemoteControl/blacs_workers.py#L306)). What actually happens: `check_all_remote_values()` queries `CHECK_VALUE` over REQ-REP, which the HF_Locking server answers from `SharedExperimentState.setpoint` — a value that doesn't change unless someone reprograms it. So pre and post are identical except in shots where the setpoint was changed mid-shot.
+**Bug A — FIXED 2026-05-06: `initial_monitor_values` and `final_monitor_values` carried no temporal information.** Verified pre-fix: in scan 0015 channel `'4'`, 172/183 shots had `initial == final` *exactly*; the 11 divergent shots all differed by exactly +30.518 MHz (i.e., the setpoint was re-programmed mid-shot for those). The intent of the pre/post snapshot was to compare the **wavemeter measurement** before vs after the shot, so a drifted lock could be detected and the shot requeued. The old mechanism was `check_all_remote_values()` querying `CHECK_VALUE` over REQ-REP, which the HF_Locking server answers from `SharedExperimentState.setpoint` — a value that doesn't change unless someone reprograms it, so pre and post were identical except where the setpoint was changed mid-shot.
 
-**Fix path:** capture the cached PUB-SUB `freq_display` value at the right moments. For LaserLockTab specifically, this is *not* available through `self._AO` (no AM AnalogOutput exists — see "RemoteControlTab vs LaserLockTab" above). Concrete fix:
-1. Add a `dict` to LaserLockTab keyed by connection, e.g. `self._latest_pubsub_values = {conn: None for conn in self.child_monitor_connections}`.
-2. Have `_on_monitor_value_received` write into that dict (in addition to updating `_monitor_labels[conn]`).
-3. Pass a reference to that dict into the worker via `init_kwargs` in `initialise_workers` (the tab-worker shared-dict pattern is already used elsewhere — see auto-memory note "Tab-worker shared dict for PUB-SUB cache").
-4. In the worker's `transition_to_buffered`, snapshot `dict(self._pubsub_cache)` into `self.initial_monitor_values` instead of calling `check_all_remote_values()`. Same in `post_experiment` for `self.final_monitor_values`.
-5. Keep `_save_monitor_values_to_hdf5` unchanged.
+**How it was actually fixed** — worker-side subscription through the BLACS-internal EventBroker, *not* the tab-shared-`init_kwargs`-dict route originally sketched here:
+1. `RemoteControlTab.connect_to_pubsub` lazily creates `Event(f'{device_name}_pubsub_monitor', role='post')` and connects `_post_to_internal_broker` to the monitor-value signal ([blacs_tabs.py:329-336](userlib/user_devices/RemoteControl/blacs_tabs.py#L329)). Every numeric PUB-SUB monitor value is posted into the broker with the connection as the event identifier ([blacs_tabs.py:594-611](userlib/user_devices/RemoteControl/blacs_tabs.py#L594)).
+2. `RemoteControlWorker.init` opens the matching `role='wait'` Event and starts a daemon drain thread ([blacs_workers.py:434-456](userlib/user_devices/RemoteControl/blacs_workers.py#L434)) which writes `self._pubsub_cache[connection] = value` ([:478](userlib/user_devices/RemoteControl/blacs_workers.py#L478)) — bypassing `Event.wait()`'s identifier filter so all monitor channels land in one dict.
+3. `transition_to_buffered` snapshots `dict(self._pubsub_cache)` into `initial_monitor_values` ([:676](userlib/user_devices/RemoteControl/blacs_workers.py#L676)); `post_experiment` does the same for `final_monitor_values` ([:693](userlib/user_devices/RemoteControl/blacs_workers.py#L693)).
+4. `_save_monitor_values_to_hdf5` unchanged ([:714](userlib/user_devices/RemoteControl/blacs_workers.py#L714)).
 
-For BigSkyHub / RasteringGUI (using base RemoteControlTab), the equivalent of step 4 already works "for free" via the `monitor` rows in `/front_panel/front_panel` (which capture the AM AnalogOutput value at shot start). They don't have this bug — but they also don't get a separate post-shot snapshot, since front_panel only fires once per shot.
+So the LaserLockGUI snapshots now hold the **wavemeter reading** at shot start and shot end and do carry temporal information. `check_all_remote_values()` ([:581](userlib/user_devices/RemoteControl/blacs_workers.py#L581)) is no longer on the monitor_values path for the base worker.
+
+**Residual (BigSkyLasers only): the pre/post pair is asymmetric.** `BigSkyWorker` overrides `transition_to_buffered` and still takes the *initial* snapshot via its own `check_all_remote_values()` ([BigSkyHub/blacs_workers.py:403](userlib/user_devices/BigSkyHub/blacs_workers.py#L403), and [:459](userlib/user_devices/BigSkyHub/blacs_workers.py#L459) for the no-`remote_device_operation` path), but inherits the base `post_experiment`, so the *final* snapshot comes from the PUB-SUB cache. The two datasets therefore have different column sets **and different meanings** — initial: REQ-REP `CHECK_VALUE` over outputs + monitors; final: PUB-SUB monitor topics only. LaserLockGUI and RasteringGUI are symmetric (both ends from the cache; [RasteringDevice/blacs_workers.py:264](userlib/user_devices/RasteringDevice/blacs_workers.py#L264)).
+
+**Bug B — ACTIVE (found 2026-08-02): the worker's `_pubsub_cache` stays empty in production, so no `monitor_values` are written at all.** Evidence: BLACS.log 2026-08-02 logs `initial_monitor_values: 0 channels` on every shot for LaserLockGUI and RasteringGUI, and with an empty initial dict the gate at [blacs_workers.py:690](userlib/user_devices/RemoteControl/blacs_workers.py#L690) silently skips both writes. Empirically, ~12,500 run shots scanned 2026-05-07 → 2026-08-02 contain **zero** `/data/LaserLockGUI/monitor_values` (April shots have them — positive control `Open_cell/2026/04/28/0015`). So the Bug-A fix has never produced data in production: the drain-thread commit (f1298a3, 2026-05-06) is an ancestor of the running checkout, April shots carry the datasets, and every May shot scanned carries none. BigSkyLasers corroborates from a different angle: through 2026-07-22 it wrote **initial-only** datasets (11 columns incl. monitors — its *initial* bypasses the cache via REQ-REP `CHECK_VALUE`; the always-missing `final` shows the cache path was already dead pre-cutover on a day the GUI was demonstrably up). BigSky has written nothing since 2026-07-23 — possibly benign (an empty REQ-REP result also skips the write via the :690 gate, e.g. lasers disconnected). The drain threads start cleanly ("PUB-SUB drain thread started for N monitor channels", no errors) and the tab connects `_post_to_internal_broker` in `connect_to_pubsub` ([blacs_tabs.py:329-336](userlib/user_devices/RemoteControl/blacs_tabs.py#L329)), so the break is upstream of the cache: either `monitor_value_received` never fires in production (which would also freeze the GUI monitor labels and the `front_panel` monitor rows) or the tab→EventBroker→worker routing fails. Untriaged — tracked as a session task 2026-08-02.
 
 ## Monitor_values column rules (RemoteControl)
 
-This is subtle. **Verified by reading [blacs_workers.py:268-281](userlib/user_devices/RemoteControl/blacs_workers.py#L268), the connection table for `LaserLockGUI`, and the HF_Locking server's REP handler at [GUIs/HF_Locking/workers.py:559-562](GUIs/HF_Locking/workers.py#L559).**
+This is subtle. **Verified by reading the drain thread + snapshot path at [blacs_workers.py:462-494](userlib/user_devices/RemoteControl/blacs_workers.py#L462) / [:676](userlib/user_devices/RemoteControl/blacs_workers.py#L676) / [:693](userlib/user_devices/RemoteControl/blacs_workers.py#L693), the tab's forwarder at [blacs_tabs.py:531-558](userlib/user_devices/RemoteControl/blacs_tabs.py#L531) / [:594](userlib/user_devices/RemoteControl/blacs_tabs.py#L594), the connection table for `LaserLockGUI`, and the HF_Locking publisher at [GUIs/HF_Locking/workers.py:514-519](GUIs/HF_Locking/workers.py#L514).**
 
-The worker computes `child_connections = child_output_connections + child_monitor_connections` ([blacs_workers.py:216](userlib/user_devices/RemoteControl/blacs_workers.py#L216)). Both lists hold `parent_port` strings. **An output and a monitor that wrap the same hardware channel share the same `parent_port`** (e.g., `TiSa_1_Setpoint` and `TiSa_1_Value` both have `parent_port='1'`). So `child_connections` contains duplicates for LaserLockGUI: `['1', '6', '3', '1', '6']`.
+**Columns come from the PUB-SUB stream, not from the connection table.** The tab subscribes one SUB socket per entry in `child_monitor_connections` ([blacs_tabs.py:531-537](userlib/user_devices/RemoteControl/blacs_tabs.py#L531)), forwards each arriving `"<topic> <value>"` into the BLACS-internal EventBroker keyed by topic, and the worker's drain thread stores it as `_pubsub_cache[topic]`. A snapshot is a plain `dict()` copy of that cache, and `_save_monitor_values_to_hdf5` builds one float64 column per key present. Consequences:
 
-`check_all_remote_values()` iterates this list and sends `CHECK_VALUE` to the server for each entry, storing responses in a Python dict keyed by `connection`. Duplicates collide — outputs are queried first, monitors second — but for HF_Locking it doesn't matter which query "wins" because the server returns the same value for the same `connection` regardless of whether the labscript-side caller was an output or a monitor.
-
-**What HF_Locking's server returns for `CHECK_VALUE`** ([workers.py:559-562](GUIs/HF_Locking/workers.py#L559)):
-```python
-if action == "CHECK_VALUE":
-    p = int(d["connection"])
-    st = self.state.get_status(p)
-    return json.dumps({"status": "SUCCESS", "value": st.get("setpoint", 0.0)})
-```
-→ The **server-side stored setpoint** (DLL readback into `SharedExperimentState`), NOT the wavemeter measurement. This is "what HF_Locking believes the laser is locked to", which may differ from the labscript intent because of DLL/decimal-string round-trip quantization, and from the wavemeter measurement because of laser drift / lock error.
-
-**Practical implications:**
-- The columns of `{initial,final}_monitor_values` = the unique parent_ports across that device's outputs + monitors (NOT the labscript connection names; NOT the human-readable setpoint names).
-- For LaserLockGUI specifically, the value in each column is the HF_Locking server's stored setpoint at the moment of the REQ-REP query — it is *not* a wavemeter reading. The wavemeter reading lives in `/front_panel/front_panel` instead (via PUB-SUB; see "Where do I find setpoint X?").
-- If a device has no `RemoteAnalogMonitor` children, `final_monitor_values` is just the output-readback (one query per output, no duplicate-port overwrite — but the value is still server-defined).
-- For non-LaserLockGUI devices (BigSkyHub, RasteringGUI, etc.), what the server returns is *that* server's choice. Verify each REP handler before generalizing.
+- **Columns = the monitor `parent_port`s that have actually published at least once this worker session.** Outputs are *not* included (nothing subscribes to an output topic). A monitor whose topic never appears in the stream gets **no column at all** — not 0.0, not NaN. For BigSky that happens per laser: `HugeSkyController.pyw` skips broadcasting for any laser where `ctrl.isConnected()` is false, so a disconnected laser's monitor columns silently vanish from the snapshot. HF_Locking instead publishes `0.0` when `freq_display` is None ([workers.py:519](GUIs/HF_Locking/workers.py#L519)), so an unread port shows up as a `0.0` column.
+- **If the cache is empty, no dataset is written at all** (early return at [blacs_workers.py:715](userlib/user_devices/RemoteControl/blacs_workers.py#L715)) — e.g. PUB-SUB down for the whole session, or a device with no `RemoteAnalogMonitor` children.
+- **Duplicate `parent_port`s no longer collide.** An output and a monitor wrapping the same hardware channel share a `parent_port` (e.g. `TiSa_1_Setpoint` and `TiSa_1_Value` both have `parent_port='1'`), so `child_connections = child_output_connections + child_monitor_connections` ([blacs_workers.py:412](userlib/user_devices/RemoteControl/blacs_workers.py#L412)) still contains duplicates for LaserLockGUI (`['3', '1', '6', '1', '6']` — outputs Vexlum/TiSa_1/TiSa_2, then monitors TiSa_1_Value/TiSa_2_Value) — but that list only feeds `check_all_remote_values()` and the mock server now, not the snapshot path. Cache keys are monitor topics, so LaserLockGUI's snapshot columns are just `['1', '6']`.
+- **The value is whatever that GUI publishes on that topic.** HF_Locking publishes `freq_display`, the wavemeter reading. BigSky publishes per-parameter sensor readings (`YAG_1_voltage_monitor` etc.). Rastering publishes live stage coordinates. Check the publisher, not the `CHECK_VALUE` handler, when generalizing to a new device.
+- **BigSkyLasers `initial_monitor_values` is the exception** — it still comes from REQ-REP `CHECK_VALUE` over outputs + monitors (see "Known bugs" above), so for that device the initial dataset follows the *old* rules (unique parent_ports across outputs + monitors, duplicate-port collision, server-defined values) while the final dataset follows the rules above.
+- **Snapshot freshness.** A snapshot is the newest sample the drain thread has stored, so it can lag a just-issued `PROGRAM_VALUE` by up to one publish period — ~250 ms for BigSky and Rastering (both ~4 Hz), ~100 ms for HF_Locking (10 Hz).
 
 ## Precision warning (RemoteControl, shots before 2026-04-29)
 
-The `_save_monitor_values_to_hdf5` dtype was `np.float32` until [blacs_workers.py:374](userlib/user_devices/RemoteControl/blacs_workers.py#L374) was changed to `np.float64`. The labscript-side `remote_device_operation` table has been `np.float64` throughout (set at [labscript_devices.py:286](userlib/user_devices/RemoteControl/labscript_devices.py#L286)).
+The `_save_monitor_values_to_hdf5` dtype was `np.float32` until it was changed to `np.float64` on 2026-04-29; it lives at [blacs_workers.py:718](userlib/user_devices/RemoteControl/blacs_workers.py#L718) today. The labscript-side `remote_device_operation` table has been `np.float64` throughout (set at [labscript_devices.py:286](userlib/user_devices/RemoteControl/labscript_devices.py#L286)).
 
 For wavemeter-scale frequencies (~10⁵ MHz), float32 ULP is ~40 MHz, so `monitor_values` snapshots in older shots are unreliable for sub-MHz analysis. Programmed setpoints in `remote_device_operation` are full float64 precision in all shots.
 
@@ -334,7 +349,7 @@ with h5py.File(shot_h5, 'r') as f:
 | `/time_markers`, `/waits` | labscript (`labscript.py:220, 478`) | Compile time | float64 |
 | `/front_panel/front_panel` | BLACS (`front_panel_settings.py:376`) | Per-shot, before run | float64 (`base_value`) |
 | `/devices/{name}/...` | per-device labscript `generate_code` | Compile time | float64 (RemoteControl), per-device for others |
-| `/data/{device}/...` | per-device BLACS worker | `transition_to_buffered` / `post_experiment` | float64 (RemoteControl, post-2026-04-29) |
+| `/data/{device}/...` | per-device BLACS worker | `post_experiment` / queue-end `transition_to_manual` — never before the shot | float64 (RemoteControl, post-2026-04-29) |
 | `/data/traces/...` | NI_DAQmx (`blacs_workers.py:902`) / NI_SCOPE | After shot | float64 |
 | `/results/{script}/...` | lyse (`__init__.py:669, 679+`) | Post-shot in lyse | depends on analysis |
 
@@ -342,7 +357,7 @@ with h5py.File(shot_h5, 'r') as f:
 
 - **`/devices/{name}/remote_device_operation` is absent** if no `RemoteAnalogOut` for that device returned `value_set()=True` (early-exit at [labscript_devices.py:283-284](userlib/user_devices/RemoteControl/labscript_devices.py#L283)). The BLACS worker then early-exits and writes no `monitor_values` either.
 - **For setpoints not programmed by the script**, read `/front_panel/front_panel`. Example: in shot 182, the LaserLockGUI script only programmed channel `'4'` (TiSa_1) — Vexlum and TiSa_2 were front-panel-only and appear nowhere in `/devices/` or `/data/` for that shot.
-- **`/data/{name}/monitor_values/`** is absent if `enable_comms=False` on the BLACS tab for that device, or if the shot was aborted (snapshots cleared by `abort_*` methods at [blacs_workers.py:389-397](userlib/user_devices/RemoteControl/blacs_workers.py#L389)).
+- **`/data/{name}/monitor_values/`** is absent if `enable_comms=False` on the BLACS tab for that device, or if the shot was aborted (snapshots cleared by `abort_*` methods at [blacs_workers.py:733-741](userlib/user_devices/RemoteControl/blacs_workers.py#L733)).
 - **DO ports are atomic** — `/devices/{ni_device}/DO` has one compound column per *port* (e.g., `port0`); the column value packs all 8 lines on that port.
 - **NI_SCOPE traces are NOT compound** — plain 2-D float64 array. Other AI traces ARE compound (`t`, `values`).
 - **Connection-table snapshot at root** (`/connection_table`) is the version that actually ran; the source `.py` files are also embedded under `/labscriptlib/` for full reproducibility.

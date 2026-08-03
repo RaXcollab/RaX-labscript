@@ -156,6 +156,48 @@ This doc is the persistent record. Each entry: what / where / severity / when it
 
 ---
 
+## PrawnBlaster — abort-path `transition_to_manual` can create `/data` on a never-run shot
+
+**Where**: `labscript-devices/labscript_devices/PrawnBlaster/blacs_workers.py` — `transition_to_manual` (:441) writes `create_dataset('/data/waits')` at :468, guarded only by `wait_table is not None`; neither `abort_buffered` (:494) nor `abort_transition_to_buffered` (:511) clears `wait_table`.
+
+**What**: T2M runs on the abort path too. If the aborted shot used waits, PrawnBlaster writes `/data/waits` into a shot that never completed — pre-creating `/data`, the same shape as the 2026-08-02 RasteringDevice bug. The file then reads as "has been run" (`experiment_queue.py:387`), so resubmitting it yields a stripped `_rep` copy instead of a rerun. The queue manager's `create_group('data')` at `:913` does not crash on this one: the abort path `continue`s at `:886` and never reaches `:913`.
+
+**Severity**: LATENT-LOW — needs abort of a wait-bearing shot followed by resubmission of the same file. Found 2026-08-02 during the RasteringDevice adversarial review.
+
+**When it matters**: aborting sequences that use waits, then re-queuing the same h5.
+
+**Fix sketch**: set `self.wait_table = None` in both `abort_*` methods (2 lines), or guard the T2M write on shot completion.
+
+---
+
+## NI_DAQmx — acquisition `post_experiment` crashes if `/data/{device}` already exists
+
+**Where**: `labscript-devices/labscript_devices/NI_DAQmx/blacs_workers.py:817-818` — bare `hdf5_file['data']` lookup followed by `data_group.create_group(self.device_name)`.
+
+**What**: `create_group` (not `require_group`) means any worker that pre-creates `/data/<NI-device-name>` hard-crashes the NI_DAQmx acquisition worker's `post_experiment`. Device-level sibling of the queue-manager collision of 2026-08-02 — and it fires one stage later, since `post_experiment` is dispatched at `experiment_queue.py:938`, after the queue manager has already made `/data` at `:913`.
+
+**Severity**: LATENT-LOW — only fires if another worker violates the `/data` rule in `.claude/rules/device-lifecycle.md`, which is now explicitly forbidden.
+
+**When it matters**: any future device that writes under `/data/<NI-device-name>` before the NI acquisition worker's `post_experiment` runs.
+
+**Fix sketch**: swap `create_group` → `require_group` at :818. One line; only worth folding into the next labscript-devices change. Same class: `AlazarTechBoard.py:589` (`transition_to_manual`) — unguarded `create_group` under `/data/traces`; latent (no Alazar in the active CT).
+
+---
+
+## BLACS — unguarded `create_group('front_panel')`: same crash class as the 2026-08-02 `/data` collision, one line earlier
+
+**Where**: `blacs/blacs/front_panel_settings.py:337` (`store_front_panel_in_h5`), called from `blacs/blacs/experiment_queue.py:908` — the earlier half of the same unguarded two-line window that ends with `create_group('data')` at `:913`.
+
+**What**: A shot h5 that carries `/front_panel` but no `/data` passes the has-run test (`experiment_queue.py:387`) and is run as-is; the unguarded `create_group('front_panel')` at `:337` then raises the identical "name already exists" ValueError, crashing the post-run bookkeeping the same way. Such a file can arise from a BLACS death in the tiny window between `:908` and `:913`, or any abort path that leaves a partially-bookkept file (the mid-shot abort path at `:837-842` does not clean). Found 2026-08-03 by the meta-review of the RasteringDevice incident.
+
+**Severity**: LATENT-LOW — needs a dirty file resubmitted without recompile.
+
+**When it matters**: resubmitting shot files after a BLACS crash/kill instead of recompiling from source.
+
+**Fix sketch**: not a bare `require_group` swap — the group may hold stale datasets that would collide on the next `create_dataset`. Delete-and-recreate (`if 'front_panel' in hdf5_file: del hdf5_file['front_panel']`) or overwrite semantics. ~3 lines in front_panel_settings.py.
+
+---
+
 ## See also
 
 - `docs/blacs-state-machine.md` — fork-specific lifecycle (separate doc; latched-lines pattern lives there, not here, because it's a fork feature not a latent bug).
