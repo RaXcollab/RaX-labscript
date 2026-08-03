@@ -1,7 +1,7 @@
 ---
 name: device-builder
 description: "Use this agent when creating new BLACS device classes, scaffolding the 5-file RemoteControl subclass pattern, or integrating a new external GUI into BLACS. This includes labscript_devices.py, blacs_tabs.py, blacs_workers.py, register_classes.py, and connection table entries.\n\nExamples:\n\n- User: \"We need to add remote control support for our new wavemeter.\"\n  Assistant: \"I'll use the device-builder agent to scaffold the new device class.\"\n  (Launch device-builder to create the 5-file device under userlib/user_devices.)\n\n- User: \"Create a BLACS device for the BigSky YAG lasers.\"\n  Assistant: \"Let me use the device-builder agent to scaffold the BigSkyHub device.\"\n  (Launch device-builder to follow the RemoteControl subclass pattern.)"
-model: inherit
+model: opus
 color: "#0078D4"
 memory: project
 skills:

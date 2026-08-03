@@ -1,7 +1,7 @@
 ---
 name: lyse-analysis
 description: "Use this agent when the user needs help writing, optimizing, or debugging lyse analysis code — both real-time single/multi-shot scripts that run during experiments and offline Jupyter notebooks for detailed post-experiment analysis.\n\nExamples:\n\n- User: \"My single-shot analysis script is too slow and it's delaying shots.\"\n  Assistant: \"Let me use the lyse-analysis agent to profile and optimize the analysis script.\"\n  (Use the Task tool to launch the lyse-analysis agent to identify bottlenecks and optimize for real-time performance.)\n\n- User: \"I need to write a new analysis routine that extracts the absorption signal and saves the integrated area.\"\n  Assistant: \"I'll use the lyse-analysis agent to write the analysis script.\"\n  (Use the Task tool to launch the lyse-analysis agent to create the script using existing filtering utilities.)"
-model: inherit
+model: opus
 color: green
 memory: project
 ---

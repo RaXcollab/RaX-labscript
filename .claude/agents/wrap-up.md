@@ -1,7 +1,7 @@
 ---
 name: wrap-up
 description: "Use this agent to produce all end-of-session deliverables: commit messages, HTML lab notes, session introspection, and CLAUDE.md/agent prompt updates. It runs a fixed pipeline that never skips an artifact. Launch it after implementation is complete.\n\nExamples:\n\n- User: \"Wrap up this session — commit message, notes, the works.\"\n  Assistant: \"Let me launch the wrap-up agent to produce all deliverables.\"\n  (Launch wrap-up to run the full pipeline: diffs → commits → lab note → introspection → context updates.)\n\n- User: \"Write a lab note for the analysis cleanup we just did.\"\n  Assistant: \"I'll use the wrap-up agent to draft the lab note and check for other deliverables.\"\n  (Launch wrap-up — even for a single artifact request, it checks the full checklist.)"
-model: inherit
+model: opus
 color: "#FF5722"
 skills:
   - agent-workflow
