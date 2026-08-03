@@ -7,6 +7,14 @@ Usage (labscript conda env, from userlib/labscriptlib/Main_Experiment/):
 Prints COMPILE OK + every device/channel name in the compiled connection
 table. Exit 0 on success. Each run uses a fresh process and a throwaway h5,
 so labscript's compiler state is always clean.
+
+Caveats vs BLACS's own Recompile button:
+- Compiles with an empty globals group (BLACS passes the real globals files),
+  and imports the CT module rather than exec-ing it as __main__ the way
+  runmanager's batch compiler does — so the file's `if __name__ == '__main__':`
+  block is duplicated here, not tested.
+- `import labscript` starts a persistent zlock daemon if none is running
+  (harmless alongside BLACS, which already provides one).
 """
 import os
 import sys
