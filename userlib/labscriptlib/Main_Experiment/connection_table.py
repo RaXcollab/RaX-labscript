@@ -15,7 +15,8 @@ from user_devices.NuvuCamera.labscript_devices import NuvuCamera
 # Flip a value -> recompile the connection table in RunManager -> restart BLACS.
 # The PrawnBlaster has no switch: BLACS requires the master pseudoclock.
 # A block referencing a device from a disabled block fails at compile time
-# with a NameError naming the missing device — that is the intended guard.
+# with an UnboundLocalError (NameError subclass) naming the missing device —
+# that is the intended guard.
 ENABLED = dict(
     ni_6361    = False,  # NI PXIe-6361 analog card + daq_ai/daq_ao channels
     ni_6535    = False,  # NI PXIe-6535 digital card + YAG/ENH lines
@@ -37,11 +38,23 @@ def _pad_even_digitals(card):
     """NI-DAQmx requires an even number of DO children per card
     (NI_DAQmx labscript_devices._check_even_children). Count the DOs that
     actually ended up on the card - including auto-created Trigger lines,
-    since Trigger subclasses DigitalOut - and add one dummy DO on the
-    card's reserved spare line if the count is odd."""
-    n_do = sum(isinstance(child, DigitalOut) for child in card.child_devices)
+    since Trigger subclasses DigitalOut, and StaticDigitalOut, which does
+    not - and add one dummy DO on the card's reserved spare line if the
+    count is odd. The reserved line must stay free: a real channel there
+    would silently absorb the pad (generate_code keys DOs by connection),
+    so any occupant is rejected outright."""
+    pad_line = PARITY_PAD_LINE[card.name]
+    # Plain loop, NOT any(): `from labscript import *` shadows builtin any()
+    # with numpy's, which is always-truthy when handed a generator.
+    for child in card.child_devices:
+        if child.connection == pad_line:
+            raise LabscriptError(
+                f"{card.name} parity pad line {pad_line!r} is already in use - "
+                f"move that channel, or reserve a different free line in PARITY_PAD_LINE"
+            )
+    n_do = sum(isinstance(child, (DigitalOut, StaticDigitalOut)) for child in card.child_devices)
     if n_do % 2:
-        DigitalOut(f'parity_pad_{card.name}', card, PARITY_PAD_LINE[card.name])
+        DigitalOut(f'parity_pad_{card.name}', card, pad_line)
 
 
 def connection_table():
@@ -75,7 +88,10 @@ def connection_table():
         AnalogIn('daq_ai4', ni_6361, 'ai4')
         AnalogIn('daq_ai5', ni_6361, 'ai5')
 
-        AnalogOut('daq_ao0', ni_6361, 'ao0')  # Used for NI-5922 TRIG
+        # AOs deliberately live (2026-08-03) so the channels stay configurable
+        # whenever the card is on. Keep the AO count EVEN — _pad_even_digitals
+        # pads DOs only; the NI even-children rule also applies to AOs.
+        AnalogOut('daq_ao0', ni_6361, 'ao0')  # NI-5922 TRIG — labscript drives 0 V unless a sequence commands it
         AnalogOut('daq_ao1', ni_6361, 'ao1')  # not used
 
     # === NI 6535 Setup ===
