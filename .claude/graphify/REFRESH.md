@@ -1,8 +1,10 @@
 # Graphify graph refresh recipe
 
 Rebuilds `graphify-out/graph.json` (workspace knowledge graph) from scratch.
-Built 2026-07-29 (commit 9333da6): 5090 nodes / 8176 edges / 371 communities, 31 cross-repo edges.
-Provenance: audit + fix-pass reports in `.claude/session-scratch.md` (session 2026-07-29).
+Built 2026-07-31 (commit ee0eff1, post ZMQ-v2 cutover): 5434 nodes / 8835 edges / 403 communities,
+34 cross-repo edges — incl. 3 GUIs->userlib `inherits` edges into `external_gui_lib/zmq_v2.py`
+(RemoteControlServerBase <- _BigSkyV2Server / _LaserLockV2Server / _RasteringV2Server).
+Provenance: audit + fix-pass reports in `.claude/session-scratch.md` (sessions 2026-07-29, 2026-07-31).
 
 ## Recipe
 
@@ -66,6 +68,6 @@ python .claude/graphify/verify_fix.py
 
 ## When to refresh
 
-- After the Z1–Z4 ZMQ cutover merges: `userlib/external_gui_lib/` gains real `.py`
-  sources → first genuine GUI<->userlib structural bridge. Highest-value rebuild.
 - After any large refactor that moves/renames modules across the five roots.
+  (Z1–Z4 ZMQ-v2 cutover rebuild DONE 2026-07-31 — the GUI<->userlib bridge via
+  `external_gui_lib/zmq_v2.py` is in the graph.)
