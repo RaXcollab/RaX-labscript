@@ -1,7 +1,10 @@
 # Connection Table ENABLED Switchboard — Design
 
 **Date:** 2026-07-31
-**Status:** Awaiting user approval
+**Status:** Implemented (PR #6). Historical design record — the code is
+authoritative; line numbers and identifier examples below predate the
+implementation (e.g. the pad lines landed as the `PARITY_PAD_LINE` dict,
+and the AnalogOuts were kept live by user decision 2026-08-03).
 **Scope:** `userlib/labscriptlib/Main_Experiment/connection_table.py` only
 
 ## Problem
@@ -123,5 +126,8 @@ scope — see below.)
    code again (fix stale names as found).
 3. **Parity check:** compile a combination with an odd DO count to confirm the
    pad line is created and `_check_even_children` passes.
-4. **Sequence check:** compile `Open_cell2.py` against the default config.
+4. **Sequence check:** compile `Open_cell2.py` with `ni_6361=1 ni_6535=1` —
+   it drives `YAG1_line`/`ENH_line` and `daq_ai0-3`, which the default config
+   gates off, so it does not compile against the defaults (same as the
+   pre-refactor operative CT).
 5. Restart BLACS on the default config and run a test shot.
