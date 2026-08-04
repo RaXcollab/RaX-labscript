@@ -61,6 +61,24 @@ class RasteringWorker(RemoteControlWorker):
             self._sync_raster_mode_to_gui()
         return connected
 
+    def _on_program_manual_error(self, connection, value, response, exc):
+        """Front-panel re-asserts are courtesy writes -- never fail the tab.
+
+        BLACS pushes the full front panel through program_manual on the
+        queue-abort path (device_base_class abort_* -> program_device) and
+        at tab startup. A refused motor move -- e.g. re-asserting an echoed
+        coordinate that maps a hair outside travel because the calibration
+        cross-terms make target->motor partner-dependent (2026-08-04
+        incident) -- must not red-error the tab (a sticky tab error blocks
+        ALL later shots until dismissed), and must not leave the sibling
+        axis unsent. Shot programming keeps its strict raise-on-failure
+        semantics in transition_to_buffered.
+        """
+        self.logger.warning(
+            f"program_manual({connection}={value}) refused by the "
+            f"rastering GUI; continuing with remaining channels: {exc}"
+        )
+
     def update_raster_mode(self, raster_mode, shots_per_step=1):
         """Settings change: restart the group count and re-sync the GUI now."""
         was_enabled = self.raster_mode
@@ -151,6 +169,15 @@ class RasteringWorker(RemoteControlWorker):
     def _advance_raster(self):
         """Arm (once) and step the raster on the first shot of each group.
 
+        Path end is normal operation, not an error. Since 2026-08-03 the
+        GUI wraps natively: a step past the last point (any source, since
+        2026-08-04) rewinds the cursor to point 0, the armed pattern is
+        immutable until a fresh arm, and BLACS never sees `finished`. The finished->re-arm
+        branch below is kept as a fallback (older GUI builds); that path
+        rebuilds from the GUI's live settings. One pass = queue exactly
+        path_len * shots_per_step shots from a fresh arm — the cursor
+        and group counter persist across queue end.
+
         The group counter deliberately persists across queue end: there
         is no transition_to_manual between queued shots, and a paused or
         resumed queue should not restart the group count.
@@ -162,60 +189,68 @@ class RasteringWorker(RemoteControlWorker):
             )
 
         if self._shots_since_step == 0:
-            if not self._raster_armed:
-                # Arm in step mode (value 0). The server arms from
-                # scratch when no raster is active; typed failures
-                # (no_raster_configured, not_calibrated, ...) raise
-                # loudly via _check_response.
+            for rearmed in (False, True):
+                if not self._raster_armed:
+                    # Arm in step mode (value 0). The server arms from
+                    # scratch when no raster is active; typed failures
+                    # (no_raster_configured, not_calibrated, ...) raise
+                    # loudly via _check_response.
+                    response = self.remote_comms.program_value(
+                        "arm_raster", 0, wait_for_lock=True
+                    )
+                    self._check_response(response, "raster_arm")
+                    self._raster_armed = True
+                    # A GUI that restarted mid-queue forgot N, so re-teach it
+                    # alongside the re-arm. Non-fatal by construction:
+                    # _send_shots_per_step swallows and warns, because N is
+                    # display-only on the GUI — BLACS owns the stepping.
+                    self._send_shots_per_step()
+
                 response = self.remote_comms.program_value(
-                    "arm_raster", 0, wait_for_lock=True
-                )
-                self._check_response(response, "raster_arm")
-                self._raster_armed = True
-                # A GUI that restarted mid-queue forgot N, so re-teach it
-                # alongside the re-arm. Non-fatal by construction:
-                # _send_shots_per_step swallows and warns, because N is
-                # display-only on the GUI — BLACS owns the stepping.
-                self._send_shots_per_step()
-
-            response = self.remote_comms.program_value(
-                "move_to_next", 1, wait_for_lock=True
-            )
-
-            if response is None:
-                raise Exception(
-                    "Raster move_to_next timed out.\n"
-                    "The rastering GUI may not be responding."
+                    "move_to_next", 1, wait_for_lock=True
                 )
 
-            # v2 maps the legacy "FINISHED" pseudo-status to SUCCESS with
-            # an extra `finished` field (spec §1.3 fixes the 5-token enum;
-            # iterator-end is communicated as a SUCCESS reply variant).
-            status = response.get("status", "")
-            if status == "SUCCESS" and response.get("finished") is True:
-                # Reset so a re-queue after "sequence complete" cleanly
-                # re-arms a fresh raster from the beginning of the path.
-                self._raster_armed = False
-                self._shots_since_step = 0
-                raise Exception(
-                    "Raster sequence complete — no more points in the path.\n"
-                    "Queueing more shots will re-arm and restart the raster "
-                    "from the beginning."
-                )
-            # A GUI restart mid-queue tears down the armed raster, so the
-            # server answers raster_not_active. Drop the armed flag so the
-            # next attempt re-arms from scratch — the shot still fails loudly.
-            if (response.get("error") or {}).get("code") == "raster_not_active":
-                self._raster_armed = False
+                if response is None:
+                    raise Exception(
+                        "Raster move_to_next timed out.\n"
+                        "The rastering GUI may not be responding."
+                    )
 
-            # Any non-SUCCESS status -> raise via the v2-aware checker
-            # (handles ERROR/REJECTED/TIMEOUT/UNKNOWN_CONNECTION uniformly).
-            self._check_response(response, "raster_move_to_next")
+                # v2 maps the legacy "FINISHED" pseudo-status to SUCCESS with
+                # an extra `finished` field (spec §1.3 fixes the 5-token enum;
+                # iterator-end is communicated as a SUCCESS reply variant).
+                # The exhausting move_to_next moves no motor, so the wrapped
+                # step on the retry is the first motion of the new pass.
+                status = response.get("status", "")
+                if status == "SUCCESS" and response.get("finished") is True:
+                    self._raster_armed = False
+                    self._shots_since_step = 0
+                    if rearmed:
+                        raise Exception(
+                            "Raster re-armed but immediately reported "
+                            "'finished' — the raster path appears to be "
+                            "empty. Check the path in the rastering GUI."
+                        )
+                    self.logger.info(
+                        "Raster path exhausted — re-arming to repeat the "
+                        "pattern from the beginning."
+                    )
+                    continue
+                # A GUI restart mid-queue tears down the armed raster, so the
+                # server answers raster_not_active. Drop the armed flag so the
+                # next attempt re-arms from scratch — the shot still fails loudly.
+                if (response.get("error") or {}).get("code") == "raster_not_active":
+                    self._raster_armed = False
 
-            self._raster_meta = {k: response[k] for k in RASTER_META_KEYS
-                                 if k in response}
+                # Any non-SUCCESS status -> raise via the v2-aware checker
+                # (handles ERROR/REJECTED/TIMEOUT/UNKNOWN_CONNECTION uniformly).
+                self._check_response(response, "raster_move_to_next")
 
-            self.logger.debug(f"Raster move_to_next: {response}")
+                self._raster_meta = {k: response[k] for k in RASTER_META_KEYS
+                                     if k in response}
+
+                self.logger.debug(f"Raster move_to_next: {response}")
+                break
 
         # Advance the counter only after a successful step (or on a
         # non-step shot): a failed step leaves the counter at 0, so the

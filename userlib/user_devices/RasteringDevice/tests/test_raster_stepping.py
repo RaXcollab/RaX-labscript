@@ -69,6 +69,45 @@ def make_worker(shots_per_step=1, replies=None, **workerargs):
     return w
 
 
+# --- program_manual: courtesy writes never fail the tab (2026-08-04) ---
+
+MOTOR_REFUSED = {"status": "ERROR", "error": {
+    "code": "motor_move_failed",
+    "message": "MoveTo(-0.0012) failed: Cannot move to requested position",
+    "retryable": True}}
+
+
+def test_program_manual_continues_past_refused_channel():
+    """A refused front-panel write (abort-path re-assert of an edge
+    coordinate) warns and continues: the sibling channel is still sent
+    and nothing raises to red-error the tab."""
+    w = make_worker(
+        replies={"laser_raster_x_coord": MOTOR_REFUSED},
+        child_output_connections=[
+            "laser_raster_x_coord", "laser_raster_y_coord"],
+        _initial_fetch_done=True,
+    )
+    w.program_manual({"laser_raster_x_coord": 110.33,
+                      "laser_raster_y_coord": 63.2})   # must not raise
+    assert len(w.remote_comms.sent("laser_raster_y_coord")) == 1
+
+
+def test_program_manual_timeout_none_continues():
+    """A transport timeout (None reply, e.g. dead GUI mid-abort) gets the
+    same courtesy treatment: warn, keep going, sibling channel still sent.
+    None reaches the hook via the base loop -- there is no None pre-guard
+    there (unlike BigSky's loop)."""
+    w = make_worker(
+        replies={"laser_raster_x_coord": None},
+        child_output_connections=[
+            "laser_raster_x_coord", "laser_raster_y_coord"],
+        _initial_fetch_done=True,
+    )
+    w.program_manual({"laser_raster_x_coord": 1.0,
+                      "laser_raster_y_coord": 2.0})
+    assert len(w.remote_comms.sent("laser_raster_y_coord")) == 1
+
+
 # --- workerargs honored by init (the restart-desync fix) ---
 
 def test_init_raster_state_honors_workerargs():
@@ -107,18 +146,52 @@ def test_n3_steps_on_shots_1_and_4_only():
     assert step_counts == [1, 1, 1, 2, 2, 2]
 
 
-# --- finished=True resets armed+counter, next queue re-arms ---
+# --- finished=True re-arms and wraps to the start of the path (no error) ---
 
-def test_finished_raises_and_resets_for_rearm():
-    replies = {"arm_raster": ARMED_STEP, "move_to_next": FINISHED}
+def test_finished_rearms_and_wraps_to_path_start():
+    # The wrapped step's reply must be distinguishable from the pre-wrap
+    # step's, or the meta assertion is blind to stale _raster_meta.
+    wrapped = dict(STEPPED, point_index=0)
+    replies = {"arm_raster": ARMED_STEP,
+               "move_to_next": lambda c: (
+                   STEPPED if len(c.sent("move_to_next")) == 1 else
+                   FINISHED if len(c.sent("move_to_next")) == 2 else wrapped)}
     w = make_worker(shots_per_step=3, replies=replies)
-    with pytest.raises(Exception, match="sequence complete"):
+    for _ in range(3):
+        w._advance_raster()               # arm + step, then 2 non-step shots
+    w._advance_raster()                   # path exhausted -> re-arm + wrap, no raise
+    assert len(w.remote_comms.sent("arm_raster")) == 2
+    assert len(w.remote_comms.sent("move_to_next")) == 3
+    assert w._raster_armed is True and w._shots_since_step == 1
+    assert w._raster_meta["point_index"] == 0   # fresh meta from the wrapped step
+
+
+def test_second_consecutive_finished_raises_instead_of_looping():
+    # Production-unreachable (an empty path fails the re-ARM with
+    # no_raster_configured before any move) — this pins the loop bound:
+    # a GUI that keeps answering `finished` must fail the shot, not spin.
+    replies = {"arm_raster": ARMED_STEP, "move_to_next": FINISHED}
+    w = make_worker(replies=replies)
+    with pytest.raises(Exception, match="empty"):
         w._advance_raster()
     assert w._raster_armed is False and w._shots_since_step == 0
-    # Re-queue: arms again from scratch
-    w.remote_comms.replies["move_to_next"] = SUCCESS
-    w._advance_raster()
-    assert len(w.remote_comms.sent("arm_raster")) == 2
+    assert len(w.remote_comms.sent("arm_raster")) == 2   # re-arm was attempted once
+
+
+def test_rearm_rejected_at_wrap_fails_shot_and_stays_unarmed():
+    rejected = {"status": "REJECTED",
+                "error": {"code": "no_raster_configured", "message": "m",
+                          "retryable": False}}
+    replies = {"arm_raster": lambda c: (
+                   rejected if len(c.sent("arm_raster")) == 2 else ARMED_STEP),
+               "move_to_next": lambda c: (
+                   FINISHED if len(c.sent("move_to_next")) == 2 else STEPPED)}
+    w = make_worker(replies=replies)
+    w._advance_raster()                   # arm + normal step
+    with pytest.raises(Exception, match="no_raster_configured"):
+        w._advance_raster()               # wrap: re-arm rejected -> shot fails
+    # Clean state for the requeued shot: it re-arms from scratch.
+    assert w._raster_armed is False and w._shots_since_step == 0
 
 
 # --- update_raster_mode resets the group count but keeps the raster armed ---
