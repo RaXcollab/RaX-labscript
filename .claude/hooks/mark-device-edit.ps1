@@ -1,6 +1,7 @@
-# PostToolUse (Edit|Write, if-filtered in settings.json): stamp the device-edit
-# marker. The path regex here is defense-in-depth for the settings-level `if`
-# rules; both must list the same four trees. Separator-anchored on both sides so
+# PostToolUse (Edit|Write, every file): stamp the device-edit marker. This
+# regex is the ONLY path filter — the 8 settings-level `if` rules were
+# collapsed into one unconditional entry 2026-08-03 (ponytail: script already
+# self-filtered, two lists to keep in sync). Separator-anchored on both sides so
 # e.g. docs/user_devices_overview.md cannot false-positive (audit finding A3).
 # NOTE: the leading separator means this only matches ABSOLUTE paths, which is
 # what Edit/Write always send; a repo-relative 'labscript-devices/...' would not

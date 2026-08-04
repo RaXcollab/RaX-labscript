@@ -165,63 +165,6 @@
           {
             "type": "command",
             "shell": "powershell",
-            "if": "Edit(userlib/user_devices/**)",
-            "command": "& \"$env:CLAUDE_PROJECT_DIR\\.claude\\hooks\\mark-device-edit.ps1\"",
-            "timeout": 15,
-            "async": true
-          },
-          {
-            "type": "command",
-            "shell": "powershell",
-            "if": "Edit(blacs/**)",
-            "command": "& \"$env:CLAUDE_PROJECT_DIR\\.claude\\hooks\\mark-device-edit.ps1\"",
-            "timeout": 15,
-            "async": true
-          },
-          {
-            "type": "command",
-            "shell": "powershell",
-            "if": "Edit(labscript-devices/**)",
-            "command": "& \"$env:CLAUDE_PROJECT_DIR\\.claude\\hooks\\mark-device-edit.ps1\"",
-            "timeout": 15,
-            "async": true
-          },
-          {
-            "type": "command",
-            "shell": "powershell",
-            "if": "Edit(labscript-utils/**)",
-            "command": "& \"$env:CLAUDE_PROJECT_DIR\\.claude\\hooks\\mark-device-edit.ps1\"",
-            "timeout": 15,
-            "async": true
-          },
-          {
-            "type": "command",
-            "shell": "powershell",
-            "if": "Write(userlib/user_devices/**)",
-            "command": "& \"$env:CLAUDE_PROJECT_DIR\\.claude\\hooks\\mark-device-edit.ps1\"",
-            "timeout": 15,
-            "async": true
-          },
-          {
-            "type": "command",
-            "shell": "powershell",
-            "if": "Write(blacs/**)",
-            "command": "& \"$env:CLAUDE_PROJECT_DIR\\.claude\\hooks\\mark-device-edit.ps1\"",
-            "timeout": 15,
-            "async": true
-          },
-          {
-            "type": "command",
-            "shell": "powershell",
-            "if": "Write(labscript-devices/**)",
-            "command": "& \"$env:CLAUDE_PROJECT_DIR\\.claude\\hooks\\mark-device-edit.ps1\"",
-            "timeout": 15,
-            "async": true
-          },
-          {
-            "type": "command",
-            "shell": "powershell",
-            "if": "Write(labscript-utils/**)",
             "command": "& \"$env:CLAUDE_PROJECT_DIR\\.claude\\hooks\\mark-device-edit.ps1\"",
             "timeout": 15,
             "async": true
@@ -275,16 +218,6 @@
             "if": "Bash(git *)",
             "command": "& \"$env:CLAUDE_PROJECT_DIR\\.claude\\hooks\\warn-git-chain.ps1\"",
             "timeout": 15
-          }
-        ]
-      }
-    ],
-    "Notification": [
-      {
-        "hooks": [
-          {
-            "type": "command",
-            "command": "powershell.exe -Command \"[System.Reflection.Assembly]::LoadWithPartialName('System.Windows.Forms') | Out-Null; [System.Windows.Forms.MessageBox]::Show('Claude Code needs your attention', 'Claude Code') | Out-Null\""
           }
         ]
       }
