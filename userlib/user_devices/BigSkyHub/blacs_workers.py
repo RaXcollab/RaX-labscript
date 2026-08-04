@@ -33,40 +33,46 @@ _WARMUP_CONTROLLED_SUFFIXES = {'lamps', 'shutter', 'qswitch', 'lamp_mode', 'qswi
 # Serial command delay — wait for BigSky to process stop before mode changes
 _CMD_DELAY_S = 0.2
 
-# Buffered-programming replies that mean "this laser isn't available" — warn
-# and continue the shot instead of aborting the whole queue.
+# Replies that mean "this laser isn't available" — warn and continue instead
+# of aborting the shot/queue. Keyed on the TYPED fields per
+# HugeSkyController.pyw's PROGRAM_VALUE + CHECK_VALUE handlers, never on
+# message prose (message text is not a contract):
+#   UNKNOWN_CONNECTION / unknown_connection -> laser not launched in the GUI
+#   REJECTED (any code)                     -> GUI refused: safety interlock,
+#       serial/parse/verify failure, or the GUI's own "rejected:" safety-net
+#       translation of an un-migrated mixin site
+#   laser_disconnected                      -> laser offline; LOAD-BEARING,
+#       the status is ERROR so only the code makes this tolerable
 _SKIP_STATUSES = frozenset({"UNKNOWN_CONNECTION", "REJECTED"})
-# LOAD-BEARING, not v1 residue: the GUI answers an offline laser with
-# status=ERROR + code=laser_disconnected, which _SKIP_STATUSES does not
-# cover -- the buffered path tolerates it ONLY via the substring below.
-# Follow-up: convert to typed error.code checks (add laser_disconnected),
-# then retire the substrings.
-_SKIP_ERROR_SUBSTRINGS = ("unknown connection", "laser disconnected", "rejected:")
+_SKIP_ERROR_CODES = frozenset({"unknown_connection", "laser_disconnected"})
+
+
+def _laser_unavailable(response):
+    """True if a reply's typed fields say this laser isn't available."""
+    if not response:
+        return False
+    return (response.get("status") in _SKIP_STATUSES
+            or (response.get("error") or {}).get("code") in _SKIP_ERROR_CODES)
 
 
 def should_skip_buffered_response(response):
     """(skip, reason) for buffered programming replies.
 
-    Skip = laser not launched / interlock-rejected in the GUI: warn and
-    continue the shot. v2 servers say UNKNOWN_CONNECTION / REJECTED
-    (typed); the legacy/mock path says ERROR with a known message
-    substring. Anything else is a real fault -> do not skip.
+    Skip = laser not launched / offline / interlock-rejected in the GUI:
+    warn and continue the shot. Anything else (command_error, TIMEOUT,
+    cannot_program_monitor, handler_exception, ...) is a real fault ->
+    do not skip.
 
     RemoteCommunication.program_value translates a non-SUCCESS server
     reply into a dict {"status", "error", "message"} (it does not raise),
-    so both the typed status and the flattened top-level `message` alias
-    are available here.
+    so the typed status/error.code are available here. `message` is used
+    for the operator-facing reason only.
     """
-    if not response:
+    if not _laser_unavailable(response):
         return False, ""
-    status = response.get("status")
     msg = (response.get("message")
            or (response.get("error") or {}).get("message", "") or "")
-    if status in _SKIP_STATUSES:
-        return True, msg or status
-    if status == "ERROR" and any(s in msg for s in _SKIP_ERROR_SUBSTRINGS):
-        return True, msg
-    return False, ""
+    return True, msg or response.get("status") or ""
 
 
 class BigSkyWorker(RemoteControlWorker):
@@ -190,9 +196,9 @@ class BigSkyWorker(RemoteControlWorker):
             )
 
         except Exception as e:
-            msg = str(e)
-            if "unknown connection" in msg or "laser disconnected" in msg:
-                self.logger.warning(f"_arm_laser: {prefix} unavailable ({msg}), skipping")
+            # Log level only — both branches leave the laser un-armed.
+            if _laser_unavailable(getattr(e, "response", None)):
+                self.logger.warning(f"_arm_laser: {prefix} unavailable ({e}), skipping")
             else:
                 self.logger.error(f"_arm_laser: failed for {prefix}: {e}")
             self._is_armed[prefix] = False
@@ -237,11 +243,20 @@ class BigSkyWorker(RemoteControlWorker):
             self._is_armed[prefix] = False
 
     def _send_cmd(self, connection, value, context):
-        """Send a single command to the BigSky GUI. Raises on failure."""
+        """Send a single command to the BigSky GUI. Raises on failure.
+
+        The base _check_response raises a plain Exception with the typed
+        fields flattened into its message, so attach the raw reply — that
+        is how callers (_arm_laser) gate on error.code instead of prose.
+        """
         response = self.remote_comms.program_value(
             connection, value, wait_for_lock=False
         )
-        self._check_response(response, context)
+        try:
+            self._check_response(response, context)
+        except Exception as exc:
+            exc.response = response
+            raise
 
     def restore_warmup_from_tab(self, prefix):
         """Restore warmup state for a laser, called by the tab's Auto Keep Warm
@@ -469,8 +484,8 @@ class BigSkyWorker(RemoteControlWorker):
                 response = self.remote_comms.program_value(
                     col, value, wait_for_lock=wait
                 )
-                # Gracefully skip lasers not launched / interlock-rejected
-                # in the GUI (typed v2 statuses or legacy ERROR substrings).
+                # Gracefully skip lasers not launched / offline /
+                # interlock-rejected in the GUI (typed status + error.code).
                 skip, why = should_skip_buffered_response(response)
                 if skip:
                     self.logger.warning(
@@ -551,7 +566,8 @@ class BigSkyWorker(RemoteControlWorker):
                 return False
             if response.get("status") != "SUCCESS":
                 msg = response.get("message", "")
-                if "unknown connection" in msg or "laser disconnected" in msg or "rejected:" in msg:
+                # Log level only — both branches return False (not armed).
+                if _laser_unavailable(response):
                     self.logger.debug(
                         f"_verify_armed_state: {connection} unavailable ({msg})"
                     )
