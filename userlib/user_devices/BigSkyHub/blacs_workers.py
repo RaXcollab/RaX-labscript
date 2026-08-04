@@ -36,6 +36,11 @@ _CMD_DELAY_S = 0.2
 # Buffered-programming replies that mean "this laser isn't available" — warn
 # and continue the shot instead of aborting the whole queue.
 _SKIP_STATUSES = frozenset({"UNKNOWN_CONNECTION", "REJECTED"})
+# LOAD-BEARING, not v1 residue: the GUI answers an offline laser with
+# status=ERROR + code=laser_disconnected, which _SKIP_STATUSES does not
+# cover -- the buffered path tolerates it ONLY via the substring below.
+# Follow-up: convert to typed error.code checks (add laser_disconnected),
+# then retire the substrings.
 _SKIP_ERROR_SUBSTRINGS = ("unknown connection", "laser disconnected", "rejected:")
 
 
@@ -362,26 +367,52 @@ class BigSkyWorker(RemoteControlWorker):
             if response is None:
                 self.logger.warning(f"program_manual: timeout for {connection}")
                 continue
-            if response.get("status") != "SUCCESS":
-                msg = response.get("message", "")
-                if "unknown connection" in msg:
-                    self.logger.debug(
-                        f"program_manual: skipping {connection} (not registered in GUI)"
-                    )
-                    continue
-                if "laser disconnected" in msg:
-                    self.logger.warning(
-                        f"program_manual: skipping {connection} (laser disconnected)"
-                    )
-                    continue
-                if "rejected:" in msg:
-                    self.logger.warning(
-                        f"program_manual: {connection}={value} rejected by GUI ({msg}), skipping"
-                    )
-                    continue
+            try:
                 self._check_response(response, f"program_manual({connection}={value})")
+            except Exception as exc:
+                # Tolerated failures skip the channel WITHOUT updating
+                # _last_sent_values, so the next push retries it.
+                self._on_program_manual_error(connection, value, response, exc)
+                continue
             self._last_sent_values[connection] = value
         return {}
+
+    def _on_program_manual_error(self, connection, value, response, exc):
+        """Tolerate per-laser unavailability, keyed on the TYPED reply
+        fields. Replaces the old message-substring gates ("unknown
+        connection" / "laser disconnected" / "rejected:") -- those still
+        worked (program_value aliases error.message into the top-level
+        message key), but message text is prose, not a contract; status
+        and error.code are. Typed equivalents per HugeSkyController.pyw's
+        PROGRAM_VALUE handler:
+
+        - UNKNOWN_CONNECTION: laser not registered in the GUI -> debug skip
+        - laser_disconnected: laser offline -> warning skip
+        - REJECTED: GUI refused (safety interlock, serial/verify failure;
+          includes the legacy "rejected:" safety-net translation) -> warning skip
+
+        Anything else (command_error, TIMEOUT envelope, transport down)
+        stays loud via the strict base re-raise.
+        """
+        status = (response or {}).get("status", "")
+        code = ((response or {}).get("error") or {}).get("code", "")
+        if status == "UNKNOWN_CONNECTION" or code == "unknown_connection":
+            self.logger.debug(
+                f"program_manual: skipping {connection} (not registered in GUI)"
+            )
+            return
+        if code == "laser_disconnected":
+            self.logger.warning(
+                f"program_manual: skipping {connection} (laser disconnected)"
+            )
+            return
+        if status == "REJECTED":
+            self.logger.warning(
+                f"program_manual: {connection}={value} rejected by GUI, "
+                f"skipping: {exc}"
+            )
+            return
+        raise exc
 
     def transition_to_buffered(self, device_name, h5_filepath, front_panel_values, fresh):
         if not self.enable_comms:

@@ -83,3 +83,27 @@ def test_check_status_skips_success_with_no_value():
     })
     w.child_monitor_connections = ["x", "y"]
     assert w.check_status() == {"y": 2.0}
+
+
+# --- program_manual error hook: base default is strict (raise) ---
+
+def test_program_manual_default_hook_raises_and_stops_loop():
+    """The base _on_program_manual_error re-raises: a refused front-panel
+    write red-errors the tab (LaserLockDevice behavior) and later channels
+    are not sent. Tolerant devices (Rastering, BigSky) override the hook."""
+    calls = []
+
+    def program_value(connection, value, wait_for_lock=False):
+        calls.append(connection)
+        return {"status": "ERROR",
+                "error": {"code": "boom", "message": "no", "retryable": False}}
+
+    w = RemoteControlWorker.__new__(RemoteControlWorker)
+    w.logger = logging.getLogger("test_worker_typed_status")
+    w.remote_comms = types.SimpleNamespace(
+        connected=True, program_value=program_value)
+    w._initial_fetch_done = True
+    w.child_output_connections = ["a", "b"]
+    with pytest.raises(Exception):
+        w.program_manual({"a": 1.0, "b": 2.0})
+    assert calls == ["a"]   # loop stopped at the first refusal

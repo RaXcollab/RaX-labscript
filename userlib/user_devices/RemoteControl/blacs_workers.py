@@ -647,8 +647,33 @@ class RemoteControlWorker(Worker):
             response = self.remote_comms.program_value(
                 connection, value, wait_for_lock=False
             )
-            self._check_response(response, f"program_manual({connection}={value})")
+            try:
+                self._check_response(
+                    response, f"program_manual({connection}={value})"
+                )
+            except Exception as exc:
+                self._on_program_manual_error(connection, value, response, exc)
+                continue
         return {}
+
+    def _on_program_manual_error(self, connection, value, response, exc):
+        """Per-channel policy for a refused/timed-out front-panel write.
+
+        Default: strict -- re-raise. Note a worker exception is STICKY
+        (tab error_message clears only via the tab's X button or a
+        restart) and the queue manager refuses buffered transitions while
+        it is set, so raising here parks the whole queue until the
+        operator dismisses the banner.
+
+        Subclasses that treat front-panel pushes as courtesy writes
+        override this to log-and-return (skipping the channel and
+        continuing the loop). Key any tolerance on the TYPED reply
+        fields -- response['status'] and response['error']['code'] --
+        never on message substrings: message text is prose, not a
+        contract (see memory/feedback_remotecontrol-base-is-the-contract).
+        ``response`` is the raw reply dict, or None on transport timeout.
+        """
+        raise exc
 
     # ── Shot lifecycle ───────────────────────────────────────────────
 
