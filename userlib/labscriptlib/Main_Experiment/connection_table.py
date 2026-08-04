@@ -29,8 +29,8 @@ ENABLED = dict(
 
 # Reserved spare line per NI card for even-children padding.
 PARITY_PAD_LINE = {
-    'ni_6361': 'port0/line0',  # no DOs on the 6361 today - pad never fires
-    'ni_6535': 'port0/line4',  # the historical 'dummy_line'
+    'ni_6361': 'port0/line7',  # last buffered line (only port0 is buffered) - no DOs on the 6361 today, pad never fires
+    'ni_6535': 'port3/line7',  # DIO 31, the card's last buffered line - keep physically unwired
 }
 
 
