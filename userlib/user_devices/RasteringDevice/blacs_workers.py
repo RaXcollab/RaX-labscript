@@ -9,6 +9,17 @@ from user_devices.RemoteControl.blacs_workers import RemoteControlWorker
 RASTER_META_KEYS = ("point_index", "path_len", "target_xy",
                     "calibration_matrix", "calibration_offset")
 
+# The coord pair is written as ONE compound PROGRAM_VALUE: [x, y] in the
+# target/pixel frame. Per-axis writes make the GUI pair each new coord with its
+# cached partner, so the motors traverse (x_new, y_old) — a composite that
+# can map outside travel even when both endpoints are legal (2026-08-04
+# incident). The GUI also accepts an optional args['frame'] ('pixel'
+# default, 'motor' bypasses calibration); BLACS only ever writes target-frame
+# coords, and RemoteCommunication.program_value fixes args to wait_for_lock,
+# so we rely on the default and send no frame tag.
+COORD_PAIR = ("laser_raster_x_coord", "laser_raster_y_coord")
+COMPOUND_XY = "laser_raster_xy"
+
 
 class RasteringWorker(RemoteControlWorker):
     """
@@ -60,6 +71,38 @@ class RasteringWorker(RemoteControlWorker):
             self._last_synced_shots_per_step = None
             self._sync_raster_mode_to_gui()
         return connected
+
+    def program_manual(self, front_panel_values):
+        """Manual mode: send the coord pair as ONE compound write.
+
+        Same loop as the base, over a write list where both coords are
+        replaced by a single COMPOUND_XY write — so a refused pair reaches
+        _on_program_manual_error exactly once (courtesy policy intact) and
+        any other output channel keeps its own per-channel write. A panel
+        carrying only one coord keeps the single-axis path: never fabricate
+        the partner.
+        """
+        if not self.remote_comms.connected:
+            return {}
+        if not self._initial_fetch_done:
+            return {}  # Don't overwrite server values before first fetch
+
+        writes = [(c, front_panel_values[c])
+                  for c in self.child_output_connections]
+        if all(c in front_panel_values for c in COORD_PAIR):
+            xy = [float(front_panel_values[c]) for c in COORD_PAIR]
+            writes = [(COMPOUND_XY, xy)] + [
+                w for w in writes if w[0] not in COORD_PAIR]
+
+        for connection, value in writes:
+            response = self.remote_comms.program_value(
+                connection, value, wait_for_lock=False)
+            try:
+                self._check_response(
+                    response, f"program_manual({connection}={value})")
+            except Exception as exc:
+                self._on_program_manual_error(connection, value, response, exc)
+        return {}
 
     def _on_program_manual_error(self, connection, value, response, exc):
         """Front-panel re-asserts are courtesy writes -- never fail the tab.
@@ -281,8 +324,18 @@ class RasteringWorker(RemoteControlWorker):
                         "Please check connection and try again."
                     )
                 table = group['remote_device_operation'][:]
-                for connection in table.dtype.names:
-                    value = float(table[0][connection])
+                writes = [(c, float(table[0][c])) for c in table.dtype.names]
+                # Both coords in this shot's table -> one atomic pair. A
+                # one-column table (generate_code emits a column only for
+                # channels the sequence set) keeps the single-axis path: the
+                # missing axis must NEVER be filled from front_panel_values,
+                # which can be seconds-stale echo. The GUI pairs a single-axis
+                # move with a fresh encoder read itself.
+                if all(c in table.dtype.names for c in COORD_PAIR):
+                    xy = [float(table[0][c]) for c in COORD_PAIR]
+                    writes = [(COMPOUND_XY, xy)] + [
+                        w for w in writes if w[0] not in COORD_PAIR]
+                for connection, value in writes:
                     self.logger.debug(
                         f"transition_to_buffered: programming {connection} = {value}"
                     )
