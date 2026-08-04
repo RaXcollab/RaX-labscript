@@ -48,6 +48,17 @@ def test_init_is_wired_before_super():
     assert src.index("_init_subscriber_registry") < src.index("super().__init__")
 
 
+def test_check_remote_values_polls_during_post_exp():
+    # Poll mask regression (2026-08-04): MODE_POST_EXP was missing from
+    # check_remote_values' @define_state mask, freezing the front-panel
+    # echo for the whole inter-shot window and stranding any tab left in
+    # POST_EXP at queue-end. _allowed_modes is set on the wrapper function
+    # at decoration time, so this needs no tab instance / Qt event loop.
+    from blacs.device_base_class import MODE_POST_EXP
+
+    assert RemoteControlTab.check_remote_values._allowed_modes & MODE_POST_EXP
+
+
 def test_initialise_workers_forwards_wait_for_lock():
     # wait_for_lock is a connection-table property read by the worker via
     # getattr(self, 'wait_for_lock', False) — it only exists on the worker
