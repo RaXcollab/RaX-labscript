@@ -105,7 +105,7 @@ Raster control messages (all `PROGRAM_VALUE`, v2 envelope):
 | `shots_per_step` | N ≥ 1 | after every successful arm, and on an N change while armed | SUCCESS; `invalid_value` on garbage. Display-only on the GUI — failures are warnings |
 | `disarm_raster` | `1` | eager sync on untick | SUCCESS `{"disarmed": bool}`, idempotent when inactive; `raster_in_continuous_mode` means the GUI operator owns that raster — warn, don't fight it |
 | `move_to_next` | `1` | first shot of each group of N | SUCCESS, or SUCCESS + `finished: true` at path end |
-| `laser_raster_xy` | `[x, y]`, target/pixel frame | `program_manual` (whole panel), and `transition_to_buffered` when the shot table has BOTH coord columns | SUCCESS; same typed errors as a single-axis coord write (`motor_move_failed`, `not_calibrated`, ...) |
+| `laser_raster_xy` | `[x, y]`, target/pixel frame | `program_manual` (whole panel), and `transition_to_buffered` when the shot table has BOTH coord columns | SUCCESS; typed errors `invalid_value`, `invalid_frame`, `motor_move_failed` |
 
 ### Status Indicators
 - **Raster Mode**: Green = "Step" (ready for BLACS), Yellow = "Continuous", Gray = "Idle"
