@@ -5,8 +5,10 @@ from user_devices.RemoteControl.blacs_workers import RemoteControlWorker
 
 # Raster provenance the GUI piggybacks on the move_to_next reply
 # (SystemController.raster_point_meta). Whitelisted so envelope fields
-# (status, id, ...) never leak into the shot record.
-RASTER_META_KEYS = ("point_index", "path_len", "target_xy",
+# (status, id, ...) never leak into the shot record. `frame` names the frame
+# target_xy is in ('pixel' calibrated, 'motor' passthrough) — without it the
+# two are indistinguishable in the shot h5.
+RASTER_META_KEYS = ("point_index", "path_len", "target_xy", "frame",
                     "calibration_matrix", "calibration_offset")
 
 # The coord pair is written as ONE compound PROGRAM_VALUE: [x, y] in the

@@ -53,7 +53,7 @@ def boom(comms):
 
 STEPPED = {
     "status": "SUCCESS", "point_index": 3, "path_len": 10,
-    "target_xy": [1.5, 2.5],
+    "target_xy": [1.5, 2.5], "frame": "pixel",
     "calibration_matrix": [[2.0, 0.0], [0.0, 2.0]], "calibration_offset": [1.0, 2.0],
 }
 
@@ -448,7 +448,7 @@ def test_advance_raster_stashes_point_meta_and_holds_it_across_the_group():
     w = make_worker(shots_per_step=2, replies={"move_to_next": STEPPED})
     w._advance_raster()
     assert w._raster_meta == {k: STEPPED[k] for k in (
-        "point_index", "path_len", "target_xy",
+        "point_index", "path_len", "target_xy", "frame",
         "calibration_matrix", "calibration_offset")}
     assert "status" not in w._raster_meta
 
@@ -494,6 +494,9 @@ def test_post_experiment_stamps_the_point_after_blacs_makes_data(tmp_path):
         attrs = dict(f["/data/RasteringGUI/raster"].attrs)
     assert attrs["point_index"] == 3
     assert list(attrs["target_xy"]) == [1.5, 2.5]
+    # Pins the whole GUI->h5 hop: target_xy is uninterpretable without knowing
+    # whether it is pixels or motor mm.
+    assert attrs["frame"] == "pixel"
 
 
 def test_comms_disabled_shot_does_not_restamp_the_previous_shot(tmp_path):
