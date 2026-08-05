@@ -6,6 +6,7 @@ from blacs.device_base_class import (
     define_state,
     MODE_BUFFERED,
     MODE_MANUAL,
+    MODE_POST_EXP,
     MODE_TRANSITION_TO_BUFFERED,
     MODE_TRANSITION_TO_MANUAL,
 )
@@ -361,7 +362,11 @@ class RemoteControlTab(DeviceTab):
     # ── Periodic remote-value check (runs in BLACS state machine) ────
 
     @define_state(
-        MODE_MANUAL | MODE_BUFFERED | MODE_TRANSITION_TO_BUFFERED | MODE_TRANSITION_TO_MANUAL,
+        MODE_MANUAL
+        | MODE_BUFFERED
+        | MODE_TRANSITION_TO_BUFFERED
+        | MODE_TRANSITION_TO_MANUAL
+        | MODE_POST_EXP,
         True,
     )
     def check_remote_values(self):

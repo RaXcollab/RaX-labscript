@@ -7,9 +7,12 @@ rest of it is h5 programming, untouched here).
 """
 import logging
 
+import numpy as np
 import pytest
 
-from user_devices.RasteringDevice.blacs_workers import RasteringWorker
+from user_devices.RasteringDevice.blacs_workers import (
+    COMPOUND_XY, COORD_PAIR, RasteringWorker,
+)
 
 # After the worker import, never before: blacs_workers pulls in
 # labscript_utils.h5_lock, which refuses to load once h5py is imported.
@@ -50,7 +53,7 @@ def boom(comms):
 
 STEPPED = {
     "status": "SUCCESS", "point_index": 3, "path_len": 10,
-    "target_xy": [1.5, 2.5],
+    "target_xy": [1.5, 2.5], "frame": "pixel",
     "calibration_matrix": [[2.0, 0.0], [0.0, 2.0]], "calibration_offset": [1.0, 2.0],
 }
 
@@ -77,35 +80,111 @@ MOTOR_REFUSED = {"status": "ERROR", "error": {
     "retryable": True}}
 
 
-def test_program_manual_continues_past_refused_channel():
+FPV = {"laser_raster_x_coord": 110.33, "laser_raster_y_coord": 63.2}
+
+
+def _xy_worker(replies=None, outputs=COORD_PAIR):
+    return make_worker(replies=replies, child_output_connections=list(outputs),
+                       _initial_fetch_done=True)
+
+
+def _spy_on_error_hook(w):
+    """Record which connections reach the courtesy hook, then run the real
+    policy (so a raise from it would still fail the test)."""
+    seen = []
+    policy = w._on_program_manual_error
+
+    def spy(connection, value, response, exc):
+        seen.append(connection)
+        policy(connection, value, response, exc)
+
+    w._on_program_manual_error = spy
+    return seen
+
+
+def test_program_manual_refused_pair_routes_through_hook_once():
     """A refused front-panel write (abort-path re-assert of an edge
-    coordinate) warns and continues: the sibling channel is still sent
-    and nothing raises to red-error the tab."""
-    w = make_worker(
-        replies={"laser_raster_x_coord": MOTOR_REFUSED},
-        child_output_connections=[
-            "laser_raster_x_coord", "laser_raster_y_coord"],
-        _initial_fetch_done=True,
-    )
-    w.program_manual({"laser_raster_x_coord": 110.33,
-                      "laser_raster_y_coord": 63.2})   # must not raise
-    assert len(w.remote_comms.sent("laser_raster_y_coord")) == 1
+    coordinate) warns and continues instead of raising to red-error the
+    tab. The pair is ONE compound write, so it must reach the hook exactly
+    once, labelled with the compound connection."""
+    w = _xy_worker(replies={COMPOUND_XY: MOTOR_REFUSED})
+    seen = _spy_on_error_hook(w)
+    w.program_manual(dict(FPV))                        # must not raise
+    assert seen == [COMPOUND_XY]
 
 
 def test_program_manual_timeout_none_continues():
     """A transport timeout (None reply, e.g. dead GUI mid-abort) gets the
-    same courtesy treatment: warn, keep going, sibling channel still sent.
-    None reaches the hook via the base loop -- there is no None pre-guard
-    there (unlike BigSky's loop)."""
-    w = make_worker(
-        replies={"laser_raster_x_coord": None},
-        child_output_connections=[
-            "laser_raster_x_coord", "laser_raster_y_coord"],
-        _initial_fetch_done=True,
-    )
-    w.program_manual({"laser_raster_x_coord": 1.0,
-                      "laser_raster_y_coord": 2.0})
-    assert len(w.remote_comms.sent("laser_raster_y_coord")) == 1
+    same courtesy treatment: warn, keep going, remaining channel still
+    sent. None reaches the hook -- there is no None pre-guard in the loop
+    (unlike BigSky's)."""
+    w = _xy_worker(replies={COMPOUND_XY: None},
+                   outputs=list(COORD_PAIR) + ["future_knob"])
+    seen = _spy_on_error_hook(w)
+    w.program_manual({**FPV, "future_knob": 7.0})      # must not raise
+    assert seen == [COMPOUND_XY]
+    assert len(w.remote_comms.sent("future_knob")) == 1
+
+
+# --- atomic (x, y): the pair is one compound write, never two axis writes ---
+
+def test_program_manual_sends_one_compound_and_no_per_axis_write():
+    w = _xy_worker()
+    w.program_manual(dict(FPV))
+    assert w.remote_comms.calls == [(COMPOUND_XY, [110.33, 63.2])]
+
+
+def test_program_manual_single_coord_panel_keeps_single_axis_path():
+    """A panel with only one coord programs that axis alone — the partner
+    is never fabricated from a cached/echoed value."""
+    w = _xy_worker(outputs=["laser_raster_x_coord"])
+    w.program_manual({"laser_raster_x_coord": 110.33})
+    assert w.remote_comms.calls == [("laser_raster_x_coord", 110.33)]
+
+
+def _buffered_worker(tmp_path, columns, replies=None):
+    """Worker + a shot file whose remote_device_operation carries `columns`
+    ({connection: value}), wired for the setpoint path only."""
+    w = _xy_worker(replies=replies)
+    w.raster_mode = False                 # isolate setpoints from stepping
+    w.enable_comms = True
+    w.device_name = "RasteringGUI"
+    w._pubsub_cache = {}
+    table = np.zeros(1, dtype=[(c, np.float64) for c in columns])
+    for connection, value in columns.items():
+        table[connection] = value
+    h5_path = tmp_path / "shot.h5"
+    with h5py.File(h5_path, "w") as f:
+        f.create_dataset(
+            "devices/RasteringGUI/remote_device_operation", data=table)
+    return w, str(h5_path)
+
+
+def test_buffered_both_columns_send_one_compound(tmp_path):
+    w, path = _buffered_worker(
+        tmp_path, {"laser_raster_x_coord": 1.5, "laser_raster_y_coord": 2.5})
+    w.transition_to_buffered("RasteringGUI", path, {}, True)
+    assert w.remote_comms.calls == [(COMPOUND_XY, [1.5, 2.5])]
+
+
+def test_buffered_single_column_keeps_single_axis_path(tmp_path):
+    """A sequence that set only Raster_X emits one column. Filling the
+    partner axis from front_panel_values would re-send a seconds-stale
+    echo (the 2026-08-04 incident) — the GUI pairs a single-axis move with
+    a fresh encoder read itself."""
+    w, path = _buffered_worker(tmp_path, {"laser_raster_x_coord": 1.5})
+    w.transition_to_buffered(
+        "RasteringGUI", path, {"laser_raster_y_coord": 63.2}, True)
+    assert w.remote_comms.calls == [("laser_raster_x_coord", 1.5)]
+
+
+def test_buffered_compound_failure_raises(tmp_path):
+    """Shot programming stays strict: a refused pair fails the shot."""
+    w, path = _buffered_worker(
+        tmp_path, {"laser_raster_x_coord": 1.5, "laser_raster_y_coord": 2.5},
+        replies={COMPOUND_XY: MOTOR_REFUSED})
+    with pytest.raises(Exception, match="motor_move_failed"):
+        w.transition_to_buffered("RasteringGUI", path, {}, True)
 
 
 # --- workerargs honored by init (the restart-desync fix) ---
@@ -369,7 +448,7 @@ def test_advance_raster_stashes_point_meta_and_holds_it_across_the_group():
     w = make_worker(shots_per_step=2, replies={"move_to_next": STEPPED})
     w._advance_raster()
     assert w._raster_meta == {k: STEPPED[k] for k in (
-        "point_index", "path_len", "target_xy",
+        "point_index", "path_len", "target_xy", "frame",
         "calibration_matrix", "calibration_offset")}
     assert "status" not in w._raster_meta
 
@@ -415,6 +494,9 @@ def test_post_experiment_stamps_the_point_after_blacs_makes_data(tmp_path):
         attrs = dict(f["/data/RasteringGUI/raster"].attrs)
     assert attrs["point_index"] == 3
     assert list(attrs["target_xy"]) == [1.5, 2.5]
+    # Pins the whole GUI->h5 hop: target_xy is uninterpretable without knowing
+    # whether it is pixels or motor mm.
+    assert attrs["frame"] == "pixel"
 
 
 def test_comms_disabled_shot_does_not_restamp_the_previous_shot(tmp_path):
