@@ -5,7 +5,7 @@ import time
 import zmq
 from qtutils.qt import QtWidgets, QtCore
 
-from blacs.device_base_class import define_state, MODE_MANUAL
+from blacs.device_base_class import define_state, MODE_MANUAL, MODE_POST_EXP
 from user_devices.RemoteControl.blacs_tabs import (
     RemoteControlTab,
     DynamicStackedWidget,
@@ -149,6 +149,8 @@ class BigSkyTab(RemoteControlTab):
         self._keep_warm_buttons = {}  # {prefix: QCheckBox}
         self._keep_warm_temp = {}     # {prefix: bool} — Auto Keep Warm state
         self._keep_warm_temp_buttons = {}  # {prefix: QCheckBox}
+        self._disabled = {}           # {prefix: bool} — "treat as absent" state
+        self._disabled_buttons = {}   # {prefix: QCheckBox}
         self._warmup_triggered = {}   # {prefix: bool} — True while warmup active for cold episode
 
         laser_prefixes = sorted(set(
@@ -386,16 +388,29 @@ class BigSkyTab(RemoteControlTab):
         self._warmup_triggered[prefix] = False
         cb_col.addWidget(auto_keep_warm_cb)
 
+        disabled_cb = QtWidgets.QCheckBox("Disabled")
+        disabled_cb.setToolTip(
+            "Treat this laser as absent: BLACS sends it nothing and polls it\n"
+            "for nothing. Untick when the laser is back in the GUI.")
+        disabled_cb.setStyleSheet("font-size: 10px; padding: 1px; color: #B71C1C;")
+        disabled_cb.toggled.connect(
+            lambda checked, p=prefix: self._on_disabled_toggle(p, checked))
+        self._disabled_buttons[prefix] = disabled_cb
+        self._disabled[prefix] = False
+        cb_col.addWidget(disabled_cb)
+
         action_row.addLayout(cb_col)
         action_row.addStretch()
         layout.addLayout(action_row)
 
         group.setLayout(layout)
 
-        # Store ref and start offline — restored on first PUB-SUB message
+        # Store ref and start offline — restored on first PUB-SUB message.
+        # The title is the ONLY online indicator: a disabled QGroupBox greys
+        # out every child regardless of its own enabled flag, which would make
+        # the Disabled checkbox unclickable on exactly the laser that needs it.
         self._laser_groups[prefix] = group
         self._laser_online[prefix] = False
-        group.setEnabled(False)
         group.setTitle("%s (OFFLINE)" % prefix)
 
         return group
@@ -432,6 +447,19 @@ class BigSkyTab(RemoteControlTab):
             self.primary_worker, 'update_keep_warm', prefix, state
         ))
 
+    # ── Disabled ("treat this laser as absent") ───────────────────────
+
+    def _on_disabled_toggle(self, prefix, checked):
+        self._disabled[prefix] = checked
+        self._sync_disabled_to_worker(prefix, checked)
+
+    # POST_EXP so a tick between queued shots reaches the worker before the
+    # next shot instead of queuing until queue-end.
+    @define_state(MODE_MANUAL | MODE_POST_EXP, True)
+    def _sync_disabled_to_worker(self, prefix, state):
+        yield (self.queue_work(
+            self.primary_worker, 'update_disabled', prefix, state))
+
     # ── Auto Keep Warm (tab-side temperature monitoring) ────────────
 
     def _on_keep_warm_temp_toggle(self, prefix, checked):
@@ -466,6 +494,8 @@ class BigSkyTab(RemoteControlTab):
         The self.mode check is GIL-atomic (single LOAD_ATTR on an int) and
         safe to read from the GUI thread without locking.
         """
+        if self._disabled.get(prefix, False):
+            return
         if not self._keep_warm_temp.get(prefix, False):
             return
         if not self._laser_online.get(prefix, False):
@@ -721,7 +751,6 @@ class BigSkyTab(RemoteControlTab):
             if not self._laser_online.get(prefix, False):
                 self._laser_online[prefix] = True
                 if prefix in self._laser_groups:
-                    self._laser_groups[prefix].setEnabled(True)
                     self._laser_groups[prefix].setTitle(prefix)
 
         # Temperature monitor
@@ -763,14 +792,13 @@ class BigSkyTab(RemoteControlTab):
     # ── Per-laser health check ─────────────────────────────────────────
 
     def _check_laser_health(self):
-        """Gray out lasers whose PUB-SUB data is stale (>30s)."""
+        """Mark lasers OFFLINE in their group title when PUB-SUB is stale (>30s)."""
         now = time.monotonic()
         for prefix, group in self._laser_groups.items():
             last = self._last_monitor_time.get(prefix, 0)
             if last > 0 and (now - last) > 30.0:
                 if self._laser_online.get(prefix, False):
                     self._laser_online[prefix] = False
-                    group.setEnabled(False)
                     group.setTitle("%s (OFFLINE)" % prefix)
 
     # ── Override: enable/disable controls ──────────────────────────────
@@ -811,9 +839,17 @@ class BigSkyTab(RemoteControlTab):
         return {
             'keep_warm': dict(self._keep_warm),
             'keep_warm_temp': dict(self._keep_warm_temp),
+            'disabled': dict(self._disabled),
         }
 
     def restore_save_data(self, data):
+        # Called twice: at tab init (before initialise_workers, so
+        # _primary_worker is still None — device_base_class.py:56,62-64; the
+        # worker is seeded by the create_worker kwargs instead) and at RUNTIME
+        # from DeviceTab.update_from_settings (:383-385) via File > Load front
+        # panel, where a live worker must be re-synced or tab and worker drift
+        # apart silently.
+        live_worker = self._primary_worker is not None
         saved_kw = data.get('keep_warm', {})
         for prefix, state in saved_kw.items():
             if prefix in self._keep_warm_buttons:
@@ -823,6 +859,8 @@ class BigSkyTab(RemoteControlTab):
                 cb.setChecked(state)
                 cb.blockSignals(False)
                 self._update_keep_warm_interlocks(prefix)
+                if live_worker:
+                    self._sync_keep_warm_to_worker(prefix, state)
         # Support both old key ('auto_warmup_cold') and new key ('keep_warm_temp')
         saved_kwt = data.get('keep_warm_temp', data.get('auto_warmup_cold', {}))
         for prefix, state in saved_kwt.items():
@@ -833,7 +871,21 @@ class BigSkyTab(RemoteControlTab):
                 cb.blockSignals(True)
                 cb.setChecked(state)
                 cb.blockSignals(False)
-        # NOTE: Do NOT fire lamps here — worker doesn't exist yet.
+        # No saved data => all lasers ENABLED (loud). At tab init,
+        # initialise_workers runs after this and seeds the worker with the
+        # restored dict; on the runtime path the worker already exists and a
+        # missing sync would leave the checkbox reading ENABLED while the
+        # worker keeps skipping that YAG's shot channels.
+        for prefix, state in data.get('disabled', {}).items():
+            if prefix in self._disabled_buttons:
+                self._disabled[prefix] = state
+                cb = self._disabled_buttons[prefix]
+                cb.blockSignals(True)
+                cb.setChecked(state)
+                cb.blockSignals(False)
+                if live_worker:
+                    self._sync_disabled_to_worker(prefix, state)
+        # NOTE: Do NOT fire lamps here — worker may not exist yet.
 
     # ── Worker setup ──────────────────────────────────────────────────
 
@@ -851,6 +903,7 @@ class BigSkyTab(RemoteControlTab):
                 "child_output_connections": self.child_output_connections,
                 "child_monitor_connections": self.child_monitor_connections,
                 "keep_warm_state": dict(self._keep_warm),
+                "disabled_state": dict(self._disabled),
             },
         )
         self.primary_worker = "main_worker"

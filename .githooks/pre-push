@@ -43,7 +43,7 @@ fi
 echo "Running userlib tests in env: $CONDA_DEFAULT_ENV" | tee -a "$LOG"
 # external_gui_lib/tests/ was rolled back with ZMQ-v2 (2026-05-26); the guard
 # re-enables it automatically when the revival restores that tree.
-TEST_PATHS="userlib/user_devices/NuvuCamera/tests/ userlib/user_devices/NI_SCOPE/tests/"
+TEST_PATHS="userlib/user_devices/NuvuCamera/tests/ userlib/user_devices/NI_SCOPE/tests/ userlib/user_devices/BigSkyHub/tests/"
 if [ -d "userlib/external_gui_lib/tests" ]; then
     TEST_PATHS="userlib/external_gui_lib/tests/ $TEST_PATHS"
 fi

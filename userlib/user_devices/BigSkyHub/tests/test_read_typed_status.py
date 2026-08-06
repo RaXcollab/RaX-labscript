@@ -9,6 +9,7 @@ from user_devices.BigSkyHub.blacs_workers import BigSkyWorker
 def _bare(replies):
     w = BigSkyWorker.__new__(BigSkyWorker)
     w.logger = logging.getLogger("test_bigsky_read")
+    w._disabled = set()
     w.remote_comms = types.SimpleNamespace(
         connected=True, check_remote_value=lambda c: replies[c])
     return w
