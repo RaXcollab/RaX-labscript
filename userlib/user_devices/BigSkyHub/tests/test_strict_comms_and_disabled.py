@@ -149,21 +149,27 @@ def test_program_manual_skips_disabled_laser_without_sending():
 # ── reads ────────────────────────────────────────────────────────────
 
 def test_check_all_remote_values_skips_disabled_and_never_raises():
+    reads = []
     w = _worker({"YAG_1_power": {"status": "ERROR",
                                  "error": {"code": "command_error",
                                            "message": "boom"}},
                  "YAG_2_power": {"status": "SUCCESS", "value": 12.5}},
-                disabled=["YAG_1"])
+                disabled=["YAG_1"], reads=reads)
     w.child_connections = ["YAG_1_power", "YAG_2_power"]
     assert w.check_all_remote_values() == {"YAG_2_power": 12.5}
+    # The disabled laser must not be polled at all — the returned dict alone
+    # can't tell a skip from a dropped non-SUCCESS read.
+    assert reads == ["YAG_2_power"]
 
 
 def test_check_remote_values_skips_disabled():
+    reads = []
     w = _worker({"YAG_1_voltage": _DISCONNECTED,
                  "YAG_2_voltage": {"status": "SUCCESS", "value": 725.0}},
-                disabled=["YAG_1"])
+                disabled=["YAG_1"], reads=reads)
     w.child_output_connections = ["YAG_1_voltage", "YAG_2_voltage"]
     assert w.check_remote_values() == {"YAG_2_voltage": 725.0}
+    assert reads == ["YAG_2_voltage"]
 
 
 # ── arm path ─────────────────────────────────────────────────────────
@@ -202,3 +208,83 @@ def test_update_disabled_round_trip():
     w.update_disabled("YAG_1", True)
     w.update_disabled("YAG_1", False)
     assert w._disabled == set()
+
+
+# ── init() seeding ───────────────────────────────────────────────────
+# The only path that carries a saved "Disabled" tick across a BLACS or tab
+# restart: tab get_save_data -> restore_save_data -> initialise_workers
+# kwarg 'disabled_state' -> BigSkyWorker.init(). A kwarg-name drift on either
+# side silently re-enables every laser.
+
+def _init_worker(**kwargs):
+    w = BigSkyWorker.__new__(BigSkyWorker)
+    w.logger = logging.getLogger("test_bigsky_strict")
+    w.mock = True                     # keeps RemoteCommunication socket-free
+    w.host = None
+    w.port = None
+    w.child_output_connections = []
+    w.child_monitor_connections = []
+    w.device_name = _DEVICE
+    for name, value in kwargs.items():
+        setattr(w, name, value)
+    w.init()
+    return w
+
+
+def test_init_seeds_disabled_from_tab_kwarg():
+    w = _init_worker(disabled_state={"YAG_1": True, "YAG_2": False})
+    assert w._disabled == {"YAG_1"}
+
+
+def test_init_defaults_to_all_enabled_without_kwarg():
+    assert _init_worker()._disabled == set()
+
+
+# ── tab restore_save_data -> worker sync ─────────────────────────────
+# restore_save_data runs twice: at tab init (no worker yet — the create_worker
+# kwarg seeds it) and at RUNTIME from DeviceTab.update_from_settings via
+# File > Load front panel. Skipping the runtime sync leaves the checkbox
+# reading ENABLED while the worker keeps skipping that YAG's shot channels.
+
+class _FakeCheckBox:
+    def __init__(self):
+        self.checked = None
+
+    def blockSignals(self, _):
+        pass
+
+    def setChecked(self, state):
+        self.checked = state
+
+
+def _tab(primary_worker):
+    from user_devices.BigSkyHub.blacs_tabs import BigSkyTab
+
+    t = BigSkyTab.__new__(BigSkyTab)
+    t._primary_worker = primary_worker
+    t._keep_warm, t._keep_warm_temp, t._disabled = {}, {}, {}
+    t._warmup_triggered = {}
+    t._keep_warm_buttons = {"YAG_1": _FakeCheckBox()}
+    t._keep_warm_temp_buttons = {"YAG_1": _FakeCheckBox()}
+    t._disabled_buttons = {"YAG_1": _FakeCheckBox(), "YAG_2": _FakeCheckBox()}
+    t._update_keep_warm_interlocks = lambda prefix: None
+    t.synced = []
+    t._sync_disabled_to_worker = lambda p, s: t.synced.append(("disabled", p, s))
+    t._sync_keep_warm_to_worker = lambda p, s: t.synced.append(("keep_warm", p, s))
+    return t
+
+
+def test_restore_save_data_syncs_live_worker():
+    t = _tab("main_worker")
+    t.restore_save_data({"disabled": {"YAG_1": True, "YAG_2": False},
+                         "keep_warm": {"YAG_1": True}})
+    assert t._disabled == {"YAG_1": True, "YAG_2": False}
+    assert t.synced == [("keep_warm", "YAG_1", True),
+                        ("disabled", "YAG_1", True),
+                        ("disabled", "YAG_2", False)]
+
+
+def test_restore_save_data_skips_sync_before_worker_exists():
+    t = _tab(None)                    # DeviceTab.__init__ ordering
+    t.restore_save_data({"disabled": {"YAG_1": True}, "keep_warm": {"YAG_1": True}})
+    assert t._disabled == {"YAG_1": True} and t.synced == []

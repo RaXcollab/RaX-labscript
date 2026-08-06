@@ -843,6 +843,13 @@ class BigSkyTab(RemoteControlTab):
         }
 
     def restore_save_data(self, data):
+        # Called twice: at tab init (before initialise_workers, so
+        # _primary_worker is still None — device_base_class.py:56,62-64; the
+        # worker is seeded by the create_worker kwargs instead) and at RUNTIME
+        # from DeviceTab.update_from_settings (:383-385) via File > Load front
+        # panel, where a live worker must be re-synced or tab and worker drift
+        # apart silently.
+        live_worker = self._primary_worker is not None
         saved_kw = data.get('keep_warm', {})
         for prefix, state in saved_kw.items():
             if prefix in self._keep_warm_buttons:
@@ -852,6 +859,8 @@ class BigSkyTab(RemoteControlTab):
                 cb.setChecked(state)
                 cb.blockSignals(False)
                 self._update_keep_warm_interlocks(prefix)
+                if live_worker:
+                    self._sync_keep_warm_to_worker(prefix, state)
         # Support both old key ('auto_warmup_cold') and new key ('keep_warm_temp')
         saved_kwt = data.get('keep_warm_temp', data.get('auto_warmup_cold', {}))
         for prefix, state in saved_kwt.items():
@@ -862,8 +871,11 @@ class BigSkyTab(RemoteControlTab):
                 cb.blockSignals(True)
                 cb.setChecked(state)
                 cb.blockSignals(False)
-        # No saved data => all lasers ENABLED (loud). initialise_workers runs
-        # after this, so the worker is seeded with the restored dict.
+        # No saved data => all lasers ENABLED (loud). At tab init,
+        # initialise_workers runs after this and seeds the worker with the
+        # restored dict; on the runtime path the worker already exists and a
+        # missing sync would leave the checkbox reading ENABLED while the
+        # worker keeps skipping that YAG's shot channels.
         for prefix, state in data.get('disabled', {}).items():
             if prefix in self._disabled_buttons:
                 self._disabled[prefix] = state
@@ -871,7 +883,9 @@ class BigSkyTab(RemoteControlTab):
                 cb.blockSignals(True)
                 cb.setChecked(state)
                 cb.blockSignals(False)
-        # NOTE: Do NOT fire lamps here — worker doesn't exist yet.
+                if live_worker:
+                    self._sync_disabled_to_worker(prefix, state)
+        # NOTE: Do NOT fire lamps here — worker may not exist yet.
 
     # ── Worker setup ──────────────────────────────────────────────────
 
