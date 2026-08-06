@@ -541,6 +541,27 @@ The base `RemoteControlWorker` is the behavioral contract every device inherits
   omitted from `check_remote_values` / `check_all_remote_values`. Reads remain
   non-raising per the base policy. LaserLockDevice (`setpoint_not_initialized`)
   and RasteringDevice (`position_not_initialized`) read tolerances are unchanged.
+- **Operator recovery: restart the BigSky tab after ANY shot a BigSky raise
+  failed.** Do NOT just tick Disabled, clear the banner and resume — the next
+  shot red-fatals the tab. `DeviceTab.transition_to_buffered`
+  (`blacs/blacs/device_base_class.py:677-681`) sets `self._final_values = None`
+  when a worker raises and nothing restores it (`_final_values` is assigned a
+  dict in exactly one place, `:53`, the constructor — `abort_transition_to_buffered`
+  at `:696-714` and `program_device` do not). The *next* successful shot runs
+  `self._final_values.update(res)` on `None`; that `AttributeError` escapes the
+  state generator into `tab_base_classes.py:914-924`, which sets state
+  `'fatal error'` and disables the close button — restart-only. This is a
+  pre-existing blacs bug affecting every device, but master's typed-code
+  tolerance meant an offline/un-launched/REJECTED YAG never reached a T2B raise;
+  the strict policy above routes exactly that case there, so BigSky is the first
+  device to hit it routinely.
+  **Root-cause fix (one line, separate repo — needs sign-off):** add
+  `self._final_values = {}` immediately above the `for res in raw_results` loop
+  at `device_base_class.py:676`. It fixes every device (the dict accumulating
+  across shots is itself wrong). Once landed, delete this bullet and the
+  recovery step reverts to "tick Disabled, clear the banner, resume".
+  Verify with a real queued shot: offline enabled YAG → shot fails → tick
+  Disabled → clear banner → queue a second shot → the tab must stay yellow.
 - **Behavior note:** an un-programmed channel (HF `CHECK_VALUE` →
   `UNKNOWN_CONNECTION`) is now **omitted** from the monitor snapshot, where v1's
   always-SUCCESS `CHECK_VALUE` recorded a bogus `0.0`. Normally-programmed channels

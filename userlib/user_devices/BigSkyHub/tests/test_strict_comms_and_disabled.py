@@ -40,6 +40,16 @@ def _shot_h5(tmp_path, columns):
     return path
 
 
+def _empty_shot_h5(tmp_path):
+    """Shot h5 with no remote_device_operation — the early-return T2B path."""
+    import h5py
+
+    path = str(tmp_path / "no_ops.h5")
+    with h5py.File(path, "w") as f:
+        f.create_group("devices").create_group(_DEVICE)
+    return path
+
+
 def _worker(replies, disabled=(), sends=None, reads=None):
     """Bare worker wired to a dict-driven fake transport.
 
@@ -201,6 +211,32 @@ def test_auto_arm_skips_disabled_keep_warm_laser():
     w._keep_warm = {"YAG_1": True}
     w._auto_arm_if_needed()          # must not raise on the dead transport
     assert sends == [] and reads == []
+
+
+# R5 at the shot level. The unit tests above only prove _arm_laser /
+# _verify_armed_state raise; these prove the raise reaches the queue from BOTH
+# _auto_arm_if_needed call sites in transition_to_buffered — the normal path
+# (blacs_workers.py:413) and the "h5 has no remote_device_operation" path
+# (:362). master wrapped the arm in a blanket try/except, so re-adding one
+# would silently restore the old swallow with every unit test still green.
+
+def _keep_warm_worker():
+    """Enabled keep-warm YAG_1 that is offline; YAG_2 programs fine."""
+    w = _worker({"YAG_2_voltage": _SUCCESS, "YAG_1_lamp_mode": _DISCONNECTED})
+    w._keep_warm = {"YAG_1": True}
+    return w
+
+
+def test_buffered_propagates_arm_failure_with_programmed_channels(tmp_path):
+    with pytest.raises(Exception, match="laser_disconnected"):
+        _keep_warm_worker().transition_to_buffered(
+            _DEVICE, _shot_h5(tmp_path, {"YAG_2_voltage": 725.0}), {}, True)
+
+
+def test_buffered_propagates_arm_failure_without_remote_device_operation(tmp_path):
+    with pytest.raises(Exception, match="laser_disconnected"):
+        _keep_warm_worker().transition_to_buffered(
+            _DEVICE, _empty_shot_h5(tmp_path), {}, True)
 
 
 def test_update_disabled_round_trip():
