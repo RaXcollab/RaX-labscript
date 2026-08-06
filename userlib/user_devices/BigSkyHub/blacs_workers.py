@@ -33,47 +33,6 @@ _WARMUP_CONTROLLED_SUFFIXES = {'lamps', 'shutter', 'qswitch', 'lamp_mode', 'qswi
 # Serial command delay — wait for BigSky to process stop before mode changes
 _CMD_DELAY_S = 0.2
 
-# Replies that mean "this laser isn't available" — warn and continue instead
-# of aborting the shot/queue. Keyed on the TYPED fields per
-# HugeSkyController.pyw's PROGRAM_VALUE + CHECK_VALUE handlers, never on
-# message prose (message text is not a contract):
-#   UNKNOWN_CONNECTION / unknown_connection -> laser not launched in the GUI
-#   REJECTED (any code)                     -> GUI refused: safety interlock,
-#       serial/parse/verify failure, or the GUI's own "rejected:" safety-net
-#       translation of an un-migrated mixin site
-#   laser_disconnected                      -> laser offline; LOAD-BEARING,
-#       the status is ERROR so only the code makes this tolerable
-_SKIP_STATUSES = frozenset({"UNKNOWN_CONNECTION", "REJECTED"})
-_SKIP_ERROR_CODES = frozenset({"unknown_connection", "laser_disconnected"})
-
-
-def _laser_unavailable(response):
-    """True if a reply's typed fields say this laser isn't available."""
-    if not response:
-        return False
-    return (response.get("status") in _SKIP_STATUSES
-            or (response.get("error") or {}).get("code") in _SKIP_ERROR_CODES)
-
-
-def should_skip_buffered_response(response):
-    """(skip, reason) for buffered programming replies.
-
-    Skip = laser not launched / offline / interlock-rejected in the GUI:
-    warn and continue the shot. Anything else (command_error, TIMEOUT,
-    cannot_program_monitor, handler_exception, ...) is a real fault ->
-    do not skip.
-
-    RemoteCommunication.program_value translates a non-SUCCESS server
-    reply into a dict {"status", "error", "message"} (it does not raise),
-    so the typed status/error.code are available here. `message` is used
-    for the operator-facing reason only.
-    """
-    if not _laser_unavailable(response):
-        return False, ""
-    msg = (response.get("message")
-           or (response.get("error") or {}).get("message", "") or "")
-    return True, msg or response.get("status") or ""
-
 
 class BigSkyWorker(RemoteControlWorker):
     """RemoteControlWorker subclass that enforces safe command ordering.
@@ -92,6 +51,9 @@ class BigSkyWorker(RemoteControlWorker):
         self._last_sent_values = {}
         # Keep Warm state per laser prefix — set by tab via update_keep_warm
         self._keep_warm = getattr(self, 'keep_warm_state', {})
+        # Prefixes the operator has marked Disabled in the tab — the frontend
+        # equivalent of commenting the YAG out of the connection table.
+        self._disabled = {p for p, s in getattr(self, 'disabled_state', {}).items() if s}
         # Armed state tracking — prevents re-arming between queued shots
         self._is_armed = {}
 
@@ -102,6 +64,14 @@ class BigSkyWorker(RemoteControlWorker):
         self._keep_warm[prefix] = state
         if not state:
             self._is_armed.pop(prefix, None)
+
+    def update_disabled(self, prefix, state):
+        """Called by the tab when the user toggles the per-laser Disabled box."""
+        if state:
+            self._disabled.add(prefix)
+            self._is_armed.pop(prefix, None)
+        else:
+            self._disabled.discard(prefix)
 
     def enter_warmup(self, prefix):
         """Enter warmup: internal trigger, lamps on, shutter closed, qswitch off.
@@ -159,49 +129,41 @@ class BigSkyWorker(RemoteControlWorker):
 
         Called by transition_to_buffered when _is_armed is False.
         Voltage persists through stop — no re-send needed.
-        Wrapped in try/except — must not raise for unavailable lasers.
+        Raises on any command failure — an enabled laser that cannot arm
+        fails the shot.
         """
-        try:
-            self.logger.info(f"_arm_laser: arming {prefix} from warmup")
+        self.logger.info(f"_arm_laser: arming {prefix} from warmup")
 
-            # Step 1: Standby
-            self._send_cmd(f"{prefix}_stop", 1.0, f"arm: stop {prefix}")
-            time.sleep(_CMD_DELAY_S)
+        # Step 1: Standby
+        self._send_cmd(f"{prefix}_stop", 1.0, f"arm: stop {prefix}")
+        time.sleep(_CMD_DELAY_S)
 
-            # Step 2: External lamp mode (requires standby)
-            self._send_cmd(f"{prefix}_lamp_mode", 1.0, f"arm: lamp_mode=1")
-            # Safety: ensure Q-switch stays internal (always qsm0 in our setup)
-            self._send_cmd(f"{prefix}_qswitch_mode", 0.0, f"arm: qswitch_mode=0 (safety)")
+        # Step 2: External lamp mode (requires standby)
+        self._send_cmd(f"{prefix}_lamp_mode", 1.0, f"arm: lamp_mode=1")
+        # Safety: ensure Q-switch stays internal (always qsm0 in our setup)
+        self._send_cmd(f"{prefix}_qswitch_mode", 0.0, f"arm: qswitch_mode=0 (safety)")
 
-            # Step 3: Activate
-            self._send_cmd(f"{prefix}_lamps", 1.0, f"arm: lamps=1")
-            time.sleep(_CMD_DELAY_S)
+        # Step 3: Activate
+        self._send_cmd(f"{prefix}_lamps", 1.0, f"arm: lamps=1")
+        time.sleep(_CMD_DELAY_S)
 
-            # Step 4: Open shutter, arm qswitch
-            self._send_cmd(f"{prefix}_shutter", 1.0, f"arm: shutter=1")
-            self._send_cmd(f"{prefix}_qswitch", 1.0, f"arm: qswitch=1")
+        # Step 4: Open shutter, arm qswitch
+        self._send_cmd(f"{prefix}_shutter", 1.0, f"arm: shutter=1")
+        self._send_cmd(f"{prefix}_qswitch", 1.0, f"arm: qswitch=1")
 
-            # Update tracking
-            self._last_sent_values.update({
-                f"{prefix}_lamp_mode": 1.0,
-                f"{prefix}_qswitch_mode": 0.0,
-                f"{prefix}_lamps": 1.0,
-                f"{prefix}_shutter": 1.0,
-                f"{prefix}_qswitch": 1.0,
-            })
+        # Update tracking
+        self._last_sent_values.update({
+            f"{prefix}_lamp_mode": 1.0,
+            f"{prefix}_qswitch_mode": 0.0,
+            f"{prefix}_lamps": 1.0,
+            f"{prefix}_shutter": 1.0,
+            f"{prefix}_qswitch": 1.0,
+        })
 
-            self._is_armed[prefix] = True
-            self.logger.info(
-                f"_arm_laser: {prefix} armed (lamp external, QS internal, shutter open, qswitch on)"
-            )
-
-        except Exception as e:
-            # Log level only — both branches leave the laser un-armed.
-            if _laser_unavailable(getattr(e, "response", None)):
-                self.logger.warning(f"_arm_laser: {prefix} unavailable ({e}), skipping")
-            else:
-                self.logger.error(f"_arm_laser: failed for {prefix}: {e}")
-            self._is_armed[prefix] = False
+        self._is_armed[prefix] = True
+        self.logger.info(
+            f"_arm_laser: {prefix} armed (lamp external, QS internal, shutter open, qswitch on)"
+        )
 
     def _restore_warmup(self, prefix):
         """Restore warmup after shot queue ends or abort.
@@ -243,20 +205,11 @@ class BigSkyWorker(RemoteControlWorker):
             self._is_armed[prefix] = False
 
     def _send_cmd(self, connection, value, context):
-        """Send a single command to the BigSky GUI. Raises on failure.
-
-        The base _check_response raises a plain Exception with the typed
-        fields flattened into its message, so attach the raw reply — that
-        is how callers (_arm_laser) gate on error.code instead of prose.
-        """
+        """Send a single command to the BigSky GUI. Raises on failure."""
         response = self.remote_comms.program_value(
             connection, value, wait_for_lock=False
         )
-        try:
-            self._check_response(response, context)
-        except Exception as exc:
-            exc.response = response
-            raise
+        self._check_response(response, context)
 
     def restore_warmup_from_tab(self, prefix):
         """Restore warmup state for a laser, called by the tab's Auto Keep Warm
@@ -298,11 +251,11 @@ class BigSkyWorker(RemoteControlWorker):
     # ── Overrides ──────────────────────────────────────────────────────
 
     def check_remote_values(self):
-        """Override to skip fire-and-forget command channels and handle unregistered lasers.
+        """Override to skip fire-and-forget command and Disabled-laser channels.
 
         Skips command channels (warmup, start_lasing, stop) which have no
-        readable state.  Also gracefully skips connections for lasers not yet
-        launched in the BigSky GUI (unknown connection errors).
+        readable state, and every channel of a laser the operator marked
+        Disabled.  Reads never raise (base read policy).
         """
         if not self.remote_comms.connected:
             return None
@@ -310,7 +263,7 @@ class BigSkyWorker(RemoteControlWorker):
         remote_values = {}
         for connection in self.child_output_connections:
             m = _PREFIX_RE.match(connection)
-            if m and m.group(2) in _COMMAND_SUFFIXES:
+            if m and (m.group(2) in _COMMAND_SUFFIXES or m.group(1) in self._disabled):
                 continue
             response = self.remote_comms.check_remote_value(connection)
             if response is None:
@@ -324,7 +277,7 @@ class BigSkyWorker(RemoteControlWorker):
         return remote_values
 
     def check_all_remote_values(self):
-        """Override to skip command channels and handle unregistered lasers.
+        """Override to skip command channels and Disabled lasers.
 
         Used for pre/post-shot monitor snapshots.  Iterates outputs + monitors.
         """
@@ -334,7 +287,7 @@ class BigSkyWorker(RemoteControlWorker):
         remote_values = {}
         for connection in self.child_connections:
             m = _PREFIX_RE.match(connection)
-            if m and m.group(2) in _COMMAND_SUFFIXES:
+            if m and (m.group(2) in _COMMAND_SUFFIXES or m.group(1) in self._disabled):
                 continue
             response = self.remote_comms.check_remote_value(connection)
             if response is None:
@@ -346,12 +299,16 @@ class BigSkyWorker(RemoteControlWorker):
         return remote_values
 
     def program_manual(self, front_panel_values):
-        """Override to skip command channels, handle unregistered lasers,
-        only send changed values, and guard warmup-controlled channels.
+        """Override to skip command channels and Disabled lasers, only send
+        changed values, and guard warmup-controlled channels.
 
         When Keep Warm is active for a laser prefix, only voltage changes
         are sent.  Lamps/shutter/qswitch/modes are managed by the warmup
         lifecycle and must not be overridden by program_device().
+
+        Strict like the base for enabled lasers: any non-SUCCESS reply (or
+        transport timeout) raises. Marking the laser Disabled in the tab is
+        the supported way to silence an absent YAG.
         """
         if not self.remote_comms.connected:
             return {}
@@ -363,6 +320,9 @@ class BigSkyWorker(RemoteControlWorker):
             if not m:
                 continue
             prefix, suffix = m.group(1), m.group(2)
+
+            if prefix in self._disabled:
+                continue
 
             # Skip fire-and-forget command channels
             if suffix in _COMMAND_SUFFIXES:
@@ -379,55 +339,9 @@ class BigSkyWorker(RemoteControlWorker):
             response = self.remote_comms.program_value(
                 connection, value, wait_for_lock=False
             )
-            if response is None:
-                self.logger.warning(f"program_manual: timeout for {connection}")
-                continue
-            try:
-                self._check_response(response, f"program_manual({connection}={value})")
-            except Exception as exc:
-                # Tolerated failures skip the channel WITHOUT updating
-                # _last_sent_values, so the next push retries it.
-                self._on_program_manual_error(connection, value, response, exc)
-                continue
+            self._check_response(response, f"program_manual({connection}={value})")
             self._last_sent_values[connection] = value
         return {}
-
-    def _on_program_manual_error(self, connection, value, response, exc):
-        """Tolerate per-laser unavailability, keyed on the TYPED reply
-        fields. Replaces the old message-substring gates ("unknown
-        connection" / "laser disconnected" / "rejected:") -- those still
-        worked (program_value aliases error.message into the top-level
-        message key), but message text is prose, not a contract; status
-        and error.code are. Typed equivalents per HugeSkyController.pyw's
-        PROGRAM_VALUE handler:
-
-        - UNKNOWN_CONNECTION: laser not registered in the GUI -> debug skip
-        - laser_disconnected: laser offline -> warning skip
-        - REJECTED: GUI refused (safety interlock, serial/verify failure;
-          includes the legacy "rejected:" safety-net translation) -> warning skip
-
-        Anything else (command_error, TIMEOUT envelope, transport down)
-        stays loud via the strict base re-raise.
-        """
-        status = (response or {}).get("status", "")
-        code = ((response or {}).get("error") or {}).get("code", "")
-        if status == "UNKNOWN_CONNECTION" or code == "unknown_connection":
-            self.logger.debug(
-                f"program_manual: skipping {connection} (not registered in GUI)"
-            )
-            return
-        if code == "laser_disconnected":
-            self.logger.warning(
-                f"program_manual: skipping {connection} (laser disconnected)"
-            )
-            return
-        if status == "REJECTED":
-            self.logger.warning(
-                f"program_manual: {connection}={value} rejected by GUI, "
-                f"skipping: {exc}"
-            )
-            return
-        raise exc
 
     def transition_to_buffered(self, device_name, h5_filepath, front_panel_values, fresh):
         if not self.enable_comms:
@@ -472,6 +386,11 @@ class BigSkyWorker(RemoteControlWorker):
         # Program each laser's channels in safe order
         for laser_prefix in sorted(grouped.keys()):
             commands = grouped[laser_prefix]
+            if laser_prefix in self._disabled:
+                self.logger.info(
+                    f"transition_to_buffered: {laser_prefix} disabled, skipping "
+                    f"{len(commands)} channel(s)")
+                continue
             commands.sort(key=lambda x: COMMAND_ORDER.get(x[0], 99))
 
             for suffix, col in commands:
@@ -484,14 +403,6 @@ class BigSkyWorker(RemoteControlWorker):
                 response = self.remote_comms.program_value(
                     col, value, wait_for_lock=wait
                 )
-                # Gracefully skip lasers not launched / offline /
-                # interlock-rejected in the GUI (typed status + error.code).
-                skip, why = should_skip_buffered_response(response)
-                if skip:
-                    self.logger.warning(
-                        f"transition_to_buffered: skipping {col} ({why})"
-                    )
-                    continue
                 self._check_response(
                     response, f"buffered_program({col}={value})"
                 )
@@ -517,6 +428,8 @@ class BigSkyWorker(RemoteControlWorker):
            and skip. Otherwise, arm.
         """
         for prefix, keep_warm in self._keep_warm.items():
+            if prefix in self._disabled:
+                continue
             if not keep_warm:
                 continue
 
@@ -548,7 +461,9 @@ class BigSkyWorker(RemoteControlWorker):
         """Check hardware state via CHECK_VALUE to confirm laser is armed.
 
         Returns True if lamp_mode=1, lamps=1, shutter=1, qswitch=1,
-        qswitch_mode=0. Returns False if any check fails or mismatches.
+        qswitch_mode=0; False on a genuine "not armed" reading. A comms
+        fault raises — only Disabled lasers are allowed to be unreachable,
+        and they never reach here.
         """
         expected = {
             f"{prefix}_lamp_mode": 1.0,
@@ -559,23 +474,7 @@ class BigSkyWorker(RemoteControlWorker):
         }
         for connection, expected_val in expected.items():
             response = self.remote_comms.check_remote_value(connection)
-            if response is None:
-                self.logger.warning(
-                    f"_verify_armed_state: timeout checking {connection}"
-                )
-                return False
-            if response.get("status") != "SUCCESS":
-                msg = response.get("message", "")
-                # Log level only — both branches return False (not armed).
-                if _laser_unavailable(response):
-                    self.logger.debug(
-                        f"_verify_armed_state: {connection} unavailable ({msg})"
-                    )
-                    return False
-                self.logger.warning(
-                    f"_verify_armed_state: failed to check {connection}: {msg}"
-                )
-                return False
+            self._check_response(response, f"_verify_armed_state({connection})")
             if response.get("value") is None:
                 self.logger.info(
                     f"_verify_armed_state: {connection} returned SUCCESS "

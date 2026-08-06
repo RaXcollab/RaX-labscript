@@ -525,8 +525,22 @@ The base `RemoteControlWorker` is the behavioral contract every device inherits
   persistent error banner — the 2026-07-14 Blocker-A signature).
 - **Write** (`program_manual`, buffered `program_value`): `_check_response` raises
   on any non-SUCCESS — real failures surface / abort the shot.
-- Device-specific divergence (e.g. BigSky buffered skip-unlaunched via
-  `should_skip_buffered_response`) is an explicit, tested override — not the norm.
+- **BigSkyHub override (revised 2026-08-06).** BigSky no longer tolerates
+  non-SUCCESS write replies. On the write paths (`program_manual`,
+  `transition_to_buffered`, `_arm_laser`) an *enabled* laser is strict-by-base:
+  any non-SUCCESS status or error code — `laser_disconnected`,
+  `unknown_connection`, `REJECTED` with any code, `TIMEOUT` — and any transport
+  `None` propagates out of `_check_response`, setting the sticky tab
+  `error_message`, failing the shot and pausing the queue. The former typed-code
+  tolerance (`_SKIP_STATUSES` / `_SKIP_ERROR_CODES` /
+  `should_skip_buffered_response`, born 9a7cc02 for an un-launched second YAG) is
+  deleted; its job is now done explicitly by a per-laser **Disabled** checkbox in
+  the BLACS tab, persisted in tab save data and mirrored into the worker's
+  `_disabled` prefix set via `update_disabled`. A disabled laser is skipped
+  without sending on every write path, skipped by `_auto_arm_if_needed`, and
+  omitted from `check_remote_values` / `check_all_remote_values`. Reads remain
+  non-raising per the base policy. LaserLockDevice (`setpoint_not_initialized`)
+  and RasteringDevice (`position_not_initialized`) read tolerances are unchanged.
 - **Behavior note:** an un-programmed channel (HF `CHECK_VALUE` →
   `UNKNOWN_CONNECTION`) is now **omitted** from the monitor snapshot, where v1's
   always-SUCCESS `CHECK_VALUE` recorded a bogus `0.0`. Normally-programmed channels
