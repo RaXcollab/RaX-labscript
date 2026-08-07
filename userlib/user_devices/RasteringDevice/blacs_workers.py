@@ -51,6 +51,9 @@ class RasteringWorker(RemoteControlWorker):
         # clobber.
         self.raster_mode = bool(getattr(self, "raster_mode", False))
         self.shots_per_step = max(1, int(getattr(self, "shots_per_step", 1)))
+        # "blacs" | "local". Workerargs are set as instance attributes before
+        # init() runs, so normalize rather than clobber.
+        self.raster_control = str(getattr(self, "raster_control", "blacs"))
         self._shots_since_step = 0
         self._raster_armed = False
         # Last N the GUI acknowledged; None means "the GUI doesn't know N".
@@ -66,6 +69,10 @@ class RasteringWorker(RemoteControlWorker):
         about its armed state is void. Syncing here is what makes a
         restored-checked checkbox arm the GUI at BLACS startup rather than
         at the first shot.
+
+        The re-sync inherits the Control gate: the arm lives inside
+        _sync_raster_mode_to_gui, which now requires raster_control ==
+        "blacs". This reconnect path must NOT grow its own arm call.
         """
         connected = super().connect_to_remote()
         if connected:
@@ -140,6 +147,22 @@ class RasteringWorker(RemoteControlWorker):
         # The disable branch of the sync clears it.
         self._sync_raster_mode_to_gui(was_enabled=was_enabled)
 
+    def update_raster_control(self, raster_control):
+        """Control changed at the tab. Releasing to the operator sends
+        disarm_raster, which the GUI now treats as 'release ownership,
+        keep the path' rather than 'destroy the raster'."""
+        self.raster_control = str(raster_control)
+        if self.raster_control == "local":
+            self._raster_armed = False
+            try:
+                response = self.remote_comms.program_value("disarm_raster", 1)
+                self._check_response(response, "raster_release")
+            except Exception as e:
+                # Never raise from a settings change: the GUI may be closed.
+                self.logger.warning(f"Could not release raster to GUI: {e}")
+        else:
+            self._sync_raster_mode_to_gui()
+
     def _send_shots_per_step(self):
         """Tell the GUI how many shots we take per point (it displays N).
 
@@ -177,7 +200,10 @@ class RasteringWorker(RemoteControlWorker):
             )
             return
 
-        if self.raster_mode:
+        # Gated on Control too: arm_raster's already-armed branch sets
+        # _raster_source = "remote" on the GUI, so an un-gated arm here would
+        # seize the raster back from an operator who just took local control.
+        if self.raster_mode and self.raster_control == "blacs":
             if not self._raster_armed:
                 try:
                     response = self.remote_comms.program_value(
@@ -233,9 +259,14 @@ class RasteringWorker(RemoteControlWorker):
                 "Check that the rastering GUI is running."
             )
 
-        if self._shots_since_step == 0:
+        # Under local control the group counter has no job -- BLACS is not
+        # advancing anything, it is only asking where the laser is. Skipping
+        # shots 2..N of a group would stamp them with a point the operator has
+        # since stepped away from. Keep mutating the counter below so the group
+        # phase survives a flip back to BLACS mid-queue.
+        if self._shots_since_step == 0 or self.raster_control == "local":
             for rearmed in (False, True):
-                if not self._raster_armed:
+                if not self._raster_armed and self.raster_control == "blacs":
                     # Arm in step mode (value 0). The server arms from
                     # scratch when no raster is active; typed failures
                     # (no_raster_configured, not_calibrated, ...) raise
@@ -337,6 +368,17 @@ class RasteringWorker(RemoteControlWorker):
                     xy = [float(table[0][c]) for c in COORD_PAIR]
                     writes = [(COMPOUND_XY, xy)] + [
                         w for w in writes if w[0] not in COORD_PAIR]
+                # Gated on Control, NOT Raster Mode: "Raster off + Control
+                # BLACS" must still allow remote position feeding.
+                if self.raster_control == "local":
+                    raise Exception(
+                        "Sequence programs explicit raster coordinates, but "
+                        "Control is set to Local.\n"
+                        "The operator is hand-driving the raster; a remote "
+                        "position write would fight them.\n"
+                        "Tick 'BLACS drives raster' in this tab (or hand "
+                        "control back at the rastering GUI) and resume."
+                    )
                 for connection, value in writes:
                     self.logger.debug(
                         f"transition_to_buffered: programming {connection} = {value}"
