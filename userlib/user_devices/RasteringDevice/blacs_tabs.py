@@ -76,7 +76,8 @@ class StatusIndicator(QtWidgets.QFrame):
 # ── Main Tab ─────────────────────────────────────────────────────────
 
 # Status topics that the subscriber should listen for (beyond monitor connections)
-STATUS_TOPICS = ["raster_mode", "calibration_status", "raster_progress"]
+STATUS_TOPICS = ["raster_mode", "calibration_status", "raster_progress",
+                 "raster_owner"]
 
 
 class RasteringTab(RemoteControlTab):
@@ -445,13 +446,33 @@ class RasteringTab(RemoteControlTab):
             }
             text, color = mode_map.get(value, (f"Raster: {value}", "gray"))
             self.raster_mode_indicator.update_status(text, color)
-            # Mirror ownership the operator may have changed at the GUI. The
-            # blockSignals sandwich is what keeps a PUB repaint from firing the
-            # operator's toggled slot -- same guard restore_save_data uses.
-            if value in ("manual", "step", "continuous"):
-                self.raster_control_box.blockSignals(True)
-                self.raster_control_box.setChecked(value != "manual")
-                self.raster_control_box.blockSignals(False)
+            # Ownership is mirrored from the raster_owner topic, not from
+            # here: raster_mode conflates run-mode with ownership (a locally
+            # owned CONTINUOUS raster publishes "continuous"), so inferring
+            # Control from it re-ticked boxes the operator had just unticked.
+            # Remember the run-state for the owner branch's armed check.
+            self._last_raster_mode_value = value
+
+        elif topic == "raster_owner":
+            # Mirror WITHOUT blockSignals: the toggled slot firing IS the
+            # worker sync (update_raster_control), and suppressing it is how
+            # the widget and self.raster_control diverged -- a stale worker
+            # "blacs" re-arms on reconnect and the GUI's already-armed branch
+            # seizes the raster back from the operator. setChecked only fires
+            # on an actual change and the GUI publishes a steady value, so
+            # the loop terminates: tick -> update -> arm/disarm -> same value
+            # published -> no further change.
+            armed = getattr(self, "_last_raster_mode_value", "idle") in (
+                "manual", "step", "continuous")
+            if value == "remote" and not self.raster_control_box.isChecked():
+                self.raster_control_box.setChecked(True)
+            elif (value == "local" and armed
+                    and self.raster_control_box.isChecked()):
+                # Only while a raster is armed: an idle GUI publishing
+                # "local" must not fight the operator's Control=BLACS choice
+                # for pattern-less remote position feeding.
+                self.raster_control_box.setChecked(False)
+            # "none": ownership unset at the GUI -- leave the choice alone.
 
         elif topic == "calibration_status":
             if value == "calibrated":
