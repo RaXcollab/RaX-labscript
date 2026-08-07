@@ -324,3 +324,23 @@ def test_restore_save_data_skips_sync_before_worker_exists():
     t = _tab(None)                    # DeviceTab.__init__ ordering
     t.restore_save_data({"disabled": {"YAG_1": True}, "keep_warm": {"YAG_1": True}})
     assert t._disabled == {"YAG_1": True} and t.synced == []
+
+
+def test_get_save_data_includes_disabled():
+    # Without this key a Disabled tick silently stops surviving a restart
+    # (degrades loud -- the laser comes back ENABLED -- but still a trap).
+    t = _tab("main_worker")
+    t._disabled = {"YAG_1": True, "YAG_2": False}
+    assert t.get_save_data()["disabled"] == {"YAG_1": True, "YAG_2": False}
+
+
+def test_restore_warmup_skips_disabled_laser():
+    # Uniformity guard: every worker path must respect Disabled, including the
+    # keep-warm restore (tab-side auto path is guarded too; this is the choke point).
+    w = _init_worker(disabled_state={"YAG_1": True})
+    w._is_armed = {"YAG_1": True}
+    w._last_sent_values = {}
+    sent = []
+    w._send_cmd = lambda conn, value, ctx: sent.append(conn)
+    w._restore_warmup("YAG_1")
+    assert sent == [] and w._is_armed == {"YAG_1": True}

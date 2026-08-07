@@ -171,6 +171,11 @@ class BigSkyWorker(RemoteControlWorker):
         Wrapped in try/except — must not raise or it blocks other devices.
         """
         try:
+            if prefix in self._disabled:
+                self.logger.info(
+                    f"_restore_warmup: skipping {prefix} (disabled)"
+                )
+                return
             if not self.remote_comms.connected:
                 self.logger.warning(
                     f"_restore_warmup: skipping {prefix} (not connected)"
