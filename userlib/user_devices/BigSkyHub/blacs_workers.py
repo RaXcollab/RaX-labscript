@@ -110,11 +110,11 @@ class BigSkyWorker(RemoteControlWorker):
         time.sleep(_CMD_DELAY_S)
 
         # Step 2: Switch to internal lamp mode (requires standby)
-        self._send_cmd(f"{prefix}_lamp_mode", 0.0, f"enter_warmup: lamp_mode=0")
+        self._send_cmd(f"{prefix}_lamp_mode", 0.0, f"enter_warmup: {prefix}_lamp_mode=0")
         self._last_sent_values[f"{prefix}_lamp_mode"] = 0.0
 
         # Step 3: Activate lamps (fires internally)
-        self._send_cmd(f"{prefix}_lamps", 1.0, f"enter_warmup: lamps=1")
+        self._send_cmd(f"{prefix}_lamps", 1.0, f"enter_warmup: {prefix}_lamps=1")
         self._last_sent_values[f"{prefix}_lamps"] = 1.0
 
         # Update tracking for channels cleared by stop
@@ -158,17 +158,17 @@ class BigSkyWorker(RemoteControlWorker):
         time.sleep(_CMD_DELAY_S)
 
         # Step 2: External lamp mode (requires standby)
-        self._send_cmd(f"{prefix}_lamp_mode", 1.0, f"arm: lamp_mode=1")
+        self._send_cmd(f"{prefix}_lamp_mode", 1.0, f"arm: {prefix}_lamp_mode=1")
         # Safety: ensure Q-switch stays internal (always qsm0 in our setup)
-        self._send_cmd(f"{prefix}_qswitch_mode", 0.0, f"arm: qswitch_mode=0 (safety)")
+        self._send_cmd(f"{prefix}_qswitch_mode", 0.0, f"arm: {prefix}_qswitch_mode=0 (safety)")
 
         # Step 3: Activate
-        self._send_cmd(f"{prefix}_lamps", 1.0, f"arm: lamps=1")
+        self._send_cmd(f"{prefix}_lamps", 1.0, f"arm: {prefix}_lamps=1")
         time.sleep(_CMD_DELAY_S)
 
         # Step 4: Open shutter, arm qswitch
-        self._send_cmd(f"{prefix}_shutter", 1.0, f"arm: shutter=1")
-        self._send_cmd(f"{prefix}_qswitch", 1.0, f"arm: qswitch=1")
+        self._send_cmd(f"{prefix}_shutter", 1.0, f"arm: {prefix}_shutter=1")
+        self._send_cmd(f"{prefix}_qswitch", 1.0, f"arm: {prefix}_qswitch=1")
 
         # Update tracking
         self._last_sent_values.update({
@@ -208,10 +208,10 @@ class BigSkyWorker(RemoteControlWorker):
             time.sleep(_CMD_DELAY_S)
 
             # Step 2: Switch to internal lamp mode
-            self._send_cmd(f"{prefix}_lamp_mode", 0.0, f"restore: lamp_mode=0")
+            self._send_cmd(f"{prefix}_lamp_mode", 0.0, f"restore: {prefix}_lamp_mode=0")
 
             # Step 3: Activate lamps (internal firing)
-            self._send_cmd(f"{prefix}_lamps", 1.0, f"restore: lamps=1")
+            self._send_cmd(f"{prefix}_lamps", 1.0, f"restore: {prefix}_lamps=1")
 
             # Update tracking
             self._last_sent_values.update({
