@@ -106,6 +106,21 @@ class RasteringWorker(RemoteControlWorker):
             writes = [(COMPOUND_XY, xy)] + [
                 w for w in writes if w[0] not in COORD_PAIR]
 
+        if self.raster_control == "local":
+            # Control gates motor commands, not the whole panel. BLACS pushes
+            # the full front panel through here at tab startup and on the
+            # queue-abort path (device_base_class abort_* -> program_device),
+            # which would drive the operator's motors to a seconds-stale
+            # echoed position while they hand-drive the raster. Non-coordinate
+            # channels keep flowing.
+            kept = [w for w in writes
+                    if w[0] != COMPOUND_XY and w[0] not in COORD_PAIR]
+            if len(kept) != len(writes):
+                self.logger.info(
+                    f"program_manual: Control=Local — skipped "
+                    f"{len(writes) - len(kept)} coordinate write(s).")
+                writes = kept
+
         for connection, value in writes:
             response = self.remote_comms.program_value(
                 connection, value, wait_for_lock=False)
