@@ -53,7 +53,10 @@ class BigSkyWorker(RemoteControlWorker):
         self._keep_warm = getattr(self, 'keep_warm_state', {})
         # Prefixes the operator has marked Disabled in the tab — the frontend
         # equivalent of commenting the YAG out of the connection table.
-        self._disabled = {p for p, s in getattr(self, 'disabled_state', {}).items() if s}
+        # DELIBERATELY starts empty: Disabled is never restored across a
+        # BLACS/tab restart, so a laser can't be silently skipped by a tick
+        # nobody remembers. The comms error names the checkbox instead.
+        self._disabled = set()
         # Armed state tracking — prevents re-arming between queued shots
         self._is_armed = {}
 
@@ -72,6 +75,22 @@ class BigSkyWorker(RemoteControlWorker):
             self._is_armed.pop(prefix, None)
         else:
             self._disabled.discard(prefix)
+
+    def _check_response(self, response, context=""):
+        """Base raise + operator guidance: name the laser and its escape hatch."""
+        try:
+            super()._check_response(response, context)
+        except Exception as exc:
+            prefixes = {m.group(1) for c in self.child_output_connections
+                        for m in [_PREFIX_RE.match(c)] if m}
+            hit = next((p for p in prefixes if p in (context or "")), None)
+            if hit:
+                exc.args = (
+                    f"{exc}\nTo run without {hit}, tick its 'Disabled' checkbox "
+                    f"in the BigSky tab; otherwise troubleshoot the laser/GUI "
+                    f"connection, then clear this error.",
+                )
+            raise
 
     def enter_warmup(self, prefix):
         """Enter warmup: internal trigger, lamps on, shutter closed, qswitch off.

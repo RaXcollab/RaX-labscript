@@ -535,33 +535,22 @@ The base `RemoteControlWorker` is the behavioral contract every device inherits
   tolerance (`_SKIP_STATUSES` / `_SKIP_ERROR_CODES` /
   `should_skip_buffered_response`, born 9a7cc02 for an un-launched second YAG) is
   deleted; its job is now done explicitly by a per-laser **Disabled** checkbox in
-  the BLACS tab, persisted in tab save data and mirrored into the worker's
-  `_disabled` prefix set via `update_disabled`. A disabled laser is skipped
+  the BLACS tab, mirrored live into the worker's `_disabled` prefix set via
+  `update_disabled`. The tick is recorded in tab save data (so every shot h5
+  snapshots it — front-panel provenance stays truthful) but is **deliberately
+  never restored**: each BLACS/tab start is all-lasers-enabled, and the raised
+  comms error itself names the laser and directs the operator to its checkbox —
+  a persisted silent skip would hide an unfired laser from an operator who never
+  ticked the box. A disabled laser is skipped
   without sending on every write path, skipped by `_auto_arm_if_needed`, and
   omitted from `check_remote_values` / `check_all_remote_values`. Reads remain
   non-raising per the base policy. LaserLockDevice (`setpoint_not_initialized`)
   and RasteringDevice (`position_not_initialized`) read tolerances are unchanged.
-- **Operator recovery: restart the BigSky tab after ANY shot a BigSky raise
-  failed.** Do NOT just tick Disabled, clear the banner and resume — the next
-  shot red-fatals the tab. `DeviceTab.transition_to_buffered`
-  (`blacs/blacs/device_base_class.py:677-681`) sets `self._final_values = None`
-  when a worker raises and nothing restores it (`_final_values` is assigned a
-  dict in exactly one place, `:53`, the constructor — `abort_transition_to_buffered`
-  at `:696-714` and `program_device` do not). The *next* successful shot runs
-  `self._final_values.update(res)` on `None`; that `AttributeError` escapes the
-  state generator into `tab_base_classes.py:914-924`, which sets state
-  `'fatal error'` and disables the close button — restart-only. This is a
-  pre-existing blacs bug affecting every device, but master's typed-code
-  tolerance meant an offline/un-launched/REJECTED YAG never reached a T2B raise;
-  the strict policy above routes exactly that case there, so BigSky is the first
-  device to hit it routinely.
-  **Root-cause fix (one line, separate repo — needs sign-off):** add
-  `self._final_values = {}` immediately above the `for res in raw_results` loop
-  at `device_base_class.py:676`. It fixes every device (the dict accumulating
-  across shots is itself wrong). Once landed, delete this bullet and the
-  recovery step reverts to "tick Disabled, clear the banner, resume".
-  Verify with a real queued shot: offline enabled YAG → shot fails → tick
-  Disabled → clear banner → queue a second shot → the tab must stay yellow.
+- **Operator recovery after a BigSky raise:** troubleshoot the laser/GUI
+  connection, or tick that laser's **Disabled** checkbox to run without it;
+  then clear the banner (✕) and resume. (The `_final_values` red-fatal trap an
+  earlier revision of this bullet warned about was root-caused and fixed in
+  blacs `d1cf0b5`, hardened in `81316aa`; verified on hardware 2026-08-06.)
 - **Behavior note:** an un-programmed channel (HF `CHECK_VALUE` →
   `UNKNOWN_CONNECTION`) is now **omitted** from the monitor snapshot, where v1's
   always-SUCCESS `CHECK_VALUE` recorded a bogus `0.0`. Normally-programmed channels

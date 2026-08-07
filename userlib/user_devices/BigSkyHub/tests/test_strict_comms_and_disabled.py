@@ -246,11 +246,11 @@ def test_update_disabled_round_trip():
     assert w._disabled == set()
 
 
-# ── init() seeding ───────────────────────────────────────────────────
-# The only path that carries a saved "Disabled" tick across a BLACS or tab
-# restart: tab get_save_data -> restore_save_data -> initialise_workers
-# kwarg 'disabled_state' -> BigSkyWorker.init(). A kwarg-name drift on either
-# side silently re-enables every laser.
+# ── init() policy: always start all-enabled ──────────────────────────
+# Disabled is DELIBERATELY not persisted across a BLACS/tab restart: a
+# restored silent skip would hide an unfired laser from an operator who
+# never ticked the box. get_save_data still records it (shot-h5 front-panel
+# provenance) but restore ignores it and worker init seeds empty.
 
 def _init_worker(**kwargs):
     w = BigSkyWorker.__new__(BigSkyWorker)
@@ -267,20 +267,26 @@ def _init_worker(**kwargs):
     return w
 
 
-def test_init_seeds_disabled_from_tab_kwarg():
-    w = _init_worker(disabled_state={"YAG_1": True, "YAG_2": False})
-    assert w._disabled == {"YAG_1"}
-
-
-def test_init_defaults_to_all_enabled_without_kwarg():
+def test_init_starts_all_enabled_even_with_legacy_kwarg():
     assert _init_worker()._disabled == set()
+    # a stale/legacy disabled_state kwarg must have no effect
+    assert _init_worker(disabled_state={"YAG_1": True})._disabled == set()
+
+
+def test_check_response_failure_names_disable_checkbox():
+    w = _init_worker(child_output_connections=["YAG_1_voltage"])
+    reply = {"status": "ERROR",
+             "error": {"code": "laser_disconnected",
+                       "message": "laser disconnected", "retryable": True}}
+    with pytest.raises(Exception, match="laser_disconnected") as ei:
+        w._check_response(reply, "program_manual(YAG_1_voltage=860.0)")
+    assert "Disabled" in str(ei.value) and "YAG_1" in str(ei.value)
 
 
 # ── tab restore_save_data -> worker sync ─────────────────────────────
-# restore_save_data runs twice: at tab init (no worker yet — the create_worker
-# kwarg seeds it) and at RUNTIME from DeviceTab.update_from_settings via
-# File > Load front panel. Skipping the runtime sync leaves the checkbox
-# reading ENABLED while the worker keeps skipping that YAG's shot channels.
+# restore_save_data runs at tab init and at RUNTIME (File > Load front
+# panel). keep_warm restores + syncs; 'disabled' must NEVER restore — the
+# front panel and worker both start ENABLED so neither lies about a laser.
 
 class _FakeCheckBox:
     def __init__(self):
@@ -311,25 +317,25 @@ def _tab(primary_worker):
     return t
 
 
-def test_restore_save_data_syncs_live_worker():
+def test_restore_save_data_syncs_keep_warm_but_never_disabled():
     t = _tab("main_worker")
     t.restore_save_data({"disabled": {"YAG_1": True, "YAG_2": False},
                          "keep_warm": {"YAG_1": True}})
-    assert t._disabled == {"YAG_1": True, "YAG_2": False}
-    assert t.synced == [("keep_warm", "YAG_1", True),
-                        ("disabled", "YAG_1", True),
-                        ("disabled", "YAG_2", False)]
+    assert t._disabled == {}                              # not restored
+    assert t._disabled_buttons["YAG_1"].checked is None   # checkbox untouched
+    assert t.synced == [("keep_warm", "YAG_1", True)]
 
 
 def test_restore_save_data_skips_sync_before_worker_exists():
     t = _tab(None)                    # DeviceTab.__init__ ordering
     t.restore_save_data({"disabled": {"YAG_1": True}, "keep_warm": {"YAG_1": True}})
-    assert t._disabled == {"YAG_1": True} and t.synced == []
+    assert t._disabled == {} and t.synced == []
 
 
 def test_get_save_data_includes_disabled():
-    # Without this key a Disabled tick silently stops surviving a restart
-    # (degrades loud -- the laser comes back ENABLED -- but still a trap).
+    # Still SAVED (BLACS snapshots get_save_data into every shot h5 --
+    # front-panel provenance must record the truth) even though restore
+    # deliberately ignores it.
     t = _tab("main_worker")
     t._disabled = {"YAG_1": True, "YAG_2": False}
     assert t.get_save_data()["disabled"] == {"YAG_1": True, "YAG_2": False}
@@ -338,7 +344,8 @@ def test_get_save_data_includes_disabled():
 def test_restore_warmup_skips_disabled_laser():
     # Uniformity guard: every worker path must respect Disabled, including the
     # keep-warm restore (tab-side auto path is guarded too; this is the choke point).
-    w = _init_worker(disabled_state={"YAG_1": True})
+    w = _init_worker()
+    w.update_disabled("YAG_1", True)
     # Mock init leaves connected=False, whose own early-return would mask a
     # deleted guard -- force True so only the Disabled guard can skip.
     w.remote_comms.connected = True

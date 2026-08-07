@@ -898,22 +898,12 @@ class BigSkyTab(RemoteControlTab):
                 cb.blockSignals(True)
                 cb.setChecked(state)
                 cb.blockSignals(False)
-        # No saved data => all lasers ENABLED (loud). At tab init,
-        # initialise_workers runs after this and seeds the worker with the
-        # restored dict; on the runtime path the worker already exists and a
-        # missing sync would leave the checkbox reading ENABLED while the
-        # worker keeps skipping that YAG's shot channels.
-        for prefix, state in data.get('disabled', {}).items():
-            if prefix in self._disabled_buttons:
-                self._disabled[prefix] = state
-                cb = self._disabled_buttons[prefix]
-                cb.blockSignals(True)
-                cb.setChecked(state)
-                cb.blockSignals(False)
-                # Signals are blocked, so grey the group explicitly
-                self._apply_disabled_ui(prefix)
-                if live_worker:
-                    self._sync_disabled_to_worker(prefix, state)
+        # 'disabled' is DELIBERATELY NOT restored. It IS still saved --
+        # BLACS snapshots get_save_data into every shot h5, so the front
+        # panel record stays truthful -- but every BLACS/tab start is
+        # all-lasers-ENABLED: a restored silent skip would hide an unfired
+        # laser from an operator who never ticked the box. The comms error
+        # raised for an unreachable enabled laser names the checkbox.
         # NOTE: Do NOT fire lamps here — worker may not exist yet.
 
     # ── Worker setup ──────────────────────────────────────────────────
@@ -932,7 +922,6 @@ class BigSkyTab(RemoteControlTab):
                 "child_output_connections": self.child_output_connections,
                 "child_monitor_connections": self.child_monitor_connections,
                 "keep_warm_state": dict(self._keep_warm),
-                "disabled_state": dict(self._disabled),
             },
         )
         self.primary_worker = "main_worker"
