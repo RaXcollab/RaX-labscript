@@ -451,7 +451,23 @@ class BigSkyTab(RemoteControlTab):
 
     def _on_disabled_toggle(self, prefix, checked):
         self._disabled[prefix] = checked
+        self._apply_disabled_ui(prefix)
         self._sync_disabled_to_worker(prefix, checked)
+
+    def _apply_disabled_ui(self, prefix):
+        """Grey every control in the laser's group except the Disabled
+        checkbox (the escape hatch); untick re-applies the normal enable
+        predicates. GUI-thread only (toggle handler / restore_save_data)."""
+        dis = self._disabled.get(prefix, False)
+        for btn in self._action_buttons.get(prefix, {}).values():
+            btn.setEnabled(not dis)
+        conn = f"{prefix}_voltage"
+        if conn in self.AO_widgets:
+            self.AO_widgets[conn].setEnabled(self._input_enabled and not dis)
+        for buttons in (self._keep_warm_buttons, self._keep_warm_temp_buttons):
+            if prefix in buttons:
+                buttons[prefix].setEnabled(self._input_enabled and not dis)
+        self._update_keep_warm_interlocks(prefix)
 
     # POST_EXP so a tick between queued shots reaches the worker before the
     # next shot instead of queuing until queue-end.
@@ -604,13 +620,15 @@ class BigSkyTab(RemoteControlTab):
         self._style_action_buttons(prefix, warming=warming, armed=armed)
 
     def _update_keep_warm_interlocks(self, prefix):
-        """Disable manual controls when Keep Warm is active."""
+        """Disable manual controls when Keep Warm is active or the laser
+        is marked Disabled."""
         kw_on = self._keep_warm.get(prefix, False)
+        dis = self._disabled.get(prefix, False)
         for suffix in ('lamps', 'shutter', 'qswitch'):
             conn = f"{prefix}_{suffix}"
             if conn in self._toggle_buttons:
                 self._toggle_buttons[conn].setEnabled(
-                    self._input_enabled and not kw_on
+                    self._input_enabled and not kw_on and not dis
                 )
         for suffix in ('lamp_mode', 'qswitch_mode'):
             conn = f"{prefix}_{suffix}"
@@ -618,6 +636,7 @@ class BigSkyTab(RemoteControlTab):
                 lamps_on = self._lamps_active.get(prefix, False)
                 self._mode_combos[conn].setEnabled(
                     self._input_enabled and not kw_on and not lamps_on
+                    and not dis
                 )
 
     # ── Styling helpers ───────────────────────────────────────────────
@@ -732,6 +751,7 @@ class BigSkyTab(RemoteControlTab):
             if conn in self._mode_combos:
                 self._mode_combos[conn].setEnabled(
                     self._input_enabled and not lamps_on and not kw_on
+                    and not self._disabled.get(prefix, False)
                 )
 
     # ── Override: update monitors from PUB-SUB ────────────────────────
@@ -806,20 +826,25 @@ class BigSkyTab(RemoteControlTab):
     def _set_ao_widgets_enabled(self, enabled):
         """Enable/disable all interactive controls."""
         self._input_enabled = enabled
+        # Every predicate also respects Disabled ("treat as absent") so a
+        # mode change can't silently re-enable a disabled laser's controls.
         # Voltage spinbox
-        for widget in self.AO_widgets.values():
-            widget.setEnabled(enabled)
+        for conn, widget in self.AO_widgets.items():
+            m = _PREFIX_RE.match(conn)
+            dis = bool(m) and self._disabled.get(m.group(1), False)
+            widget.setEnabled(enabled and not dis)
         # Auto checkbox buttons
-        for btn in self._keep_warm_buttons.values():
-            btn.setEnabled(enabled)
-        for btn in self._keep_warm_temp_buttons.values():
-            btn.setEnabled(enabled)
+        for prefix, btn in self._keep_warm_buttons.items():
+            btn.setEnabled(enabled and not self._disabled.get(prefix, False))
+        for prefix, btn in self._keep_warm_temp_buttons.items():
+            btn.setEnabled(enabled and not self._disabled.get(prefix, False))
         # Toggle buttons: respect keep_warm interlock
         for conn, btn in self._toggle_buttons.items():
             m = _PREFIX_RE.match(conn)
             if m:
                 kw_on = self._keep_warm.get(m.group(1), False)
-                btn.setEnabled(enabled and not kw_on)
+                dis = self._disabled.get(m.group(1), False)
+                btn.setEnabled(enabled and not kw_on and not dis)
             else:
                 btn.setEnabled(enabled)
         # Mode combos: respect input-enabled, lamps-active, AND keep_warm
@@ -829,7 +854,9 @@ class BigSkyTab(RemoteControlTab):
                 prefix = m.group(1)
                 lamps_on = self._lamps_active.get(prefix, False)
                 kw_on = self._keep_warm.get(prefix, False)
-                combo.setEnabled(enabled and not lamps_on and not kw_on)
+                dis = self._disabled.get(prefix, False)
+                combo.setEnabled(enabled and not lamps_on and not kw_on
+                                 and not dis)
             else:
                 combo.setEnabled(enabled)
 
@@ -883,6 +910,8 @@ class BigSkyTab(RemoteControlTab):
                 cb.blockSignals(True)
                 cb.setChecked(state)
                 cb.blockSignals(False)
+                # Signals are blocked, so grey the group explicitly
+                self._apply_disabled_ui(prefix)
                 if live_worker:
                     self._sync_disabled_to_worker(prefix, state)
         # NOTE: Do NOT fire lamps here — worker may not exist yet.

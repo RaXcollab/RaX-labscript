@@ -304,6 +304,7 @@ def _tab(primary_worker):
     t._keep_warm_temp_buttons = {"YAG_1": _FakeCheckBox()}
     t._disabled_buttons = {"YAG_1": _FakeCheckBox(), "YAG_2": _FakeCheckBox()}
     t._update_keep_warm_interlocks = lambda prefix: None
+    t._apply_disabled_ui = lambda prefix: None
     t.synced = []
     t._sync_disabled_to_worker = lambda p, s: t.synced.append(("disabled", p, s))
     t._sync_keep_warm_to_worker = lambda p, s: t.synced.append(("keep_warm", p, s))
