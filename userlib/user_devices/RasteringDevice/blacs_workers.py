@@ -8,8 +8,11 @@ from user_devices.RemoteControl.blacs_workers import RemoteControlWorker
 # (status, id, ...) never leak into the shot record. `frame` names the frame
 # target_xy is in ('pixel' calibrated, 'motor' passthrough) — without it the
 # two are indistinguishable in the shot h5.
+# in_place: the GUI fired the shot at the laser's current position (operator
+# holds control, nothing armed). Without it in the whitelist a fire-in-place
+# shot is byte-identical in the h5 to a shot with no raster at all.
 RASTER_META_KEYS = ("point_index", "path_len", "target_xy", "frame",
-                    "calibration_matrix", "calibration_offset")
+                    "calibration_matrix", "calibration_offset", "in_place")
 
 # The coord pair is written as ONE compound PROGRAM_VALUE: [x, y] in the
 # target/pixel frame. Per-axis writes make the GUI pair each new coord with its
@@ -210,6 +213,15 @@ class RasteringWorker(RemoteControlWorker):
                         "arm_raster", 0, wait_for_lock=True
                     )
                     self._check_response(response, "raster_arm(settings)")
+                    dropped = response.get("dropped") if response else None
+                    if dropped:
+                        # The GUI drops points outside motor travel at arm
+                        # time; without this line the drop is visible only on
+                        # the GUI status bar, never to an operator watching
+                        # BLACS.
+                        self.logger.info(
+                            f"Raster armed with {response.get('armed')} points; "
+                            f"{dropped} dropped (outside motor travel).")
                 except Exception as e:
                     self.logger.warning(
                         f"Could not arm the rastering GUI now: {e}. The next "
@@ -223,9 +235,15 @@ class RasteringWorker(RemoteControlWorker):
                 self._send_shots_per_step()
             return
 
-        # Disabled: disarm only if the GUI might be armed on our behalf. A
-        # spinbox jiggle with the box unchecked must not touch the GUI.
-        if was_enabled or self._raster_armed:
+        # Disabled or Control=Local. Under local, push the release
+        # UNCONDITIONALLY: connect_to_remote lands here with was_enabled=None
+        # and _raster_armed freshly cleared, so the old guard sent nothing --
+        # a restored Control=Local never reached the GUI, whose ownership
+        # flag then let move_to_next keep advancing (shots_per_step times
+        # faster, since local queries every shot). The was_enabled/_raster_armed
+        # guard remains for the blacs-control case only (spinbox jiggle with
+        # Raster Mode off must not touch the GUI).
+        if self.raster_control == "local" or was_enabled or self._raster_armed:
             try:
                 response = self.remote_comms.program_value("disarm_raster", 1)
                 self._check_response(response, "raster_disarm")
@@ -275,6 +293,15 @@ class RasteringWorker(RemoteControlWorker):
                         "arm_raster", 0, wait_for_lock=True
                     )
                     self._check_response(response, "raster_arm")
+                    dropped = response.get("dropped") if response else None
+                    if dropped:
+                        # The GUI drops points outside motor travel at arm
+                        # time; without this line the drop is visible only on
+                        # the GUI status bar, never to an operator watching
+                        # BLACS.
+                        self.logger.info(
+                            f"Raster armed with {response.get('armed')} points; "
+                            f"{dropped} dropped (outside motor travel).")
                     self._raster_armed = True
                     # A GUI that restarted mid-queue forgot N, so re-teach it
                     # alongside the re-arm. Non-fatal by construction:
@@ -370,7 +397,12 @@ class RasteringWorker(RemoteControlWorker):
                         w for w in writes if w[0] not in COORD_PAIR]
                 # Gated on Control, NOT Raster Mode: "Raster off + Control
                 # BLACS" must still allow remote position feeding.
-                if self.raster_control == "local":
+                coord_writes = any(
+                    c == COMPOUND_XY or c in COORD_PAIR for c, _ in writes)
+                # Raise only when the sequence actually programs COORDINATES:
+                # gating on mere table presence would fire, with a message
+                # about coordinates, on a future non-coordinate child.
+                if self.raster_control == "local" and coord_writes:
                     raise Exception(
                         "Sequence programs explicit raster coordinates, but "
                         "Control is set to Local.\n"
