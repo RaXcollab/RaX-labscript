@@ -338,6 +338,9 @@ def test_restore_warmup_skips_disabled_laser():
     # Uniformity guard: every worker path must respect Disabled, including the
     # keep-warm restore (tab-side auto path is guarded too; this is the choke point).
     w = _init_worker(disabled_state={"YAG_1": True})
+    # Mock init leaves connected=False, whose own early-return would mask a
+    # deleted guard -- force True so only the Disabled guard can skip.
+    w.remote_comms.connected = True
     w._is_armed = {"YAG_1": True}
     w._last_sent_values = {}
     sent = []
