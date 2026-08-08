@@ -1,7 +1,13 @@
 from qtutils.qt import QtWidgets, QtCore
 from qtutils import inmain
 
-from blacs.device_base_class import define_state, MODE_MANUAL
+from blacs.device_base_class import (
+    define_state,
+    MODE_MANUAL,
+    MODE_TRANSITION_TO_BUFFERED,
+    MODE_BUFFERED,
+    MODE_POST_EXP,
+)
 
 from user_devices.RemoteControl.blacs_tabs import (
     RemoteControlTab,
@@ -70,7 +76,8 @@ class StatusIndicator(QtWidgets.QFrame):
 # ── Main Tab ─────────────────────────────────────────────────────────
 
 # Status topics that the subscriber should listen for (beyond monitor connections)
-STATUS_TOPICS = ["raster_mode", "calibration_status", "raster_progress"]
+STATUS_TOPICS = ["raster_mode", "calibration_status", "raster_progress",
+                 "raster_owner"]
 
 
 class RasteringTab(RemoteControlTab):
@@ -199,11 +206,25 @@ class RasteringTab(RemoteControlTab):
             "queue ends (BLACS back in manual mode)."
         )
 
+        # Control: who advances the raster. Orthogonal to Raster Mode -- that
+        # gates STEPPING, this gates every remote motor command. "Raster off +
+        # Control BLACS" is a real state: remote position feeding with no
+        # pattern.
+        self.raster_control_box = QtWidgets.QCheckBox("BLACS drives raster")
+        self.raster_control_box.setChecked(True)
+        self.raster_control_box.setToolTip(
+            "Ticked: BLACS advances the raster and may program coordinates.\n"
+            "Unticked: the operator drives from the rastering GUI. Shots keep\n"
+            "firing; a sequence that programs explicit coordinates will raise.\n"
+            "Takes effect on the next shot, not at queue end."
+        )
+
         raster_row = QtWidgets.QHBoxLayout()
         raster_row.setSpacing(8)
         raster_row.addWidget(self.raster_check_box)
         raster_row.addWidget(QtWidgets.QLabel("Shots per step:"))
         raster_row.addWidget(self.shots_per_step_box)
+        raster_row.addWidget(self.raster_control_box)
         raster_row.addStretch()
 
         # ── 8. Status indicators panel ──
@@ -244,6 +265,7 @@ class RasteringTab(RemoteControlTab):
 
         self.raster_check_box.toggled.connect(self.on_raster_toggled)
         self.shots_per_step_box.valueChanged.connect(self.on_shots_per_step_changed)
+        self.raster_control_box.toggled.connect(self.on_raster_control_toggled)
 
         # ── 10. Reconnect buttons ──
         self.reconnect_reqrep_button = QtWidgets.QPushButton(
@@ -347,6 +369,8 @@ class RasteringTab(RemoteControlTab):
                 # sync with a restored-checked box across BLACS restarts.
                 "raster_mode": self.raster_check_box.isChecked(),
                 "shots_per_step": self.shots_per_step_box.value(),
+                "raster_control": (
+                    "blacs" if self.raster_control_box.isChecked() else "local"),
             },
         )
         self.primary_worker = "main_worker"
@@ -388,6 +412,27 @@ class RasteringTab(RemoteControlTab):
             )
         )
 
+    @define_state(
+        MODE_MANUAL | MODE_TRANSITION_TO_BUFFERED | MODE_BUFFERED | MODE_POST_EXP,
+        True)
+    def on_raster_control_toggled(self, state):
+        """Wider mask than the other two raster controls, deliberately.
+
+        queue_state_indefinitely=True does NOT drop a slot fired in a
+        disallowed mode -- StateQueue.check_for_next_item only deletes in the
+        `not queue_state_indefinitely` branch (tab_base_classes.py:157-160), so
+        a MODE_MANUAL-only slot would PARK until the queue ended: the widget
+        would read Local while the worker kept stepping. Backwards for a
+        control the operator reaches for BECAUSE shots are running.
+        MODE_POST_EXP (=32) is the between-queued-shots window.
+        """
+        yield (
+            self.queue_work(
+                self.primary_worker, 'update_raster_control',
+                raster_control=("blacs" if state else "local"),
+            )
+        )
+
     # ── Status signal handler (runs on GUI thread) ───────────────────
 
     def _on_status_received(self, topic, value):
@@ -401,6 +446,33 @@ class RasteringTab(RemoteControlTab):
             }
             text, color = mode_map.get(value, (f"Raster: {value}", "gray"))
             self.raster_mode_indicator.update_status(text, color)
+            # Ownership is mirrored from the raster_owner topic, not from
+            # here: raster_mode conflates run-mode with ownership (a locally
+            # owned CONTINUOUS raster publishes "continuous"), so inferring
+            # Control from it re-ticked boxes the operator had just unticked.
+            # Remember the run-state for the owner branch's armed check.
+            self._last_raster_mode_value = value
+
+        elif topic == "raster_owner":
+            # Mirror WITHOUT blockSignals: the toggled slot firing IS the
+            # worker sync (update_raster_control), and suppressing it is how
+            # the widget and self.raster_control diverged -- a stale worker
+            # "blacs" re-arms on reconnect and the GUI's already-armed branch
+            # seizes the raster back from the operator. setChecked only fires
+            # on an actual change and the GUI publishes a steady value, so
+            # the loop terminates: tick -> update -> arm/disarm -> same value
+            # published -> no further change.
+            armed = getattr(self, "_last_raster_mode_value", "idle") in (
+                "manual", "step", "continuous")
+            if value == "remote" and not self.raster_control_box.isChecked():
+                self.raster_control_box.setChecked(True)
+            elif (value == "local" and armed
+                    and self.raster_control_box.isChecked()):
+                # Only while a raster is armed: an idle GUI publishing
+                # "local" must not fight the operator's Control=BLACS choice
+                # for pattern-less remote position feeding.
+                self.raster_control_box.setChecked(False)
+            # "none": ownership unset at the GUI -- leave the choice alone.
 
         elif topic == "calibration_status":
             if value == "calibrated":
@@ -424,6 +496,7 @@ class RasteringTab(RemoteControlTab):
         return {
             'raster_mode': self.raster_check_box.isChecked(),
             'shots_per_step': self.shots_per_step_box.value(),
+            'raster_control_blacs': self.raster_control_box.isChecked(),
         }
 
     def restore_save_data(self, data):
@@ -446,3 +519,8 @@ class RasteringTab(RemoteControlTab):
         self.shots_per_step_box.blockSignals(True)
         self.shots_per_step_box.setValue(shots_per_step)
         self.shots_per_step_box.blockSignals(False)
+
+        control_blacs = bool(data.get('raster_control_blacs', True))
+        self.raster_control_box.blockSignals(True)
+        self.raster_control_box.setChecked(control_blacs)
+        self.raster_control_box.blockSignals(False)
