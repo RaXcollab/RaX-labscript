@@ -33,7 +33,7 @@ else:
 run = lyse.Run(h5_path)
 
 # --- Extract traces (graceful handling for missing traces) ---
-TRACE_NAMES = ['Absorption0', 'Absorption1', 'Absorption2', 'Absorption3','Absorption_ATOM']
+TRACE_NAMES = ['Absorption0', 'Absorption1', 'Absorption2', 'Absorption3']
 trace_data = {}
 for name in TRACE_NAMES:
     try:
@@ -107,8 +107,8 @@ ann(ax1)
 
 # --- Subplot 2 (bottom left): Absorption DC (raw) ---
 ax3 = fig.add_subplot(gs[1, 0])
-if 'Absorption3' in trace_data:
-    analog_data_dcprobe = trace_data['Absorption3']
+if 'Absorption0' in trace_data:
+    analog_data_dcprobe = trace_data['Absorption0']
     times_dcprobe = analog_data_dcprobe[0].flatten()
     values_dcprobe = analog_data_dcprobe[1].flatten()
     ax3.plot(times_dcprobe * 1000, values_dcprobe, 'b')
@@ -124,8 +124,8 @@ ann(ax3)
 
 # --- Subplot 5 (bottom right): Absorption atom (raw) ---
 ax5 = fig.add_subplot(gs[1, 1])
-if 'Absorption_ATOM' in trace_data:
-    analog_data_dcprobe = trace_data['Absorption_ATOM']
+if 'Absorption3' in trace_data:
+    analog_data_dcprobe = trace_data['Absorption3']
     times_dcprobe = analog_data_dcprobe[0].flatten()
     values_dcprobe = analog_data_dcprobe[1].flatten()
     ax5.plot(times_dcprobe * 1000, values_dcprobe, 'b', label='Absorption_ATOM')
