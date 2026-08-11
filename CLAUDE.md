@@ -103,7 +103,7 @@ Each GUI codebase carries its own `.claude/agents/` domain agent: `HF_Locking`�
 ## Do NOT Flag These
 
 - **`__pycache__/` and `.ipynb_checkpoints/`** — auto-managed by Python and Jupyter
-- **`GUIs/rastering*/calibration_data.json`** — operator live calibration data: **tracked but always dirty** (` M`). Never stage, commit, or `git restore` it; stage only your own files by name. Each rastering worktree has its own copy.
+- **`GUIs/rastering*/calibration_data.json`** — operator live calibration data: churns constantly, dirty is normal. Commit it as churn (policy changed 2026-08-11); never `git restore` it (wipes the live calibration). Each rastering worktree has its own copy.
 - **Single-occurrence log errors** without recurrence — yellow observation, not critical
 - **`npx claude-mem status` saying "Worker is not running"** — known CLI bug (unwritten `.worker.pid`). Ground truth: `netstat -ano | grep 37777` LISTENING + `curl http://127.0.0.1:37777/api/health`
 - Domain-specific suppressions (RunManager globals, NaN rows, deprecated kwargs) in `.claude/rules/`
