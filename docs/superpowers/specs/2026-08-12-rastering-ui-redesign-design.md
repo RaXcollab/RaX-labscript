@@ -52,7 +52,7 @@ condition is active (absence = all clear). Left to right:
 | 3 | Shots per point | `×3/pt` (display-only; set in BLACS) | `_on_raster_shots_per_step` |
 | 4 | Motor position | `X 4.213 · Y 1.008 mm` (numeric, `tabular` feel) | `_on_motor_position` |
 | 5 | Calibration chip | `cal —` (none) / `cal 2/4` (collecting) / `cal ✓` (fresh) / `cal ✓ file` (loaded) / `cal stale` (camera geometry changed since cal) | `_on_calibration_progress`, `_on_calibration_ready`, `note_loaded_cal_bundle`; *stale* is a new comparison of current rotation/flip/AOI against the cal's bundled camera settings (`_get_cal_bundled_camera_settings`) — display-only, no new comms |
-| 6 | Camera health | `cam 13.2 fps`; red / `cam —` when frames stop | new lightweight frame counter in `set_frame` |
+| 6 | Camera health | `cam 13.2 fps`; red / `cam —` when frames stop | existing `_fps_smoothed` metric (`set_frame`); staleness via a 2 s CoarseTimer watchdog |
 | 7 | ⚠ `path edited — re-arm` | pattern changed since armed path was built | existing armed-vs-pending state (`_update_armed_pending_status`) |
 | 8 | ⚠ `bounds OFF` | enforce-scan-bounds unchecked | `enforce_bounds_checkbox` state |
 | 9 | ⚠ `● REC` | position-history CSV being written | `_pos_history_file is not None` |
@@ -74,7 +74,7 @@ condition is active (absence = all clear). Left to right:
 
 | Group | Contents | Origin |
 |---|---|---|
-| Pattern | algorithm combo · x step · y step · **spiral params panel** (radius, step, angle, Δangle, cx, cy) shown **only when spiral selected** via `QStackedWidget` switched by `alg_choice` | Pattern + Step Size + Spiral groups |
+| Pattern | algorithm combo · x step · y step · **spiral params group** (radius, step, angle, Δangle, cx, cy) shown **only when spiral selected** (`group_spiral.setVisible` driven by `alg_choice`) | Pattern + Step Size + Spiral groups |
 | Scan bounds (px) | x low/high · y low/high · ☐ Enforce bounds | Scan Bounds group |
 | Actions row | Preview Path · ☐ Show direction · Clear raster points · Save and Clear | Auto tab loose buttons |
 
@@ -83,7 +83,7 @@ condition is active (absence = all clear). Left to right:
 | Group | Contents | Origin |
 |---|---|---|
 | Calibration | Calibrate (Affine) · Reset · Revert to Last · Save Calibration As… · Load Calibration… · Apply camera settings from cal · M·target+b matrix (6 spinboxes) | Manual tab calibration controls |
-| Motor | Device Home X / Y / Both · Backlash x/y + Set · User home x/y setpoints + Set + per-axis Go + User Home Both | Device Home + Backlash + User Home groups |
+| Motor | Device Home X / Y / Both · Backlash x/y + Set · User home x/y setpoints + Set + per-axis Go | Device Home + Backlash + User Home groups. The combined-Go widget (`user_home_both`) IS Run's "Go user home" — one widget, no duplicate |
 | Display | Show current position · Display points + count · Display raster points + count | Display Options group ("Save current as defaults" moves to the File menu) |
 
 ### Deleted outright
@@ -136,7 +136,7 @@ beyond a subtle vertical button face.
   - New `_install_status_strip` builds the 9 strip widgets once in `__init__` and
     subscribes to the existing signals listed above. Conditional chips toggle visibility,
     never re-create widgets.
-  - Spiral stack: connect `alg_choice.currentIndexChanged` → stacked-widget page.
+  - Spiral visibility: connect `alg_choice.currentIndexChanged` → `group_spiral.setVisible`.
   - `cal stale` check + fps counter as described (both display-only).
   - Delete `_motor_to_percent` and progress-bar update code in `_on_motor_position`.
   - File menu action "Save current as defaults" → existing `_on_save_defaults`
