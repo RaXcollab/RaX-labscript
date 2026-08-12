@@ -1,9 +1,10 @@
 # Rastering GUI — UI Redesign (Option A: Run · Pattern · Setup)
 
 **Date:** 2026-08-12
-**Status:** Approved design, pre-implementation
+**Status:** Approved design (structure + visual layer), pre-implementation
 **Repo:** `GUIs/rastering` (files: `raster_gui.ui`, `ui.py`)
-**Mockups:** https://claude.ai/code/artifact/f7b3d105-fd50-4dc8-9042-50b9e111d4a1
+**Wireframe options:** https://claude.ai/code/artifact/f7b3d105-fd50-4dc8-9042-50b9e111d4a1
+**Hi-fi interactive mockup (approved):** https://claude.ai/code/artifact/ff7b9050-3de9-4663-b17b-696c0d50e89d
 
 ## Problem
 
@@ -34,6 +35,11 @@ Settings dock (with View-menu toggle) on the right edge.
 
 **Top bar removed.** Delay (s) moves to the Run tab; the two flip checkboxes are deleted
 (the Camera Settings dock owns flip state — one control, same signals).
+
+**Menu bar:** gains a **File** menu holding **"Save current as defaults"** (wired to the
+existing `_on_save_defaults`) — it snapshots values across all tabs, so it belongs to the
+window, not one tab's group box. The existing View menu (Camera Settings dock toggle,
+Ctrl+Shift+C) is unchanged.
 
 **Status strip** — permanent widgets in the existing `QStatusBar` (native Qt, no custom
 widget class). Steady state shows six items; three warning chips appear only when their
@@ -78,7 +84,7 @@ condition is active (absence = all clear). Left to right:
 |---|---|---|
 | Calibration | Calibrate (Affine) · Reset · Revert to Last · Save Calibration As… · Load Calibration… · Apply camera settings from cal · M·target+b matrix (6 spinboxes) | Manual tab calibration controls |
 | Motor | Device Home X / Y / Both · Backlash x/y + Set · User home x/y setpoints + Set + per-axis Go + User Home Both | Device Home + Backlash + User Home groups |
-| Display | Show current position · Display points + count · Display raster points + count · Save current as defaults | Display Options group |
+| Display | Show current position · Display points + count · Display raster points + count | Display Options group ("Save current as defaults" moves to the File menu) |
 
 ### Deleted outright
 
@@ -88,6 +94,37 @@ condition is active (absence = all clear). Left to right:
 - Both motor progress bars (`progress_motor_x_pos/y_pos`) and the Readouts group —
   replaced by the numeric strip readout (approved). `_motor_to_percent` becomes dead code;
   remove it.
+
+## Visual design (approved via hi-fi mockup)
+
+Dark instrument-console treatment — camera-centric tool used in a dim lab. All of it is
+plain Qt: Fusion style + dark `QPalette` + one QSS stylesheet built from six tokens.
+
+**Palette tokens:**
+
+| Token | Hex | Use |
+|---|---|---|
+| graphite | `#161A20` | window ground |
+| panel | `#1E242C` | group boxes, dock |
+| recess | `#12151A` | camera well, readout/input wells, status rail |
+| ink / muted | `#D9E0E7` / `#8794A1` | text hierarchy |
+| steel cyan | `#3EB4C8` | interactive emphasis + armed state ONLY |
+| signal amber / confirm green / alert red | `#E2A83D` / `#52BE6E` / `#E15A4D` | annunciator semantics — never decoration |
+
+**Type:** app default Segoe UI for controls; `QGroupBox::title` uppercase +
+letter-spaced + muted via QSS; every numeric readout (spinboxes, strip labels) gets
+Cascadia Code (fallback Consolas) for tabular instrument-style digits.
+
+**Status strip = annunciator rail:** chips are QLabels added with
+`QStatusBar.addPermanentWidget`, styled via a dynamic property
+(`chip.setProperty("state", "amber")` + QSS `QLabel[state="amber"]`, with
+`style().unpolish/polish` on change). Each chip has a small square "lamp"; warning chips
+toggle `setVisible` — unlit/absent means all clear. Optional 1 Hz REC blink via a
+CoarseTimer QTimer (never PreciseTimer on the GUI thread).
+
+**Buttons:** primary actions (Auto Raster, Stop, Arm, Preview Path, Calibrate) get the
+cyan-outline primary style; armed state fills cyan-tinted. 3 px radii, no gradients
+beyond a subtle vertical button face.
 
 ## Implementation shape
 
@@ -102,6 +139,10 @@ condition is active (absence = all clear). Left to right:
   - Spiral stack: connect `alg_choice.currentIndexChanged` → stacked-widget page.
   - `cal stale` check + fps counter as described (both display-only).
   - Delete `_motor_to_percent` and progress-bar update code in `_on_motor_position`.
+  - File menu action "Save current as defaults" → existing `_on_save_defaults`
+    (button removed from the Display group).
+  - Apply the visual layer: Fusion + dark QPalette + the token QSS stylesheet
+    (single module-level constant or `.qss` file), mono font on numeric widgets.
 - **No controller changes.** No signal/slot semantics change, no ZMQ change, no new
   communication flows. Layout + display only.
 - Widget object names are preserved wherever the widget survives, so
