@@ -10,9 +10,9 @@ paths:
 
 - **Queued-shot lifecycle:** `transition_to_buffered → start_run → post_experiment` per shot. **No `transition_to_manual` between queued shots.** T2M runs only at queue-end, abort, or pause.
 - **Per-shot teardown belongs in `post_experiment`**, NOT `transition_to_manual`. Reset state, restore latched channels, snapshot final monitor values here.
-- **Never create or write `/data` before the shot completes** (e.g. in `transition_to_buffered`). `/data`'s presence is the queue manager's "shot has been run" marker (`experiment_queue.py:387`); the queue manager creates it after the run (`:913`), before dispatching `post_experiment` (`:938`). Per-shot h5 writes go in `post_experiment` (2026-08-02, RasteringDevice incident).
+- **Never create or write `/data` before the shot completes** (e.g. in `transition_to_buffered`). `/data`'s presence is the queue manager's "shot has been run" marker; the queue manager creates it after the run and before dispatching `post_experiment` (grep `create_group('data')` in `blacs/blacs/experiment_queue.py`). Per-shot h5 writes go in `post_experiment` (2026-08-02, RasteringDevice incident).
 - Worker classes without `post_experiment` trigger a ~80 ms back-compat probe per shot — implement the hook to skip the probe.
-- Fork-only MODE flags: `MODE_TRANSITION_TO_POST_EXP=16`, `MODE_POST_EXP=32` (per `blacs/blacs/tab_base_classes.py:63-64`). Allowed-modes lists on `@define_state` callbacks must include POST_EXP if the callback should fire between queued shots.
+- Fork-only MODE flags: `MODE_TRANSITION_TO_POST_EXP=16`, `MODE_POST_EXP=32` (defined in `blacs/blacs/tab_base_classes.py`). Allowed-modes lists on `@define_state` callbacks must include POST_EXP if the callback should fire between queued shots.
 
 ## Error-Handling Change Protocol
 

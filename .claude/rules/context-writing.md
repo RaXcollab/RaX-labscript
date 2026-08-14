@@ -12,6 +12,7 @@ paths:
 - **One concept per bullet** — no narrative paragraphs. Sub-explanations use indented sub-bullets
 - **Challenge each line** — would removing it cause mistakes? If not, cut it
 - **Specific and actionable** — exact commands, file paths, class names. Not "be careful" or "handle properly"
+- **Cite symbols, not line numbers** — anchor code references to grep-able names (function/class/constant) plus the file path. `file.py:123` rots with every edit; this is prototyping code that changes constantly. No named symbol nearby → quote a grep-able snippet instead
 - **Front-load critical info** — most dangerous/important rules first in each section
 - **Bold key terms**; **consistent terminology** — pick one term, use it everywhere
 - **No conflicting instructions** — before adding a rule, check if it contradicts an existing one. If two rules could be read as opposing, resolve them explicitly with precedence

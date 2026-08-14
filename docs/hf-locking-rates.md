@@ -40,11 +40,11 @@ skipped silently.
 
 | Constant | Value | Purpose | Code |
 |---|---|---|---|
-| Lock-wait inner poll | 25 ms (40 Hz) | Polls `SharedState` during buffered-shot block | `workers.py:620,626,640` |
-| `LOCK_TIMEOUT_S` | 60 s | Max wait for setpoint convergence | `workers.py:24` |
-| `LOCK_CONSECUTIVE` | 5 | Fresh in-tolerance reads required to declare lock | `workers.py:25` |
-| `LOCK_TOLERANCE` | 5e-6 THz = **5 MHz** default | Convergence tolerance; per-port overrides in `LOCK_TOLERANCE_BY_PORT` (TiSa_1 ch1 = **1 MHz**) via `lock_tolerance(port)` | `workers.py:20-32` |
-| `_PENDING_GUARD_S` | 1.0 s | Suppresses local-input clobber after "Set F" click | `display.py:101` |
+| Lock-wait inner poll | 25 ms (40 Hz) | Polls `SharedState` during buffered-shot block | `_wait_for_lock` in `workers.py` |
+| `LOCK_TIMEOUT_S` | 60 s | Max wait for setpoint convergence | `workers.py` |
+| `LOCK_CONSECUTIVE` | 5 | Fresh in-tolerance reads required to declare lock | `workers.py` |
+| `LOCK_TOLERANCE` | 5e-6 THz = **5 MHz** default | Convergence tolerance; per-port overrides in `LOCK_TOLERANCE_BY_PORT` (TiSa_1 ch1 = **1 MHz**) via `lock_tolerance(port)` | `workers.py` |
+| `_PENDING_GUARD_S` | 1.0 s | Suppresses local-input clobber after "Set F" click | `display.py` |
 
 ### Diagnostic budgets (only active if `diagnostics.ENABLED=True`)
 

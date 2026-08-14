@@ -45,6 +45,10 @@ def is_legacy(source_file: str, repo: str) -> bool:
         return True
     if "-zmq-v2" in sf:
         return True
+    # ponytail: rastering-* is the only worktree naming convention under GUIs/ today;
+    # add prefixes here if another GUI grows sibling worktrees.
+    if repo == "GUIs" and sf.startswith("rastering-"):
+        return True
     if repo == "labscript-devices" and sf.startswith("labscript_devices/RemoteControl/"):
         return True
     return False
@@ -61,6 +65,8 @@ def phase1_filter(nodes, edges, report):
             reasons["Old Code"] += 1
         elif "-zmq-v2" in sf:
             reasons["-zmq-v2"] += 1
+        elif sf.startswith("rastering-"):
+            reasons["rastering-* worktree"] += 1
         else:
             reasons["dead labscript_devices/RemoteControl"] += 1
 

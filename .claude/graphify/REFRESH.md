@@ -1,9 +1,11 @@
 # Graphify graph refresh recipe
 
 Rebuilds `graphify-out/graph.json` (workspace knowledge graph) from scratch.
-Built 2026-07-31 (commit ee0eff1, post ZMQ-v2 cutover): 5434 nodes / 8835 edges / 403 communities,
-34 cross-repo edges — incl. 3 GUIs->userlib `inherits` edges into `external_gui_lib/zmq_v2.py`
+Built 2026-08-12 (commit 5e960af, post raster-arming + GUI-slowdown merges): 5729 nodes /
+9373 edges / 414 communities (14/14 verify), 34 cross-repo edges — incl. 3 GUIs->userlib
+`inherits` edges into `external_gui_lib/zmq_v2.py`
 (RemoteControlServerBase <- _BigSkyV2Server / _LaserLockV2Server / _RasteringV2Server).
+Previous build 2026-07-31 (commit ee0eff1): 5434n/8835e/403 communities, 13/13.
 Provenance: audit + fix-pass reports in `.claude/session-scratch.md` (sessions 2026-07-29, 2026-07-31).
 
 ## Recipe
@@ -44,6 +46,11 @@ python .claude/graphify/verify_fix.py
 ```
 
 ## Known quirks
+
+- **Sibling worktrees under `GUIs/` are duplicate code trees** — the `--no-gitignore`
+  extract vacuums them in (2026-08-12: four `rastering-*` worktrees = ~2,750 duplicate
+  nodes, a third of the graph). `postmerge_fix.py` filters `GUIs/rastering-*`; if another
+  GUI grows worktrees, extend `is_legacy()` and `verify_fix.py` check 1b.
 
 - **"pre-#1504 node-ID scheme" warning on query/serve is a false positive** for any
   merged graph — `merge-graphs` prefixes IDs with `<repo>::` and the legacy-ID

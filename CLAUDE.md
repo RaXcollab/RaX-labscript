@@ -30,7 +30,7 @@
 
 ```
 userlib/
-  user_devices/          ← Custom BLACS device classes (RemoteControl, NI_SCOPE, NuvuCamera, edge_counter)
+  user_devices/          ← Custom BLACS device classes (RemoteControl base + LaserLockDevice, RasteringDevice, BigSkyHub, NuvuCamera, NI_SCOPE, edge_counter)
   labscriptlib/
     Main_Experiment/     ← THIS PC's sequences, connection tables, globals
   analysislib/
@@ -72,7 +72,7 @@ source ~/miniconda/etc/profile.d/conda.sh && conda activate labscript && python 
 - **NEVER** `rm -rf`, `rm -r`, `mv` on directories without explicit user confirmation; use read-only commands (`ls`, `stat`, `test -d`) for diagnostics
 - **Never tag backend repos (`blacs`, `labscript-devices`, `labscript-utils`) with non-`v*` tags** — setuptools_scm parses `git describe` at import time; a non-version tag reachable from HEAD crashes `import labscript_utils` → BLACS/RunManager cannot start. Pin backend baselines by commit hash (`docs/stable-snapshot-2026-06-09.md`).
 - **Per-shot teardown** belongs in `post_experiment`, NOT `transition_to_manual` (T2M runs only at queue-end/abort/pause). MODE flags + probe details: `.claude/rules/device-lifecycle.md`.
-- **HF lock spec (canonical):** lock acquires when **5** consecutive in-tolerance samples land within `lock_tolerance(port)` — default `5e-6 THz = 5 MHz`, TiSa_1 (ch1; moved from ch4 2026-07-29) override `1e-6 THz = 1 MHz` (since 2026-07-10) — with `LOCK_TIMEOUT_S = 60`. Code is authoritative — `GUIs/HF_Locking/workers.py:20-32`. Older "2 consecutive", flat-5-MHz, or TiSa_1-on-ch4 notes are stale; correct everywhere on contact. Channel moves: `docs/wavemeter-channel-move.md`.
+- **HF lock spec (canonical):** lock acquires when **5** consecutive in-tolerance samples land within `lock_tolerance(port)` — default `5e-6 THz = 5 MHz`, TiSa_1 (ch1; moved from ch4 2026-07-29) override `1e-6 THz = 1 MHz` (since 2026-07-10) — with `LOCK_TIMEOUT_S = 60`. Code is authoritative — the `LOCK_*` constants + `lock_tolerance()` in `GUIs/HF_Locking/workers.py`. Older "2 consecutive", flat-5-MHz, or TiSa_1-on-ch4 notes are stale; correct everywhere on contact. Channel moves: `docs/wavemeter-channel-move.md`.
 - **Authoritative scan x-axis** for RemoteControl-programmed scans is `/devices/{dev}/remote_device_operation['{ch}'][0]` (the actual labscript intent, full float64). `front_panel`, `_AO/value`, and `monitor_values` lag, quantize, or were `float32` pre-2026-04-29.
 
 ### Verification
@@ -86,7 +86,7 @@ source ~/miniconda/etc/profile.d/conda.sh && conda activate labscript && python 
 - **After any BLACS change**: run a test shot, check h5 output in HDFView
 - **Connection table property changes**: recompile → BLACS auto-loads new properties (no need to delete saved state)
 - **BigSky Auto Re-Arm**: click Warmup/Arm Ext buttons → verify hardware responds; check "Auto Arm Ext" → queue shots → verify auto-arm/restore in BLACS.log; queue 3+ → verify no re-arm between shots
-- **Userlib worker tests + pre-push hook (2.8c)**: SDK-free helpers in `userlib/user_devices/*/` carry unit tests at `<device>/tests/test_helpers.py`; the `.githooks/pre-push` hook runs them in the `labscript` conda env. Install once per checkout (contract + log path in the hook's header): `cp .githooks/pre-push .git/hooks/pre-push && chmod +x .git/hooks/pre-push`.
+- **Userlib worker tests + pre-push hook (2.8c)**: SDK-free helpers in `userlib/user_devices/*/` carry unit tests at `<device>/tests/`; the `.githooks/pre-push` hook runs them in the `labscript` conda env — `bash .git/hooks/pre-push` is also the manual full-suite runner. Install once per checkout (contract + log path in the hook's header): `cp .githooks/pre-push .git/hooks/pre-push && chmod +x .git/hooks/pre-push`.
 
 ## External GUI Registry
 
@@ -115,11 +115,12 @@ Each GUI codebase carries its own `.claude/agents/` domain agent: `HF_Locking`�
 - `/check-sequence` — validate sequence globals, devices, structure before compilation
 - `/check-guis` — ping ZMQ ports to verify external GUIs are running
 - `/debug-blacs` — standardized BLACS triage workflow (logs → routing → diagnosis)
-- `/repo-status` — branch, ahead/behind, dirty count, worktree-of for all 15 workspace repos (read-only, no fetch)
+- `/repo-status` — branch, ahead/behind, dirty count, worktree-of for every workspace repo (read-only, no fetch)
 - `/h5-inspect [path]` — read-only shot h5 dump: tree, root attrs, `remote_device_operation` scan values (blank = latest shot)
 - `/new-device` — scaffold a new external GUI BLACS integration (5-file pattern)
 - `/github-auth-triage` — deterministic GitHub auth/MCP failure triage (never credential surgery first)
 - `/graphify query "<q>"` — code navigation + intra-repo blast radius via `graphify-out/graph.json` (userlib, 3 backend repos, GUIs). AST-only: ZMQ + string-path worker wiring invisible — External GUI Registry stays authoritative. Caveats/rebuild: `.claude/graphify/REFRESH.md`
+- `/revert-to-main` — switch every workspace repo to its default branch, stashing uncommitted work (state-mutating recovery tool — invoke deliberately)
 
 ### Agents (launched automatically based on task type)
 
@@ -134,7 +135,7 @@ Each GUI codebase carries its own `.claude/agents/` domain agent: `HF_Locking`�
 
 ## Reference Documentation
 
-- `docs/*.md` auto-load via path-scoped rules — the doc↔path map is `.claude/rules/ref-*.md`
+- `docs/` — domain reference. Some docs auto-load via path-scoped rules (map: `.claude/rules/ref-*.md`); the rest are read-on-demand — check `docs/` before deep-diving a subsystem
 - `docs/remotecontrol-zmq-protocol-v2.md` — **canonical** v2 protocol for external-GUI devices: JSON envelope with `id`/`status` enum/`error.{code,message,retryable}`, `@handler` dispatch via `RemoteControlServerBase`, `InMemoryTransport` mock for tests. Landed on master + all three GUI mains 2026-07-30 (cutover procedure/history: `docs/zmq-v2-cutover-runbook.md`).
 - `docs/remotecontrol-zmq-protocol.md` — **DEPRECATED** v1 reference (archaeological only; v2 servers refuse v1 envelopes per Q4 hard sunset)
 - `docs/known-latent-issues.md` — latent-bug catalog, reference-on-demand (no auto-load)

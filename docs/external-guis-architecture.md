@@ -42,9 +42,9 @@ HighFinesse WS7-30 wavemeter (8 channels via fiber switcher) accessed via `wlmDa
 
 ### Lock acquisition spec (canonical)
 
-- `LOCK_TIMEOUT_S = 60 s` (`workers.py:24`)
-- `LOCK_CONSECUTIVE = 5` (`workers.py:25`) — five consecutive fresh in-tolerance samples required
-- `LOCK_TOLERANCE = 5e-6 THz = 5 MHz` default; per-channel overrides in `LOCK_TOLERANCE_BY_PORT` — TiSa_1 (ch1) = 1e-6 THz = **1 MHz**. Resolve via `lock_tolerance(port)` (`workers.py:20-32`)
+- `LOCK_TIMEOUT_S = 60 s`
+- `LOCK_CONSECUTIVE = 5` — five consecutive fresh in-tolerance samples required
+- `LOCK_TOLERANCE = 5e-6 THz = 5 MHz` default; per-channel overrides in `LOCK_TOLERANCE_BY_PORT` — TiSa_1 (ch1) = 1e-6 THz = **1 MHz**. Resolve via `lock_tolerance(port)` (all in `workers.py`)
 - Inner poll 25 ms (40 Hz) — matches WS7 aggregate update rate across 8 channels
 - Skips `wlmConst.InfNothingChanged` (-7) sentinel — those are stale cache hits, not fresh measurements
 

@@ -26,6 +26,12 @@ bad = [n["source_file"] for n in nodes
 check("no Old Code / -zmq-v2 / dead-RemoteControl nodes", not bad,
       f"{len(bad)} matching nodes" + (f" e.g. {bad[:3]}" if bad else ""))
 
+# 1b - sibling worktrees of GUIs/rastering gone (duplicate code trees)
+wt = [n["source_file"] for n in nodes
+      if n.get("repo") == "GUIs" and (n.get("source_file") or "").startswith("rastering-")]
+check("no GUIs/rastering-* worktree nodes", not wt,
+      f"{len(wt)} matching nodes" + (f" e.g. {wt[:3]}" if wt else ""))
+
 # 2 - no INFERRED edges across the former duplicate-tree boundary
 cross = [e for e in edges
          if any(p in (by_id.get(e[k], {}).get("source_file") or "")
@@ -72,9 +78,10 @@ check("no _pyw_shim residue anywhere in the graph", not shim, f"{len(shim)} resi
 xr = [e for e in edges
       if by_id.get(e["source"], {}).get("repo") and by_id.get(e["target"], {}).get("repo")
       and by_id[e["source"]]["repo"] != by_id[e["target"]]["repo"]]
+pairs = collections.Counter(
+    "{}->{}".format(by_id[e["source"]]["repo"], by_id[e["target"]]["repo"]) for e in xr)
 check("cross-repo edge count > 0", len(xr) > 0,
-      f"{len(xr)} cross-repo edges; pairs: "
-      f"{dict(collections.Counter(f'{by_id[e[chr(115)+chr(111)+chr(117)+chr(114)+chr(99)+chr(101)]][chr(114)+chr(101)+chr(112)+chr(111)]}->{by_id[e['target']]['repo']}' for e in xr))}")
+      f"{len(xr)} cross-repo edges; pairs: {dict(pairs)}")
 
 # 6 - intra-repo sanity spot checks
 def has_inherit(child_label, parent_label):
