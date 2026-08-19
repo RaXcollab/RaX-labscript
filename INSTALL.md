@@ -118,23 +118,7 @@ Build the environment from a yml **in one shot**. Do not assemble it
 incrementally with repeated `conda install` calls — that is how the dependency
 breakage recorded in the Confluence "Package dependence issue" page happened.
 
-`environment.yml` (this is `old_fresh_environment.yml` in the repo):
-
-```yaml
-name: labscript
-channels:
-  - defaults
-  - conda-forge
-  - labscript-suite
-dependencies:
-  - python==3.11.9
-  - labscript-suite
-  - matplotlib
-  - numpy=1.26.4
-  - pyzmq=23.2.0
-  - pyqt
-  - pip
-```
+Use the tracked `environment.yml` at the repo root:
 
 ```bash
 conda env create -f ./environment.yml
@@ -144,10 +128,28 @@ conda activate labscript
 To change it later, edit the yml and run
 `conda env update -f ./environment.yml --prune`.
 
-> **Both version pins are load-bearing.** `pyzmq=23.2.0` — 26.x breaks the
-> internal inter-application sockets and kicks BLACS off its port.
-> `numpy=1.26.4` — NumPy >= 2.0 removes `np.string_()`, which
-> `userlib/user_devices/NuvuCamera/blacs_workers.py` relies on.
+`environment.yml` records the `labscript` environment as actually measured on
+the lab control PC (see `.claude/session-handoff-2026-07-01-claude-setup.md`
+§7–§8), which is the closest thing to an authoritative package list that exists
+in-tree. The Confluence guide points at a `conda_list_output.txt` attachment for
+this, but that attachment is not in the PDF export and not in this repo.
+
+`old_environment.yml` and `old_fresh_environment.yml` are superseded and
+disagree with the running environment — keep them only for archaeology.
+
+> **The pins that matter.** `numpy=1.26.4` — NumPy >= 2.0 removes
+> `np.string_()`, which `userlib/user_devices/NuvuCamera/blacs_workers.py`
+> relies on. **pyzmq must not go to 26.x**, which breaks the internal
+> inter-application sockets and kicks BLACS off its port.
+>
+> The exact pyzmq pin is genuinely unsettled. `CLAUDE.md` says `23.2.0` and "do
+> NOT upgrade", but the running `labscript` environment measured **25.1.0** on
+> 2026-07-01, and that handoff flags the mismatch as an open question. What is
+> established is the 26.x ceiling. `environment.yml` carries 25.1.0 because that
+> is what demonstrably runs — do not "correct" it to 23.2.0 without testing.
+
+> **Refresh this file from the lab PC** rather than editing it by hand when the
+> environment changes: `conda env export --from-history > environment.yml`.
 
 **Every python command in this environment needs an explicit
 `conda activate labscript` first.** On the lab control PC, bare `python` is the
@@ -425,8 +427,8 @@ the environment file above.
 
 | Component | Requirement |
 |---|---|
-| NI DAQ cards | NI-DAQmx driver runtime + `pip install nidaqmx` |
-| NI scope (`NI_SCOPE`) | NI-SCOPE driver runtime + `pip install niscope` |
+| NI DAQ cards | NI-DAQmx driver runtime, accessed through **PyDAQmx** and the labscript-devices `NI_DAQmx` driver. Note the `nidaqmx` pip package is deliberately *not* installed — it did not appear in the lab environment's `pip list`. |
+| NI scope (`NI_SCOPE`) | NI-SCOPE driver runtime + `niscope` (imported by `userlib/user_devices/NI_SCOPE`) |
 | Nuvu camera | SDK vendored at `userlib/user_devices/NuvuCamera/Nuvu_sdk/` |
 
 GUI-side hardware (HighFinesse wavemeter, Thorlabs KCubes, IDS uEye camera,
@@ -503,19 +505,25 @@ Older documentation — including the Confluence export — says to clone from
 upstreams. `RaXcollab/*` is authoritative now. Where the official labscript
 documentation disagrees with our fork's code, **the fork's code wins**.
 
-### 6. Two repo scripts hardcode `$HOME/miniconda`
+### 6. Conda location is auto-detected, not assumed
 
 labscript itself is indifferent to whether you use Miniconda or Anaconda, and to
-where it is installed. But two scripts in this repo assume
-`%USERPROFILE%\miniconda`:
+where it is installed. Four scripts in this repo used to assume
+`%USERPROFILE%\miniconda` (or one specific user's profile) and would silently do
+nothing on anyone else's machine. They now resolve conda at run time — via
+`$CONDA_EXE`, then `conda` on `PATH`, then the usual install locations:
 
-- `Launch Labscript.bat` — sources `%USERPROFILE%\miniconda\shell\condabin\conda-hook.ps1`
-- `.githooks/pre-push` — sources `$HOME/miniconda/etc/profile.d/conda.sh`, and
-  **skips the tests and allows the push** if it is not there
+- `Launch Labscript.bat`
+- `.githooks/pre-push`
+- `.claude/hooks/check-py-syntax.ps1` (through `.claude/hooks/_conda-path.ps1`)
+- `.claude/backup-memory.sh` (derives its path from the checkout, not a username)
 
-If your conda lives elsewhere (for example a system-wide
-`C:\ProgramData\anaconda3`), edit those two paths. Nothing else in the stack
-cares.
+If detection fails, the launcher reports it and stops; the hooks fail open. To
+force a specific installation, export `CONDA_EXE` before running them.
+
+Note that `.githooks/pre-push` **skips the tests and allows the push** when it
+finds no conda at all, so a green push on a machine without the `labscript`
+environment does not mean the tests ran.
 
 ### 7. Do not mix `conda install` and `pip install`
 
@@ -573,7 +581,8 @@ if `~/labscript-suite` is missing.
 |---|---|
 | `Labscript-Confluence-2026-02-11.pdf` | "Installation Guide" (pp. 22-25), "GitHub Sync of labscript-suite Folder" (pp. 11-13), "Package dependence issue for installing labscript" (p. 51) |
 | `CLAUDE.md` | Current env pins, repo table, critical conventions, external-GUI registry |
-| `old_fresh_environment.yml` / `old_environment.yml` | Minimal env spec / frozen full export |
+| `.claude/session-handoff-2026-07-01-claude-setup.md` §7–§8 | The `labscript` environment as actually measured on the lab PC — the basis for `environment.yml` |
+| `old_fresh_environment.yml` / `old_environment.yml` | Superseded env spec / frozen full export, kept for archaeology |
 | `docs/stable-snapshot-2026-06-09.md` | Known-good per-repo commit hashes; the setuptools_scm tag incident |
 | `GUIs/*/README.md`, `GUIs/*/CLAUDE.md` | Each GUI's own environment, dependencies, and launch command |
 | `.githooks/pre-push` | Hook install contract |

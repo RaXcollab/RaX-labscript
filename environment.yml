@@ -1,0 +1,66 @@
+# Canonical conda environment for the RaX labscript suite.
+#
+# PROVENANCE
+#   Versions below are the `labscript` environment as actually observed on the
+#   lab control PC and recorded in
+#   .claude/session-handoff-2026-07-01-claude-setup.md (§7 and §8), with the
+#   Python version from .claude/session-handoff-2026-04-02.md.
+#
+#   This is a record of a working environment, not a hand-designed spec. It
+#   supersedes old_fresh_environment.yml and old_environment.yml, which
+#   disagree with the running environment in several places (see NOTES).
+#
+#   The upstream lab documentation (Confluence, "Package dependence issue")
+#   points at a conda_list_output.txt attachment as the authoritative package
+#   list. That attachment is not in the PDF export and not in this repo, so the
+#   session handoff above is the best record available in-tree.
+#
+# TO REFRESH (do this on the lab control PC, then commit the result):
+#   conda activate labscript
+#   conda env export --from-history > environment.yml   # spec-style, no builds
+#   conda env export > environment.full.yml             # exact builds, for forensics
+#
+# NOTES / KNOWN DISAGREEMENTS
+#   * pyzmq: CLAUDE.md pins 23.2.0 and says "do NOT upgrade", but the running
+#     labscript env was measured at 25.1.0 on 2026-07-01, and the handoff flags
+#     this as unresolved. What is actually established is that 26.x breaks the
+#     inter-application sockets and kicks BLACS off its port. 25.1.0 is left
+#     here because it is what demonstrably runs. Do not "fix" it to 23.2.0
+#     without testing, and do not go to 26.x.
+#   * numpy must stay < 2.0: NumPy 2 removed np.string_(), used by
+#     userlib/user_devices/NuvuCamera/blacs_workers.py.
+#   * The nidaqmx pip package is deliberately absent. NI access goes through
+#     PyDAQmx and the labscript-devices NI_DAQmx driver. nidaqmx did not appear
+#     in the labscript env's pip list.
+#   * blacs, labscript-devices and labscript-utils are NOT listed here. They are
+#     editable installs of the local repo folders, done after this environment
+#     exists - see INSTALL.md §6 or run .\bootstrap.ps1 -Install.
+
+name: labscript
+
+channels:
+  - defaults
+  - conda-forge
+  - labscript-suite
+
+dependencies:
+  - python=3.11.14
+  - pip
+
+  # labscript suite (unforked components come from the channel)
+  - labscript=3.4.0
+  - labscript-suite=3.3.0
+  - labscript-c-extensions=1.2.1
+
+  # pinned - see NOTES above
+  - numpy=1.26.4
+  - pyzmq=25.1.0
+
+  # runtime dependencies of the suite
+  - h5py=3.15.1
+  - pyqt=5.15.11
+  - pyqtgraph=0.13.7
+  - zprocess=2.27.0
+  - pyvisa=1.15.0
+  - matplotlib
+  - scipy

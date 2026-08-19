@@ -28,15 +28,31 @@ echo "=== pre-push @ $(date) ===" >> "$LOG"
 # Source conda. The `labscript` env owns:
 #   - userlib/external_gui_lib/tests/  (V1-V11 v2 protocol contract)
 #   - userlib/user_devices/*/tests/    (per-device pure-Python helpers)
-CONDA_BASE="$HOME/miniconda"
-if [ -f "$CONDA_BASE/etc/profile.d/conda.sh" ]; then
+# Locate conda without hardcoding a distribution name or user profile, so the
+# hook works on any collaborator's fork. First hit wins: an already-exported
+# CONDA_EXE, conda on PATH, then the usual install locations.
+CONDA_BASE=""
+if [ -n "$CONDA_EXE" ] && [ -x "$CONDA_EXE" ]; then
+    CONDA_BASE="$(dirname "$(dirname "$CONDA_EXE")")"
+elif command -v conda >/dev/null 2>&1; then
+    CONDA_BASE="$(conda info --base 2>/dev/null)"
+fi
+if [ -z "$CONDA_BASE" ] || [ ! -f "$CONDA_BASE/etc/profile.d/conda.sh" ]; then
+    for c in "$HOME/miniconda" "$HOME/miniconda3" "$HOME/anaconda3" \
+             "$HOME/Miniforge3" "/c/ProgramData/miniconda3" "/c/ProgramData/anaconda3"; do
+        if [ -f "$c/etc/profile.d/conda.sh" ]; then CONDA_BASE="$c"; break; fi
+    done
+fi
+
+if [ -n "$CONDA_BASE" ] && [ -f "$CONDA_BASE/etc/profile.d/conda.sh" ]; then
     . "$CONDA_BASE/etc/profile.d/conda.sh"
     if ! conda activate labscript 2>>"$LOG"; then
         echo "pre-push: 'labscript' conda env exists but FAILED TO ACTIVATE — userlib tests skipped, push allowed. Fix the env; conda's error is in $LOG" | tee -a "$LOG" >&2
         exit 0
     fi
 else
-    echo "pre-push: conda not found at $CONDA_BASE — skipping userlib tests." | tee -a "$LOG"
+    echo "pre-push: no conda installation found — skipping userlib tests." | tee -a "$LOG"
+    echo "         (looked at \$CONDA_EXE, conda on PATH, and the usual install locations)" | tee -a "$LOG"
     exit 0
 fi
 

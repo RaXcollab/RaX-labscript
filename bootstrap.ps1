@@ -48,7 +48,11 @@ param(
     [switch]$UpdatePins
 )
 
-$ErrorActionPreference = 'Stop'
+# 'Continue', not 'Stop': git writes ordinary progress ("Switched to branch
+# 'master'") to stderr, and Windows PowerShell 5.1 turns any native-command
+# stderr into a NativeCommandError that 'Stop' escalates to a terminating error.
+# Every git call below is checked explicitly via $LASTEXITCODE instead.
+$ErrorActionPreference = 'Continue'
 $RepoRoot = Split-Path -Parent $MyInvocation.MyCommand.Path
 $ManifestPath = Join-Path $RepoRoot 'repos.yml'
 
@@ -145,7 +149,7 @@ if ($UpdatePins) {
 
     $today = Get-Date -Format 'yyyy-MM-dd'
     $text = [regex]::Replace($text, '(?m)^updated:\s*\S+', "updated: $today")
-    Set-Content -Path $ManifestPath -Value $text -Encoding utf8 -NoNewline
+    Set-Content -Path $ManifestPath -Value $text -Encoding utf8 -NoNewline -ErrorAction Stop
 
     Write-Host ""
     if ($changed -gt 0) {

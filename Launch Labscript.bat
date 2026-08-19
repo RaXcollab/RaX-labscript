@@ -4,10 +4,30 @@ title Labscript Launcher
 color 0A
 del "%TEMP%\lab_pane*.tmp" >nul 2>&1
 
+:: Locate conda without assuming a distribution name or user profile, so this
+:: launcher works on any collaborator's fork. First hit wins.
+set "CONDA_BASE="
+if defined CONDA_EXE for %%I in ("%CONDA_EXE%") do for %%J in ("%%~dpI..") do set "CONDA_BASE=%%~fJ"
+if not defined CONDA_BASE (
+  for %%C in ("%USERPROFILE%\miniconda" "%USERPROFILE%\miniconda3" "%USERPROFILE%\anaconda3" "%USERPROFILE%\Miniforge3" "C:\ProgramData\miniconda3" "C:\ProgramData\anaconda3") do (
+    if exist "%%~C\shell\condabin\conda-hook.ps1" if not defined CONDA_BASE set "CONDA_BASE=%%~C"
+  )
+)
+if not defined CONDA_BASE (
+  color 0C
+  echo.
+  echo   [!] ERROR: no conda installation found.
+  echo       Looked at CONDA_EXE and the usual install locations.
+  echo       Install conda, or set CONDA_EXE to its conda.exe and retry.
+  echo.
+  pause
+  exit /b 1
+)
+
 :: Write per-pane scripts to avoid escaping hell
 (
 :: For per-tab title echo $Host.UI.RawUI.WindowTitle='BLACS'
-echo ^& "$env:USERPROFILE\miniconda\shell\condabin\conda-hook.ps1"
+echo ^& "%CONDA_BASE%\shell\condabin\conda-hook.ps1"
 echo conda activate labscript
 echo New-Item -Path "$env:TEMP\lab_pane1.tmp" -Force ^| Out-Null
 echo Write-Host ' [OK] BLACS starting...' -ForegroundColor Green
@@ -16,7 +36,7 @@ echo blacs
 
 (
 :: echo $Host.UI.RawUI.WindowTitle='RUNMANAGER'
-echo ^& "$env:USERPROFILE\miniconda\shell\condabin\conda-hook.ps1"
+echo ^& "%CONDA_BASE%\shell\condabin\conda-hook.ps1"
 echo conda activate labscript
 echo New-Item -Path "$env:TEMP\lab_pane2.tmp" -Force ^| Out-Null
 echo Write-Host ' [OK] RUNMANAGER starting...' -ForegroundColor Magenta
@@ -25,7 +45,7 @@ echo runmanager
 
 (
 :: echo $Host.UI.RawUI.WindowTitle='LYSE'
-echo ^& "$env:USERPROFILE\miniconda\shell\condabin\conda-hook.ps1"
+echo ^& "%CONDA_BASE%\shell\condabin\conda-hook.ps1"
 echo conda activate labscript
 echo New-Item -Path "$env:TEMP\lab_pane3.tmp" -Force ^| Out-Null
 echo Write-Host ' [OK] LYSE starting...' -ForegroundColor Yellow
