@@ -444,7 +444,7 @@ python -c "import labscript_utils; print(labscript_utils.__version__)"   # e.g. 
 python -c "from labscript_profile import LABSCRIPT_SUITE_PROFILE as p; print(p)"
 python -c "import blacs, labscript_devices; print('backends ok')"
 python -c "import user_devices; print('userlib on path')"
-pip list | grep -E "labscript|pyzmq|numpy"   # expect editable paths, pyzmq 23.2.0, numpy 1.26.4
+pip list | grep -E "labscript|pyzmq|numpy"   # expect editable paths, numpy 1.26.4, pyzmq < 26
 ```
 
 The second line must print `%USERPROFILE%\labscript-suite`. The fourth proves
