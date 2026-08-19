@@ -1,0 +1,35 @@
+﻿# RaX labscript suite - backend repository manifest
+#
+# The labscript suite is this parent repo plus the three backend forks below.
+# Nothing else belongs here: the external GUI applications under GUIs/ are
+# separate programs with their own repos, environments, and install steps.
+#
+# `pinned` is the commit bootstrap.ps1 checks out by default, giving a fresh
+# machine the same backend versions this parent commit was developed against.
+# `branch` is the branch that commit lives on, for `-Latest` mode and for
+# returning to normal development after a pinned checkout.
+#
+# To re-pin after validating a new backend state, run:  .\bootstrap.ps1 -UpdatePins
+# Commit the result together with the parent change that depends on it.
+
+version: 1
+updated: 2026-08-19
+
+backends:
+  - name: blacs
+    path: blacs
+    url: https://github.com/RaXcollab/blacs.git
+    branch: master
+    pinned: 81316aa
+
+  - name: labscript-devices
+    path: labscript-devices
+    url: https://github.com/RaXcollab/labscript-devices.git
+    branch: master
+    pinned: b32c97e
+
+  - name: labscript-utils
+    path: labscript-utils
+    url: https://github.com/RaXcollab/labscript-utils.git
+    branch: master
+    pinned: 25cee8c
