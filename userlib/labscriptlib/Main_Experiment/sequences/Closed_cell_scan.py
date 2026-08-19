@@ -1,5 +1,5 @@
 from labscript import *
-from labscriptlib.Main_Experiment.connection_table import connection_table
+from labscriptlib.Main_Experiment.connection_table_open_cell2 import connection_table
 from labscriptlib.Main_Experiment.subsequences.subsequences import digital_pulse, latch_digital
 
 connection_table()  # Initialize devices from connection table

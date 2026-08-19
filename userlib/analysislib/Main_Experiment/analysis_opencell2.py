@@ -15,8 +15,8 @@ from filtering import process_trace
 XLIM_MS_ABS = 100    # ms, absorption subplots
 XLIM_MS_TRIG = 100   # ms, trigger subplot (covers the 20 ms EMCCD trigger)
 # CMAP_VMIN, CMAP_VMAX = 1568, 1700   # EMCCD display range — adjust to LIF probe power
-CMAP_VMIN, CMAP_VMAX = 1700, 1750  
-PHOTON_COUNT_THRESHOLD = 1700       # 1810 for 1x1 binning
+CMAP_VMIN, CMAP_VMAX = 1580, 1700  
+PHOTON_COUNT_THRESHOLD = 1580       # 1810 for 1x1 binning
 
 # --- Sequence timing constants (mirror Open_cell2.py) ---
 YAG_PULSE = 0.5e-3    # s, YAG1_line pulse width

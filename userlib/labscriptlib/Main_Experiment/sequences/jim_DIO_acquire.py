@@ -125,7 +125,7 @@
 
 
 from labscript import *
-from labscriptlib.Main_Experiment.connection_table import *   # <-- IMPORT devices from CT
+from labscriptlib.Main_Experiment.connection_table_open_cell2 import *   # <-- IMPORT devices from CT
 from labscriptlib.Main_Experiment.subsequences.subsequences import digital_pulse
 
 # (Do NOT import NI_PXIe_6361 / NI_PXIe_6535 / EdgeCounter here; already in CT)
