@@ -73,14 +73,13 @@ Historical (don't renumber): `notes/*.html`, `docs/superpowers/{specs,plans}/`, 
 ## Step 5 — Other branches/worktrees (merge-regression risk)
 
 `git worktree list` in each repo; grep every branch. A branch still holding channel A
-**regresses the fix on merge**. As of 2026-07-29:
-- `zmq-v2-cutover` worktree: `connection_table.py` still `connection=4` (both children) —
-  must be fixed before/at merge. Its docs are double-stale (flat tolerance + ch4).
-- `HF_Locking-zmq-v2` branch: has NO `LOCK_TOLERANCE_BY_PORT`/`lock_tolerance()` at all
-  (flat constant; `display.py` has its own local `LOCK_TOL`) while its CLAUDE.md claims
-  otherwise. Rebase must port the per-channel mechanism (keyed to the NEW channel) and
-  the H1/H2b test assertions. Expect conflicts in workers.py, display.py, tests.
-- `docs/matisse-external-lock-commissioning.md` exists ONLY on zmq-v2-cutover (3 ch4 refs).
+**regresses the fix on merge**. The 2026-07 move's stragglers — `zmq-v2-cutover` still
+carrying `connection=4`, `HF_Locking-zmq-v2` lacking the per-channel tolerance
+mechanism, `docs/matisse-external-lock-commissioning.md` existing only on the cutover
+branch — were ALL closed by the full merges of both branches (verified 2026-08-04:
+0 unmerged commits either side, `connection=1` everywhere; the commissioning doc is on
+master with its channel refs updated 2026-08-20). Nothing from the 2026-07 move can
+regress via merge anymore; treat this step as the template for the NEXT move.
 
 ## Step 6 — Wavemeter internals + hardware (nothing in git covers this)
 

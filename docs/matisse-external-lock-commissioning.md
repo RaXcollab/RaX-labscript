@@ -12,6 +12,10 @@ Matisse Commander install: Counterdrift has no documented remote API
 not shipped pre-built (must be compiled from source), and LocalGoTo
 exists as a separate plug-in optimized for in-mode hops.
 
+**Channel note (2026-07-29):** TiSa_1 moved WS7 ch4 → ch1 (crosstalk —
+see `wavemeter-channel-move.md`). Channel references below are updated;
+logs/photos taken before that date show ch4.
+
 ## Candidates
 
 | Tag | Architecture | Cable | Internal ref-cell lock | Per-shot capable? |
@@ -27,7 +31,7 @@ exists as a separate plug-in optimized for in-mode hops.
 
 **Test shot pattern:** 100 shots, BLACS sequence, sub-MHz step
 resolution, 5–10 MHz hops in arbitrary order within a ~500 MHz envelope
-around the production setpoint for TiSa_1 (ch4, ~348.666 THz).
+around the production setpoint for TiSa_1 (ch1, ~348.666 THz).
 
 **Metrics captured per run** (write to
 `docs/commissioning-logs/2026-MM-DD-phaseN-{w,cs,cp,a,g,l}.txt`):
@@ -55,8 +59,8 @@ Winner = best Pareto frontier across metrics, not single-axis max.
 | WS7 calibration date | WS7 GUI status bar | within last 24 h |
 | Current Fast Piezo gains | `FPZT:CNTRPROP?` `FPZT:CNTRINT?` | factory ref-cell values |
 | Current Slow Piezo gains | `SPZT:LPROP?` `SPZT:LINT?` `SPZT:FREESPEED?` | factory ref-cell values |
-| Current WS7 PID config (ch4) | `pid_config.json` in `GUIs/HF_Locking/` | P=0.16, I=0.84, D=0.034, Polarity=-1, SensitivityDim=-2 |
-| Current TiSa_1 setpoint | WS7 ch4 `cmiPIDCourse` | ~348.666 THz |
+| Current WS7 PID config (ch1) | `pid_config.json` in `GUIs/HF_Locking/` | P=0.16, I=0.84, D=0.034, Polarity=-1, SensitivityDim=-2 |
+| Current TiSa_1 setpoint | WS7 ch1 `cmiPIDCourse` | ~348.666 THz |
 | Front-panel DSP switch (item 3) | Visual | **Intern** (expected) |
 | Cable destination | Visual trace | Rear item 13 (Reference Cell external) |
 | BiFi calibration valid? | `Plug-ins > Wavemeter > Birefringent Filter Calibration` table loaded | Yes / No (REQUIRED for G, recommended for L) |
@@ -81,13 +85,13 @@ candidates.
    `Thin Etalon > Scan` (Matisse Commander, Manual ch. 7).
 3. Enable Thin Etalon and Piezo Etalon control loops.
 4. Click `Main Window > Lock` to engage internal ref-cell lock.
-5. Verify HF_Locking GUI's external WS7 servo is engaged for ch4.
+5. Verify HF_Locking GUI's external WS7 servo is engaged for ch1.
 6. Hold for 10 min, log:
    - `FASTPIEZO:LOCK?` per second
    - `FASTPIEZO:NOW?` (tweeter) per second
    - `SLOWPIEZO:NOW?` per second
-   - WS7 ch4 reading per ~200 ms
-   - WS7 ch4 DAC voltage per ~200 ms
+   - WS7 ch1 reading per ~200 ms
+   - WS7 ch1 DAC voltage per ~200 ms
 
 ### Acceptance criteria for Phase 0
 
@@ -124,14 +128,14 @@ Same session as Phase 0 — no hardware changes.
 
 ### Switch from W to C-static
 
-1. Disable WS7 PID for ch4:
-   - HF_Locking GUI: external lock toggle OFF for ch4
-   - OR direct DLL: `SetDeviationMode(0)` on port 4
+1. Disable WS7 PID for ch1:
+   - HF_Locking GUI: external lock toggle OFF for ch1
+   - OR direct DLL: `SetDeviationMode(0)` on port 1
 2. In Matisse Commander, enable plug-ins (`Matisse > Plug-ins`):
    - **WM Selector** (data layer; or HighFinesse for legacy)
    - **Wavemeter** (umbrella, contains Counterdrift)
 3. `Plug-ins > WM Selector > Show Settings`:
-   - `Switch` = TRUE, `Channel` = 4
+   - `Switch` = TRUE, `Channel` = 1
    - `Synched Readout?` = ON (required for 8-channel switched WS7)
    - `Catch errors?` = OFF, `Check Values?` = ON
 4. Open `Plug-ins > Wavemeter > Counterdrift` dialog
@@ -182,7 +186,7 @@ it, see Phase 1B (C-perShot) which requires LabVIEW development first.
 ### Rollback to W
 
 1. `Deactivate` on Counterdrift
-2. Re-enable WS7 PID for ch4: `SetDeviationMode(1)` on port 4
+2. Re-enable WS7 PID for ch1: `SetDeviationMode(1)` on port 1
 3. Verify W operational
 
 ---
@@ -220,7 +224,7 @@ the failure mode entirely. Separate session — needs hardware work.
 
 1. Power off Matisse pump laser **only**. Leave Matisse C control box on
    for DSP voltage monitoring.
-2. **Move the WS7 ch4 SMA cable** from rear-panel **Reference Cell
+2. **Move the WS7 ch1 SMA cable** from rear-panel **Reference Cell
    external input (item 13)** to **front-panel DSP External Input SMA
    (item 4)**.
 3. **Do not flip the Intern/Extern switch yet.** Leave on Intern.
@@ -229,7 +233,7 @@ the failure mode entirely. Separate session — needs hardware work.
 
 ### WS7 deviation-mode configuration
 
-Edit `pid_config.json` for ch4:
+Edit `pid_config.json` for ch1:
 
 ```
 P = 1.0
