@@ -189,6 +189,7 @@ cython_debug/
 .claude/worktrees/
 .claude/agent-memory/
 .claude/session-scratch.md
+.claude/session-scratch-archive.md
 .superpowers/
 
 # claude-mem plugin stubs — auto-generated empty CLAUDE.md at every level.

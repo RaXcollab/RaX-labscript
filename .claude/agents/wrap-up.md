@@ -88,7 +88,7 @@ Show proposed changes as the exact text to add/modify and where it goes. Skip fo
 
 ### Step 6: Clean Up
 
-- Trim the scratch file (`.claude/session-scratch.md`): remove ONLY the wrapped session's section. Preserve sections for paused or other sessions (e.g. a cutover pause state) verbatim — they are another session's handoff, not this session's leftovers. Delete the file only if nothing remains.
+- Trim the scratch file (`.claude/session-scratch.md`): remove ONLY the wrapped session's section. Preserve sections for paused or other sessions (e.g. a cutover pause state) verbatim — they are another session's handoff, not this session's leftovers. Delete the file only if nothing remains. Sections older than 7 days are auto-archived by the SessionStart hook to `.claude/session-scratch-archive.md` — look there if the session being wrapped is missing from the live file.
 - Present all artifacts for user review before committing
 
 ## Multi-Repo Awareness

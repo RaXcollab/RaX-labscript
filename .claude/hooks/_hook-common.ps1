@@ -40,6 +40,34 @@ function Get-MarkerTime([string]$kind, [string]$sessionId) {
     return (Get-Item -LiteralPath $p -ErrorAction SilentlyContinue).LastWriteTimeUtc
 }
 
+function Invoke-ScratchArchive([string]$scratchPath, [int]$maxAgeDays = 7) {
+    # Move top-level '## ' sections whose header dates more than $maxAgeDays ago
+    # into session-scratch-archive.md (same directory). Undated sections stay.
+    # ponytail: age-only policy — handoffs that must outlive it go in open-items.md.
+    try {
+        if (-not (Test-Path -LiteralPath $scratchPath)) { return }
+        $cutoff = (Get-Date).Date.AddDays(-$maxAgeDays)
+        $pre = @(); $keep = @(); $old = @(); $bucket = [ref]$pre
+        foreach ($line in (Get-Content -LiteralPath $scratchPath)) {
+            if ($line -match '^## ') {
+                $isOld = ($line -match '\d{4}-\d{2}-\d{2}') -and
+                         ([datetime]::ParseExact($Matches[0], 'yyyy-MM-dd', $null) -lt $cutoff)
+                $bucket = if ($isOld) { [ref]$old } else { [ref]$keep }
+            }
+            $bucket.Value += $line
+        }
+        if (-not $old.Count) { return }
+        $archive = Join-Path (Split-Path -LiteralPath $scratchPath) 'session-scratch-archive.md'
+        Add-Content -LiteralPath $archive -Value $old -Encoding utf8
+        $rest = $pre + $keep
+        if (($rest | Where-Object { $_ -match '\S' }).Count) {
+            Set-Content -LiteralPath $scratchPath -Value $rest -Encoding utf8
+        } else {
+            Remove-Item -LiteralPath $scratchPath -Force
+        }
+    } catch {}  # never block session start on a parse/IO hiccup
+}
+
 function Remove-SessionMarkers([string]$sessionId) {
     # SessionStart (startup|resume|clear) wipes this session's markers so a
     # resumed session cannot inherit yesterday's edit/audit state.
