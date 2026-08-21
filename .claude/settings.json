@@ -1,4 +1,5 @@
 {
+  "worktree": { "bgIsolation": "none" },
   "permissions": {
     "allow": [
       "Read(//c/Users/radmo/labscript-suite/GUIs/rastering/**)",
