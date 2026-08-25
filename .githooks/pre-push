@@ -12,10 +12,11 @@
 #
 # Logs to .git/hooks/pre-push.log; that path is inside .git/ so git
 # ignores it automatically. No .gitignore entry needed.
-#
-# Item 2.8c (Phase 6 hardening plan, plans/look-up-all-recent-purrfect-starfish.md).
 
 set -e
+
+LABSCRIPT_ENV="${LABSCRIPT_ENV:-$(git config --get rax.labscriptEnv 2>/dev/null || true)}"
+LABSCRIPT_ENV="${LABSCRIPT_ENV:-labscript}"
 
 # Derive the log dir: in a linked worktree `.git` is a FILE and the private
 # gitdir (.git/worktrees/<name>/) has no hooks/ subdir — the old literal
@@ -25,9 +26,7 @@ mkdir -p "$LOG_DIR"
 LOG="$LOG_DIR/pre-push.log"
 echo "=== pre-push @ $(date) ===" >> "$LOG"
 
-# Source conda. The `labscript` env owns:
-#   - userlib/external_gui_lib/tests/  (V1-V11 v2 protocol contract)
-#   - userlib/user_devices/*/tests/    (per-device pure-Python helpers)
+# Source conda before the userlib test suite.
 # Locate conda without hardcoding a distribution name or user profile, so the
 # hook works on any collaborator's fork. First hit wins: an already-exported
 # CONDA_EXE, conda on PATH, then the usual install locations.
@@ -46,8 +45,8 @@ fi
 
 if [ -n "$CONDA_BASE" ] && [ -f "$CONDA_BASE/etc/profile.d/conda.sh" ]; then
     . "$CONDA_BASE/etc/profile.d/conda.sh"
-    if ! conda activate labscript 2>>"$LOG"; then
-        echo "pre-push: 'labscript' conda env exists but FAILED TO ACTIVATE — userlib tests skipped, push allowed. Fix the env; conda's error is in $LOG" | tee -a "$LOG" >&2
+    if ! conda activate "$LABSCRIPT_ENV" 2>>"$LOG"; then
+        echo "pre-push: '$LABSCRIPT_ENV' conda env FAILED TO ACTIVATE — userlib tests skipped, push allowed. Fix the env; conda's error is in $LOG" | tee -a "$LOG" >&2
         exit 0
     fi
 else
@@ -57,9 +56,7 @@ else
 fi
 
 echo "Running userlib tests in env: $CONDA_DEFAULT_ENV" | tee -a "$LOG"
-# external_gui_lib/tests/ was rolled back with ZMQ-v2 (2026-05-26); the guard
-# re-enables it automatically when the revival restores that tree.
-# Glob self-updates: any device dir that gains tests/ is gated automatically.
+# Include the shared protocol tests and each device test directory.
 TEST_PATHS="userlib/user_devices/*/tests/"
 if [ -d "userlib/external_gui_lib/tests" ]; then
     TEST_PATHS="userlib/external_gui_lib/tests/ $TEST_PATHS"

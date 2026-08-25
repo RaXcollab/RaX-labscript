@@ -40,7 +40,7 @@ dummy_end = t_trigger + 2 * pulse_duration
 # ENH_line.go_low(dummy_end + pulse_duration)
 
 if DOUBLE_YAG:
-    digital_pulse(YAG2_line, tYAG_2, 0.5e-3)
+    digital_pulse(YAG2_trig, tYAG_2, 0.5e-3)
     digital_pulse(YAG1_line, tYAG_1, 0.5e-3)
 else:
     digital_pulse(YAG1_line, tYAG_1, 0.5e-3)

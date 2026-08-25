@@ -1,94 +1,98 @@
-# RaX-labscript
+# RaX labscript
 
-## Overview
-This repository contains the userlib folder for the RaX experiment and serves as a central location for updates to the labscript suite developed by the RaX team.
+**Status:** Active RaX fork
+**Last reviewed:** 2026-08-21
 
-The RaX team is actively working on improvements and new features for labscript. These additions are currently being tested before looking to integrate them into the main labscript project.
+This repository contains the RaX labscript integration layer and reference apparatus.
 
-This README provides a brief overview of our key features and improvements. Each section includes links to more detailed information and source code for those interested in further exploration or implementation.
+It also records exact versions for three modified labscript backend repositories.
 
-## BLACS
-The main improvement was to optimize the performance of BLACS by reducing overhead between experimental shots, particularly when we want to process a large sequence. While the labscript suite is very well-developed, user-friendly, and supports all general workflows, optimizing this specific workflow can significantly improve efficiency during high-throughput experimental sequence runs.
+## Scope
 
-The key areas of BLACS identified for potential improvements are:
+The core repository contains:
 
-1. **State Machine**: Streamlining state transitions to minimize latency.
-2. **Reliance on QT Main Thread**: Reducing dependency on the main thread to prevent bottlenecks.
-3. **Worker Processes**: Enhancing the efficiency of worker processes to better handle concurrent tasks.
+- RaX `userlib` devices, sequences, and analysis code
+- A reference `Main_Experiment` apparatus
+- Pinned RaX forks of `blacs`, `labscript-devices`, and `labscript-utils`
+- Installation and contributor procedures
+- Current protocol, architecture, and data-contract documents
 
-More details, along with the BLACS fork can be found at https://github.com/RaXcollab/blacs.
+External GUI applications are separate programs. This repository contains only their labscript-side interfaces and shared contracts.
 
-### Performance Improvements Overview
+## Installation
 
-The following demonstration visualizes the overall impact of the optimizations. Each GIF shows BLACS executing 20 experimental shots queued up from Runmanager, each 25ms long. These experiments utilize 3 National Instrument IO cards outputting Analog and Digital signals and collecting Analog inputs at maximum sampling rates.
+Read [INSTALL.md](INSTALL.md) before you clone backend repositories or change an environment.
 
-<div style="display: flex; justify-content: space-between;">
-    <img src="readme_images/blacs_default_2-266hz.gif" alt="Default Labscript Branch Demo" width="32%">
-    <img src="readme_images/blacs_master_5-66Hz.gif" alt="Master Branch Demo" width="32%">
-    <img src="readme_images/blacs_perf_6-50Hz.gif" alt="Performance Hacks Branch Demo" width="32%">
-</div>
+The guide provides two supported paths:
 
-*BLACS state machine operating at **2.27Hz**, **5.66Hz**, and **6.50Hz** for `default_labscript`, `master`, and `performance_hacks` branches of RaXcollab/blacs respectively.*
+1. Create a new stock package base with RaX editable overrides.
+2. Add RaX overrides to an existing official labscript installation.
 
-**Branch Descriptions:**
-- `default_labscript`: Most up-to-date official branch
-- `master`: Includes all changes described in the *RaXcollab/blacs* documentation
-- `performance_hacks`: All `master` changes plus optimizations discussed in section 4
+The recommended existing-install path clones the conda environment first. It never deletes or replaces the existing profile or `userlib`.
 
-Note: the functionality and output remain identical across all three branches.
+## Source and machine data
 
-## labscript-utils
+Keep the source checkout separate from `%USERPROFILE%\labscript-suite`.
 
-Added the *Fast Analog Data Monitor* feature aimed to provide a more flexible and user-friendly interface for visualizing raw analog input data in real-time (faster than waiting and processing in lyse).
+The profile directory contains machine configuration, logs, saved state, secrets, and shot paths.
 
-### Fast Analog Data Monitor Features Overview
-* Stream and plot multiple analog signals in real-time on the same plot window
-* Flexible plotting options - multiple signals on same or separate plots, allowing you to define each plot title
-* Automatic support for both manual (continuous) and buffered (shot-based) data collection
-* Ideal for immediate data inspection and monitoring during experiments
+The source repository contains portable code and documented reference values.
 
-![Signals on same plot](https://github.com/user-attachments/assets/01dc2c67-65da-4969-a639-9a8032ad9a09)
-![Signals on separate plots](https://github.com/user-attachments/assets/793285d1-d2ba-4743-ba8c-96dc28e4668c)
+## Base hardware target
 
-<p align="center">
-  <em><strong>The plotting window with either both signals on same plot [top] or signals on separate plots [bottom]</strong></em>
-</p>
+The initial collaborator installation supports:
 
-![image](https://github.com/user-attachments/assets/fa7dd951-6fce-4b17-afd5-36ac9f8e6995)
-<p align="center">
-  <em><strong>Buffered acquisition displaying raw data from an entire shot, immediately after shot completion</strong></em>
-</p>
+- PrawnBlaster pseudoclock
+- NI PXIe-6361
+- NI PXIe-6535
+- NI-DAQmx through PyDAQmx
+- NI-SCOPE through the NI `niscope` Python API
+- Laser-lock interface scaffolding
+- Raster interface scaffolding
+- BigSky YAG interface scaffolding
 
-The labscript-utils fork can be found at https://github.com/RaXcollab/labscript-utils
+Nuvu support remains optional.
 
-## labscript-devices
+## Repository layout
 
-We've updated several device drivers to align with our recent labscript suite enhancements:
+```text
+RaX-labscript\
+  userlib\                 RaX apparatus and integration code
+  docs\                    Current technical documentation
+  bootstrap.ps1            Pinned backend checkout and install
+  environment.yml          Direct conda environment specification
+  repos.yml                Full backend commit identifiers
+  INSTALL.md               Installation authority
+  CONTRIBUTING.md          Multi-repository contributor workflow
+```
 
-- NI-DAQ cards
-- Pseudoclocks (Pulse, Pine, Prawn)
+The backend directories appear after bootstrap. Git ignores them in the parent repository because each directory has its own history.
 
-Key changes include:
-1. Compatibility with the new BLACS state machine
-2. Support for QT_main-independent BLACS backend
-3. Integration with new features like the Fast Analog Data Monitor
+## Current technical documents
 
-These updates serve as examples for adapting other devices to our enhanced labscript environment. You can use our changes for the device listed above or can use them as a guide for modifying your own devices.
+Use [docs/index.md](docs/index.md) as the documentation entry point.
 
-The labscript-devices fork can be found at https://github.com/RaXcollab/labscript-devices
+Important contracts include:
 
-## userlib/user_devices
+- [BLACS state machine](docs/blacs-state-machine.md)
+- [BLACS device patterns](docs/blacs-device-patterns.md)
+- [RemoteControl ZMQ protocol v2](docs/remotecontrol-zmq-protocol-v2.md)
+- [Shot HDF5 layout](docs/shot-h5-layout.md)
+- [Main experiment overview](docs/main-experiment-overview.md)
+- [External GUI architecture](docs/external-guis-architecture.md)
 
-### RemoteControl of Exisiting Software
-The **RemoteControl** device for labscript is designed to provide manual and buffered control over pre-existing GUI applications. This integration removes the need to recreate complex GUIs within labscript, which can be time-consuming and complex.The RemoteControl device tab has two main features:
+## Sharing status
 
-1. **RemoteAnalogOut**: Allows you to control analog outputs in your remote application.
-2. **RemoteAnalogMonitor**: Continuously receive and update the BLACS tab to reflect remote values using a publish-subscribe architecture.
+The current tree removes known personal paths, generated state, and private operator notes.
 
-![image](readme_images/remote_labview_laser_lock_gui.png)
-<p align="center">
-  <em><strong>Remote laser locking system featuring two LabVIEW-controlled lasers with adjustable set points via BLACS tab or per-shot programming. Also have corresponding real-time frequency monitoring through Analog Monitors.</strong></em>
-</p>
+Git history still contains removed files.
 
-### Nuvu Camera labscript-device
-Implemented Nuvu Camera python drivers, to be documented later.
+Share it only with trusted collaborators until you complete the [public sharing procedure](docs/public-sharing.md).
+
+## Validation status
+
+Repository-level portability checks are in progress.
+
+The release still requires a clean Windows installation and lab hardware validation.
+
+Do not describe this branch as a validated release until the gates in [INSTALL.md](INSTALL.md#12-validation-status) pass.

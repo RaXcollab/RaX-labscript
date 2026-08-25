@@ -6,11 +6,10 @@ will build on the same pattern.
 
 Run::
 
-    cd c:/Users/radmo/labscript-suite/userlib/external_gui_lib
+    Set-Location userlib/external_gui_lib
     python -m pytest tests/ -v
 
-Should pass in any conda env that has pytest + the standard library
-(no pyzmq dependency for these tests).
+The foundation tests require pytest. The worker tests also require BLACS.
 """
 from __future__ import annotations
 
@@ -359,6 +358,10 @@ def test_V10_serve_once_timeout_returns_false():
 def mock_remote_comms():
   """Construct RemoteCommunication(mock=True) which sets up the
   paired InMemoryTransport + _MockRemoteServer internally."""
+  pytest.importorskip(
+      "blacs.tab_base_classes",
+      reason="RemoteCommunication tests require an installed BLACS package",
+  )
   from unittest import mock as _m  # noqa: PLC0415
   from user_devices.RemoteControl.blacs_workers import (  # noqa: PLC0415
       RemoteCommunication,

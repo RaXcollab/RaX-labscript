@@ -1,8 +1,11 @@
 # BLACS State Machine — Canonical Reference (RaXcollab fork)
 
-> **Scope**: how BLACS schedules per-device work, how the per-shot lifecycle differs from stock labscript, and where custom RemoteControl devices plug in. Fork code is ground truth over the official labscriptsuite docs.
+**Status:** Current fork reference
+**Last reviewed:** 2026-08-21
 
-This doc is the single canonical reference for the state machine. Auto-loaded by `.claude/rules/ref-blacs-state-machine.md` when editing under `userlib/user_devices/` or `blacs/`. Cross-reference: `docs/blacs-device-patterns.md` (device-side patterns), `docs/remotecontrol-zmq-protocol.md` (external GUI protocol).
+This document describes BLACS scheduling, per-shot lifecycle changes, and RemoteControl integration.
+
+Use the fork code when it differs from official labscript documentation.
 
 ## Process model — 3-tier zprocess tree
 
@@ -117,7 +120,7 @@ MANUAL → T2B → BUFFERED → start_run → POST_EXP → MANUAL
 
 - `@define_state` methods resume after `yield` in the **MAINLOOP BACKGROUND THREAD**, NOT the Qt GUI thread.
 - **USE `inmain()` / `@inmain_decorator(True)`** for any widget call (setValue, setText, show, hide, setEnabled, addItem, etc.).
-- **DO NOT USE `with qtlock:`** — pauses the Python event loop but does NOT marshal to the GUI thread. On Windows this causes access violations / segfaults (see `.claude/rules/devices.md`).
+- **DO NOT USE `with qtlock:`** — it pauses the event loop but does not marshal calls to the GUI thread.
 - PUB-SUB daemon threads → use `pyqtSignal` to bridge to GUI thread (`_PubSubSignalBridge` pattern).
 
 ## Stale-event / race hazards
@@ -143,7 +146,6 @@ MANUAL → T2B → BUFFERED → start_run → POST_EXP → MANUAL
 ## See also
 
 - `docs/blacs-device-patterns.md` — device-side patterns (latched lines, BigSky keep-warm, saved-state resilience, NI_DAQmxOutputWorker lifecycle).
-- `docs/remotecontrol-zmq-protocol.md` — external GUI ZMQ protocol.
+- `docs/remotecontrol-zmq-protocol-v2.md` — external GUI ZMQ protocol.
 - `docs/external-guis-architecture.md` — three-GUI overview.
 - `docs/shot-h5-layout.md` — h5 file structure.
-- `.claude/rules/devices.md` — load-bearing Qt thread safety + per-shot teardown invariants.

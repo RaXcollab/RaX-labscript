@@ -21,7 +21,10 @@
 
 .PARAMETER Install
     After syncing, run the editable install of the three backends. Requires the
-    'labscript' conda environment to be active.
+    selected conda environment to be active.
+
+.PARAMETER EnvironmentName
+    Conda environment used for editable installation. The default is labscript.
 
 .PARAMETER UpdatePins
     Rewrite the pinned commits in repos.yml from each backend's current HEAD.
@@ -37,6 +40,10 @@
     Same, then run the editable install.
 
 .EXAMPLE
+    .\bootstrap.ps1 -Install -EnvironmentName labscript-rax
+    Install the backends into an active side-by-side RaX environment.
+
+.EXAMPLE
     .\bootstrap.ps1 -UpdatePins
     Record the current backend HEADs as the new pins.
 #>
@@ -45,7 +52,8 @@
 param(
     [switch]$Latest,
     [switch]$Install,
-    [switch]$UpdatePins
+    [switch]$UpdatePins,
+    [string]$EnvironmentName = 'labscript'
 )
 
 # 'Continue', not 'Stop': git writes ordinary progress ("Switched to branch
@@ -108,17 +116,6 @@ if (-not (Test-Path (Join-Path $RepoRoot 'userlib'))) {
     exit 1
 }
 
-$expected = Join-Path $env:USERPROFILE 'labscript-suite'
-if ($RepoRoot -ne $expected) {
-    Write-Warn2 "This checkout is at:  $RepoRoot"
-    Write-Warn2 "labscript expects it: $expected"
-    Write-Warn2 "labscript_profile hardcodes ~/labscript-suite with no override."
-    Write-Warn2 "Move it there, or junction it:"
-    Write-Warn2 "  mklink /J `"$expected`" `"$RepoRoot`""
-    Write-Warn2 "Continuing - the backends will still be fetched correctly."
-    Write-Host ""
-}
-
 $backends = Read-Manifest -Path $ManifestPath
 
 # --- update pins mode -------------------------------------------------------
@@ -136,7 +133,7 @@ if ($UpdatePins) {
             Write-Warn2 "$($b.name): not cloned, skipping"
             continue
         }
-        $head = (& git -C $dir rev-parse --short HEAD).Trim()
+        $head = (& git -C $dir rev-parse HEAD).Trim()
         if ($head -eq $b.pinned) {
             Write-Ok "$($b.name): unchanged ($head)"
             continue
@@ -149,7 +146,8 @@ if ($UpdatePins) {
 
     $today = Get-Date -Format 'yyyy-MM-dd'
     $text = [regex]::Replace($text, '(?m)^updated:\s*\S+', "updated: $today")
-    Set-Content -Path $ManifestPath -Value $text -Encoding utf8 -NoNewline -ErrorAction Stop
+    $utf8NoBom = New-Object System.Text.UTF8Encoding($false)
+    [System.IO.File]::WriteAllText($ManifestPath, $text, $utf8NoBom)
 
     Write-Host ""
     if ($changed -gt 0) {
@@ -215,15 +213,29 @@ foreach ($b in $backends) {
     }
 }
 
+# Refuse installation after any incomplete synchronization. This check must
+# occur before pip can make an incorrect checkout active.
+if ($failed.Count -gt 0) {
+    Write-Host ""
+    Write-Err2 "failed: $($failed -join ', ')"
+    exit 1
+}
+if ($skipped.Count -gt 0) {
+    Write-Host ""
+    Write-Err2 "dirty checkout skipped: $($skipped -join ', ')"
+    Write-Err2 "Commit, stash, or discard those changes before installation."
+    exit 1
+}
+
 # --- editable install -------------------------------------------------------
 
 if ($Install) {
     Write-Host ""
     Write-Step "Editable install of the backends"
 
-    if ($env:CONDA_DEFAULT_ENV -ne 'labscript') {
-        Write-Err2 "conda env is '$env:CONDA_DEFAULT_ENV', expected 'labscript'."
-        Write-Err2 "Run 'conda activate labscript' first, then re-run with -Install."
+    if ($env:CONDA_DEFAULT_ENV -ne $EnvironmentName) {
+        Write-Err2 "conda env is '$env:CONDA_DEFAULT_ENV', expected '$EnvironmentName'."
+        Write-Err2 "Activate '$EnvironmentName', then re-run with -Install."
         exit 1
     }
 
@@ -232,7 +244,7 @@ if ($Install) {
 
     Push-Location $RepoRoot
     try {
-        & pip install --no-build-isolation --no-deps @paths
+        & python -m pip install --no-build-isolation --no-deps @paths
         if ($LASTEXITCODE -ne 0) {
             Write-Err2 "pip install failed - see INSTALL.md Troubleshooting"
             exit 1
@@ -246,14 +258,7 @@ if ($Install) {
 # --- summary ----------------------------------------------------------------
 
 Write-Host ""
-if ($failed.Count -gt 0) {
-    Write-Err2 "failed: $($failed -join ', ')"
-    exit 1
-}
-if ($skipped.Count -gt 0) {
-    Write-Warn2 "skipped (uncommitted changes): $($skipped -join ', ')"
-}
 Write-Ok "backends in sync"
 if (-not $Install) {
-    Write-Host "    next: conda activate labscript; .\bootstrap.ps1 -Install" -ForegroundColor DarkGray
+    Write-Host "    next: conda activate $EnvironmentName; .\bootstrap.ps1 -Install -EnvironmentName $EnvironmentName" -ForegroundColor DarkGray
 }

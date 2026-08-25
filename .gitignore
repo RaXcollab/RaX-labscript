@@ -15,6 +15,10 @@ userlib/analysislib/lyman29/old_gitignore
 # IDE specific folder
 .vscode/
 .idea/
+.vs/
+
+# Generated analysis project state
+userlib/analysislib/anaconda_projects/
 
 # Byte-compiled / optimized / DLL files
 __pycache__/
@@ -187,7 +191,7 @@ cython_debug/
 
 # Claude Code machine-local state (never shared)
 .claude/worktrees/
-.claude/agent-memory/
+**/.claude/agent-memory/
 .claude/session-scratch.md
 .superpowers/
 

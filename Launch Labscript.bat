@@ -4,6 +4,9 @@ title Labscript Launcher
 color 0A
 del "%TEMP%\lab_pane*.tmp" >nul 2>&1
 
+set "LABSCRIPT_ENV=%~1"
+if not defined LABSCRIPT_ENV set "LABSCRIPT_ENV=labscript"
+
 :: Locate conda without assuming a distribution name or user profile, so this
 :: launcher works on any collaborator's fork. First hit wins.
 set "CONDA_BASE="
@@ -28,7 +31,7 @@ if not defined CONDA_BASE (
 (
 :: For per-tab title echo $Host.UI.RawUI.WindowTitle='BLACS'
 echo ^& "%CONDA_BASE%\shell\condabin\conda-hook.ps1"
-echo conda activate labscript
+echo conda activate %LABSCRIPT_ENV%
 echo New-Item -Path "$env:TEMP\lab_pane1.tmp" -Force ^| Out-Null
 echo Write-Host ' [OK] BLACS starting...' -ForegroundColor Green
 echo blacs
@@ -37,7 +40,7 @@ echo blacs
 (
 :: echo $Host.UI.RawUI.WindowTitle='RUNMANAGER'
 echo ^& "%CONDA_BASE%\shell\condabin\conda-hook.ps1"
-echo conda activate labscript
+echo conda activate %LABSCRIPT_ENV%
 echo New-Item -Path "$env:TEMP\lab_pane2.tmp" -Force ^| Out-Null
 echo Write-Host ' [OK] RUNMANAGER starting...' -ForegroundColor Magenta
 echo runmanager
@@ -46,7 +49,7 @@ echo runmanager
 (
 :: echo $Host.UI.RawUI.WindowTitle='LYSE'
 echo ^& "%CONDA_BASE%\shell\condabin\conda-hook.ps1"
-echo conda activate labscript
+echo conda activate %LABSCRIPT_ENV%
 echo New-Item -Path "$env:TEMP\lab_pane3.tmp" -Force ^| Out-Null
 echo Write-Host ' [OK] LYSE starting...' -ForegroundColor Yellow
 echo lyse
@@ -55,6 +58,7 @@ echo lyse
 echo ==================================================
 echo                 LABSCRIPT LAUNCHER
 echo ==================================================
+echo   Environment: %LABSCRIPT_ENV%
 echo.
 
 start "" wt -w -1 --pos 1280,50 ^

@@ -1,4 +1,8 @@
-These patterns address friction points in the BLACS base class that affect any RemoteControl-pattern device with ordering constraints or non-spinbox UI. See `notes/2026-02-22_BigSky_tab_redesign.html` for the full writeup.
+# BLACS device patterns
+
+**Status:** Current fork reference
+
+These patterns apply to RemoteControl devices with command-order constraints or custom controls.
 
 **Problem 1: `program_manual` sends ALL values, not deltas.** The base class calls `get_front_panel_values()` on every change, then sends the full dict to the worker. For devices where re-sending an unchanged value has side effects (e.g., BigSky rejects mode changes while lamps are active), this causes silent failures.
 
@@ -44,21 +48,23 @@ Set the cooldown to 2x the poll interval (default 5s → 10s cooldown).
 
 **Problem 4: `_fetch_initial_values` blindly accepts remote zeros after GUI restart.** The base class fetches remote values on startup and updates the front panel unconditionally. If the remote GUI has no config persistence and restarts with zeroed values, BLACS silently overwrites its saved state (which may contain correct setpoints from the last session).
 
-**Active RemoteControl module is `user_devices.RemoteControl`** — the `labscript-devices/labscript_devices/RemoteControl/` copy is dead code on this machine. All citations below are to the userlib copy. (See `.claude/rules/devices.md`.)
+**The active RemoteControl module is `user_devices.RemoteControl`.** The backend copy is not part of the RaX reference apparatus.
 
-**Per-shot monitor snapshot HDF5 layout.** `RemoteControlWorker` writes pre- and post-shot snapshots into `/data/{device}/monitor_values/{initial,final}_monitor_values`. **Full layout, semantics, and the history of the pre-2026-05-06 `initial==final` bug live in [`docs/shot-h5-layout.md`](shot-h5-layout.md).** Quick summary here for device authors:
+## RemoteControl monitor snapshots
 
-- **⚠ ACTIVE BUG (found 2026-08-02): these datasets are currently not being written at all.** The worker cache stays empty in production (`initial_monitor_values: 0 channels` on every shot in BLACS.log) and the empty-initial gate ([blacs_workers.py:690](../userlib/user_devices/RemoteControl/blacs_workers.py#L690)) then skips both writes. Zero LaserLockGUI or RasteringGUI monitor_values found in any shot since 2026-05-07; BigSkyLasers wrote **initial-only** datasets (its initial bypasses the cache via REQ-REP) until 2026-07-22, none since. Do not rely on these datasets until fixed — details in `shot-h5-layout.md` "Known bugs", Bug B.
-- Pre-snapshot taken in `transition_to_buffered` ([userlib/user_devices/RemoteControl/blacs_workers.py:676](../userlib/user_devices/RemoteControl/blacs_workers.py#L676)); post in `post_experiment` ([:693](../userlib/user_devices/RemoteControl/blacs_workers.py#L693)). Both write via `_save_monitor_values_to_hdf5` ([:714](../userlib/user_devices/RemoteControl/blacs_workers.py#L714), per-column `np.float64` since 2026-04-29; was `float32` before — see precision warning).
-- **Both snapshots are `dict(self._pubsub_cache)` — no REQ-REP round-trip.** The tab forwards every PUB-SUB monitor value into the BLACS-internal EventBroker ([blacs_tabs.py:594](../userlib/user_devices/RemoteControl/blacs_tabs.py#L594)); the worker's daemon drain thread ([blacs_workers.py:462](../userlib/user_devices/RemoteControl/blacs_workers.py#L462)) writes it into `_pubsub_cache` keyed by connection. You get this for free by inheriting `RemoteControlWorker` — nothing to wire up per device. `check_all_remote_values()` ([:581](../userlib/user_devices/RemoteControl/blacs_workers.py#L581)) is no longer on this path.
-- **Columns = the monitor connections that have published at least once**, not `child_connections`. Outputs get no column; a monitor topic that never appears in the stream gets no column at all (not 0.0, not NaN); an entirely empty cache writes no dataset ([:715](../userlib/user_devices/RemoteControl/blacs_workers.py#L715)).
-- **Freshness caveat:** the snapshot is the newest cached sample, so it can lag a `PROGRAM_VALUE` issued moments earlier by up to one publish period — ~250 ms at the ~4 Hz BigSky/Rastering publish rate (HF_Locking runs at 10 Hz). Fine for the slow physical quantities these devices monitor; do not use these datasets for sub-100 ms causality.
-- **The value is whatever that GUI publishes on that topic** — HF_Locking publishes `freq_display` (the wavemeter reading), BigSky per-parameter sensor readings, Rastering live stage coordinates. Check the publisher, not the `CHECK_VALUE` handler.
-- **Override caveat (BigSkyWorker):** a subclass that overrides `transition_to_buffered` must take the snapshot itself. `RasteringWorker` does it right ([RasteringDevice/blacs_workers.py:264](../userlib/user_devices/RasteringDevice/blacs_workers.py#L264)); `BigSkyWorker` still uses `check_all_remote_values()` ([BigSkyHub/blacs_workers.py:403](../userlib/user_devices/BigSkyHub/blacs_workers.py#L403), [:459](../userlib/user_devices/BigSkyHub/blacs_workers.py#L459)) while inheriting the base `post_experiment`, so its initial and final datasets have different column sets and different meanings.
+See the [shot HDF5 contract](shot-h5-layout.md) for paths, shapes, and optionality.
 
-**Datasets are absent when:** `enable_comms=False`, no `remote_device_operation` group exists in the shot file, the PUB-SUB cache is empty (nothing published all session), or the shot was aborted (snapshots cleared by `abort_*` methods, [blacs_workers.py:733-741](../userlib/user_devices/RemoteControl/blacs_workers.py#L733)). See `shot-h5-layout.md` for full conditions.
+The base worker takes both snapshots from `_pubsub_cache`. Each field contains the last value for one published monitor connection.
 
-**Pre-fix precision warning (shots before 2026-04-29):** snapshot dtype was `np.float32`, ULP ~40 MHz at 348 THz. Programmed setpoints in `remote_device_operation` are full float64 in all shots; only the `monitor_values` snapshots were affected.
+The base worker omits both snapshots when the initial cache is empty. It also omits them without `remote_device_operation`.
+
+A subclass that overrides `transition_to_buffered()` must take its own initial snapshot. It must also set `h5_filepath` for the post-experiment write.
+
+`RasteringWorker` copies `_pubsub_cache`. `BigSkyWorker` uses `check_all_remote_values()` for its initial snapshot.
+
+`BigSkyWorker` inherits the base final snapshot. Its initial and final fields can have different sources and meanings.
+
+Use float64 fields for snapshot values. Treat each snapshot as a cached sample, not a synchronous measurement.
 
 **Pattern: startup mismatch dialog (tab-side override)**
 ```python
@@ -94,7 +100,9 @@ Events queued by `@define_state` methods execute in FIFO order in the mainloop t
 
 ## Fork-Specific State Machine Extensions
 
-This fork extends stock labscript BLACS with post-experiment states and a multi-worker `yield` API. The MODE bitmask (in `blacs/blacs/tab_base_classes.py:64`) is:
+This fork extends stock labscript BLACS with post-experiment states and a multi-worker `yield` API.
+
+The [state-machine base](../blacs/blacs/tab_base_classes.py) defines this mode bitmask:
 
 | Flag | Value | Meaning |
 |---|---|---|

@@ -31,8 +31,11 @@ from scan_plots import ScanAnalysis
 
 log = logging.getLogger(__name__)
 
-# Default data root and experiment name. Override via setup_explorer() args.
-DEFAULT_BASE = r'C:\Users\radmo\MIT Dropbox\Shungo Fukaya\Experiments\Main_Experiment'
+# Default data root and experiment name. Override via RAX_DATA_ROOT or setup_explorer().
+DEFAULT_BASE = os.environ.get(
+    'RAX_DATA_ROOT',
+    os.path.join(os.path.expanduser('~'), 'Experiments', 'Main_Experiment'),
+)
 DEFAULT_EXPERIMENT = 'Closed_cell'
 
 

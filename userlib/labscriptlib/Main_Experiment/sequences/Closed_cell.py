@@ -44,7 +44,7 @@ YAG1_line.go_low(tend + 10e-3)
 YAG1_line.go_low(tend + 20e-3)
 
 if DOUBLE_YAG:
-    digital_pulse(YAG2_line, tYAG_2, 0.5e-3)
+    digital_pulse(YAG2_trig, tYAG_2, 0.5e-3)
     digital_pulse(YAG1_line, tYAG_1, 0.5e-3)
     
 else:

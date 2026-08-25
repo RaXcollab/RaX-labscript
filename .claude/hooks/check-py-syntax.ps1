@@ -19,7 +19,9 @@ if (-not (Test-Path -LiteralPath $p)) { exit 0 }
 # or the env is absent: without this, $LASTEXITCODE stays null below and every
 # .py edit gets a phantom "SYNTAX ERROR" with an empty reason.
 . "$PSScriptRoot\_conda-path.ps1"
-$pythonExe = Get-CondaEnvPython -EnvName 'labscript'
+$environmentName = $env:LABSCRIPT_ENV
+if (-not $environmentName) { $environmentName = 'labscript' }
+$pythonExe = Get-CondaEnvPython -EnvName $environmentName
 if (-not $pythonExe) { exit 0 }
 if (-not (Test-Path -LiteralPath $pythonExe)) { exit 0 }
 # _hook-common.ps1 sets ErrorActionPreference=Stop; on PS 7.3+ that turns a

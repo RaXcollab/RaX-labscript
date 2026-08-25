@@ -1,563 +1,395 @@
-# RemoteControl ZMQ Protocol v2
+# RemoteControl ZMQ protocol v2
 
-**Status**: IMPLEMENTED + CODE-REVIEWED (2026-05-23). All five PRs from
-§9 shipped on topic branches across the 4 repos and pushed to RaXcollab
-origins. Four parallel code-reviewer agents ran and findings were
-addressed in a follow-up fixup commit per repo:
+This document defines the current RemoteControl protocol between BLACS and the external GUI servers.
 
-| Repo | Branch | Tip (post-fixup) |
-|---|---|---|
-| parent | `zmq-v2-cutover` | `928d9f6` (fixup) on `551a6c9` (cutover) on `cf394d3` (PR 1 patch) |
-| `GUIs/BigSkyControl` | `zmq-v2-port` | `960b5b5` (fixup) on `9d30ac9` (port) |
-| `GUIs/HF_Locking` | `zmq-v2-port` | `21079b7` (fixup) on `a0cd4b2` (port) |
-| `GUIs/rastering` | `zmq-v2-port` | `2295bc8` (fixup) on `51d47d1` (port) — off `main`, in worktree `GUIs/rastering-zmq-v2/` |
+The protocol uses ZeroMQ (ZMQ) REQ-REP for commands. It uses ZMQ PUB-SUB for monitor data and heartbeats.
 
-Tests passing (105/105): 31/31 V1–V11 (labscript env) +
-27/27 B1–B8 (BigSky, guis env) + 19/19 H1–H7 (HF, guis env;
-+4 new H7 tests from review I3/I4/I5/C2) + 28/28 rastering
-(13 existing + 15 v2, rastering env). v1 protocol is dead-code
-on both client and server sides per Q4 §10-resolved hard sunset.
+## REQ-REP wire format
 
-Review fixups summary:
-  * Parent: `RemoteRetryableError` + `RemoteMalformedReplyError`
-    exception subclasses (review I2/I3); `_check_response` surfaces
-    `(retryable)` hint.
-  * BigSky: `MAX_CONSECUTIVE_TRANSPORT_FAILURES=5` circuit breaker on
-    `serve_once` exceptions (review I2).
-  * HF_Locking: port range validation, `setpoint_not_initialized`
-    UNKNOWN_CONNECTION on uninitialized CHECK_VALUE, explicit WARNING
-    log when `wait_for_lock=True` but AND-gate conditions unmet
-    (silent lock-bypass) — reviews C2/I3/I4/I5.
-  * Rastering: `arm_raster` validate+commit consolidated into single
-    lock critical section (review I-2); `serve_once` exception now
-    `traceback.print_exc()` instead of `pass` (review I-3).
+Each REQ-REP message contains one UTF-8 JSON object in one ZMQ frame.
 
-**Deployment**: branches stay on origin until the operator runs the
-coordinated merge + restart sequence in
-[`docs/zmq-v2-cutover-runbook.md`](zmq-v2-cutover-runbook.md).
-After merge, BLACS + all 3 GUI processes must restart in any order;
-no asymmetric-version window exists.
-
-The v1 protocol reference doc at
-[`docs/remotecontrol-zmq-protocol.md`](remotecontrol-zmq-protocol.md)
-is preserved for archaeological context; new client/server code uses
-v2 exclusively.
-
-Origin of this spec: T0.5 audit (item 2.2,
-[plan](../../.claude/plans/look-up-all-recent-purrfect-starfish.md)),
-signed off 2026-05-22, shipped 2026-05-23.
-
----
-
-## Context — why v2
-
-The three RemoteControl external-GUI servers diverge significantly in their
-implementation:
-
-| GUI | Threading | Reply pattern | State ownership |
-|---|---|---|---|
-| HF_Locking | `ZMQRepWorker` + separate `ZMQPubWorker` (QThread × 2) | sync, `dict` reply | `SharedExperimentState` (mutex dict) |
-| Rastering | inline daemon `_zmq_loop` on `raster_controller` | sync, `dict` reply | inline `SystemController` |
-| BigSky | `BigSkyZmqServer` class + `concurrent.futures.Future` round-trip | async, structured `rejected:` envelope | `_lasers` dict of `SingleLaserController` |
-
-**Convergence is needed at the *protocol* layer (message format + dispatch
-contract), not at the *server* layer** (threading models legitimately differ
-per-GUI). v1 was string-based + ad-hoc JSON; v2 standardizes the envelope
-so:
-
-- BigSky's first-class `rejected:` futures stop being a special case (BLACS-
-  side worker `_check_response` no longer needs brittle string-prefix matching).
-- New external-GUI devices can adopt a common `RemoteControlServerBase` with
-  a `@handler("PROGRAM_VALUE")` decorator for dispatch.
-- Tests (item 2.8) can mock the transport via a single `Transport` ABC.
-- Protocol evolution is graceful: schema versioning + additive backwards
-  compat through one migration period.
-
----
-
-## 1. Message envelope
-
-### 1.1 Negotiation (HELLO)
-
-Client sends:
-
-```json
-{"v": 2, "action": "HELLO", "protocol_version": 2}
-```
-
-Server replies:
-
-```json
-{
-  "v": 2,
-  "status": "SUCCESS",
-  "protocol_version": 2,
-  "server": "LaserLockGUI",
-  "capabilities": ["wait_for_lock", "monitors", "heartbeat"]
-}
-```
-
-If the server reply omits `protocol_version`, the client falls back to v1
-(legacy bare-string reply path). This is how v2 clients talk to v1 servers
-during the migration window.
-
-### 1.2 Request
+### Request envelope
 
 ```json
 {
   "v": 2,
   "id": 17,
   "action": "PROGRAM_VALUE",
-  "connection": "TiSa_set",
+  "connection": "4",
   "value": 348.666410,
   "args": {"wait_for_lock": true},
   "request_timestamp": 1747948800.123
 }
 ```
 
-- `v: 2` mandatory in every v2 request.
-- `id: uint64` correlation id (echoed in reply). Currently REQ-REP is
-  synchronous so `id` is redundant; reserved for future async/streaming
-  features (e.g., long-running diagnostics).
-- `args` named extension dict — v1's bare-key extras (`wait_for_lock`)
-  move here for cleaner parsing.
+| Field | Requirement | Meaning |
+|---|---|---|
+| `v` | Required | Protocol version. The value must be `2`. |
+| `action` | Required | Command name. |
+| `id` | Required for BLACS | Request identifier. The server echoes it when present. |
+| `connection` | Command-specific | Device connection name. |
+| `value` | Command-specific | Value for `PROGRAM_VALUE`. |
+| `args` | Optional | Command-specific options. |
+| `request_timestamp` | Added by the shared encoder | Unix time in seconds. |
 
-> **Footnote — `wait_for_lock` AND-gate semantics (HF_Locking)**: when
-> `args.wait_for_lock=True` reaches `LaserLockGUI`, the server only blocks
-> on lock convergence if BOTH `lock_enabled` AND `deviation_mode` are True
-> for that port. If either is False the server writes the setpoint and
-> returns `SUCCESS` immediately, but emits a structured `WARNING` log
-> (`outer.log_message.emit`) noting the silent lock-bypass. The
-> `lock_enabled=True, deviation_mode=False` and inverse cases are
-> covered by `tests/test_zmq_v2_protocol.py` H7 cases (added 2026-05-23
-> per review C2). Callers that require enforcement must check the gate
-> state via PUB-SUB cached monitors before issuing the request — there
-> is no v2 status code for "wait requested but gate disarmed".
->
-> As of 2026-07-07 the BLACS client always sends `wait_for_lock`
-> explicitly (True or False) and the server treats an absent key as
-> False — absence is never interpreted via server-side defaults.
+The BLACS client starts `id` at zero. It increments `id` for each `RemoteCommunication` request.
 
-### 1.3 Reply
+The server accepts a request without `id`. Its reply then omits `id`.
+
+The shared encoder omits empty `connection`, `None` values, and empty `args` objects.
+
+### Reply envelope
 
 ```json
 {
   "v": 2,
   "id": 17,
-  "status": "SUCCESS" | "ERROR" | "REJECTED" | "TIMEOUT" | "UNKNOWN_CONNECTION",
+  "status": "SUCCESS",
   "value": 348.666410,
-  "error": {
-    "code": "rejected_did_not_take_effect",
-    "message": "rejected: lpm0 did not take effect (got 1)",
-    "retryable": false
-  },
   "server_timestamp": 1747948800.456
 }
 ```
 
-- `status` enum (5 fixed tokens). Promotes BigSky's structured `rejected:`
-  futures to first-class.
-- `error` object only present when `status != SUCCESS`.
-- `retryable` boolean — BLACS worker can decide whether to retry once vs.
-  bubble error up to runmanager.
-
----
-
-## 2. Dispatch contract
-
-### 2.1 Explicit handler map (decorator-registered)
-
-Server subclasses register handlers via class-level decorator:
-
-```python
-class LaserLockZmqServer(RemoteControlServerBase):
-
-    @handler("PROGRAM_VALUE")
-    def _handle_program(self, conn, value, args):
-        ...
-
-    @handler("CHECK_VALUE")
-    def _handle_check(self, conn, args):
-        ...
-```
-
-Base class owns the recv-loop, JSON parse, envelope construction, version-
-check, and error wrapping. Subclasses only implement handler bodies.
-
-**Rejected alternative**: name-convention dispatch
-(`_handle_PROGRAM_VALUE`). Too magical; harder to grep; doesn't survive
-rename refactors cleanly.
-
-### 2.2 Reserved actions (v2 base implements)
-
-| Action | Purpose | Notes |
-|---|---|---|
-| `HELLO` | Negotiate version + advertise capabilities | Base-class impl; subclass override allowed for capability list |
-| `PING` | Liveness probe | Returns server uptime, monitor cadence; v2 base impl |
-| `PROGRAM_VALUE` | Write a setpoint | Subclass implements |
-| `CHECK_VALUE` | Read a setpoint/monitor | Subclass implements |
-
-Subclass may register additional actions (e.g., HF_Locking's
-`wait_for_lock` could become its own action instead of an `args` flag).
-
----
-
-## 3. Liveness / heartbeat
-
-### 3.1 PUB topic (unchanged from v1)
-
-The `heartbeat` PUB topic continues at the existing per-server cadence:
-
-| Server | Cadence |
-|---|---|
-| HF_Locking | 10 Hz (matches `_poll_fast`) |
-| Rastering | ~1 Hz |
-| BigSky | ~1 Hz (`HUB_LOOP_PERIOD_MS = 1000`) |
-
-### 3.2 REQ-side PING action (new in v2)
-
-Optional `PING` action on REQ socket returns server status:
+A failed request has a structured error:
 
 ```json
-{"v": 2, "id": ..., "status": "SUCCESS",
- "uptime_seconds": 3724.5, "monitor_cadence_hz": 10,
- "subscriber_count": 1}
-```
-
-BLACS tab uses this to detect *stuck* PUB threads (PUB alive, REP dead) by
-periodic ping with timeout < 1 s.
-
-### 3.3 Tab-side stale-detect
-
-If the tab observes no `heartbeat` for `3 × cadence_seconds`, mark
-disconnected via the existing `_PubSubSignalBridge.pubsub_status_changed`
-signal (already implemented for v1).
-
----
-
-## 4. PUB-SUB topic format
-
-### 4.1 Standardized form (mandatory)
-
-```
-"{connection}_{param}_monitor {value}"
-```
-
-Examples:
-
-- `TiSa_set_setpoint_monitor 348.666410`
-- `Raster_X_position_monitor 12.345`
-- `YAG_1_temperature_monitor 30.5`
-
-This unifies the current v1 divergence where HF_Locking uses bare port
-numbers as topic prefixes. Existing topics will be re-emitted in the
-standardized form during the migration window.
-
-### 4.2 JSON payload (optional, opt-in via suffix)
-
-For multi-field monitors (vector readbacks, structured status):
-
-```
-"{connection}_{param}_monitor:json {...JSON dict...}"
-```
-
-The `:json` suffix is the version-flag; v1 subscribers don't subscribe to
-`:json` topics so they're invisible to legacy code. New subscribers can
-opt in per topic.
-
----
-
-## 5. Mockable transport
-
-### 5.1 Transport ABC
-
-```python
-class Transport(Protocol):
-    def send(self, frame: bytes) -> None: ...
-    def recv(self, timeout_ms: int) -> bytes: ...
-    def close(self) -> None: ...
-```
-
-### 5.2 Concrete implementations
-
-| Class | Use |
-|---|---|
-| `ZmqReqTransport` | REQ socket; production client side |
-| `ZmqRepTransport` | REP socket; production server side |
-| `InMemoryTransport` | paired in-memory queue; tests inject this to bypass sockets |
-
-`RemoteCommunication` (BLACS-side) and `RemoteControlServerBase` (GUI-side)
-take a `Transport` in `__init__` (defaulting to ZMQ). Tests inject
-`InMemoryTransport(server_side=...)` to drive request/response pairs without
-binding any sockets — critical for item 2.8 (T0.4 invariant tests).
-
----
-
-## 6. Observability
-
-### 6.1 Structured log keys
-
-Every request/response logs:
-
-```
 {
-  "ts": 1747948800.123,
-  "server": "LaserLockGUI",
-  "action": "PROGRAM_VALUE",
-  "conn": "TiSa_set",
+  "v": 2,
   "id": 17,
-  "status": "SUCCESS",
-  "latency_ms": 12.3,
-  "error_code": null
+  "status": "TIMEOUT",
+  "error": {
+    "code": "lock_wait_timeout",
+    "message": "timeout waiting for lock on ch4",
+    "retryable": true
+  },
+  "server_timestamp": 1747948860.456
 }
 ```
 
-### 6.2 Logger namespace
+| Field | Requirement | Meaning |
+|---|---|---|
+| `v` | Required | Protocol version. The value is `2`. |
+| `status` | Required | One status token from the table below. |
+| `server_timestamp` | Added by the shared encoder | Unix time in seconds. |
+| `id` | Conditional | Echo of a non-`None` request `id`. |
+| `value` | Conditional | Command result. The encoder omits a `None` value. |
+| `error` | Failure replies | Object with `code`, `message`, and `retryable`. |
+| Other top-level fields | Command-specific | Extra result data for `HELLO`, `PING`, and raster commands. |
 
-`remotecontrol.{server_name}.{req|pub}`. Example:
+Current servers use these status tokens:
 
-- `remotecontrol.LaserLockGUI.req` — REQ-REP server activity
-- `remotecontrol.LaserLockGUI.pub` — PUB-SUB broadcast activity
+| Status | Meaning |
+|---|---|
+| `SUCCESS` | The server completed or accepted the command. |
+| `ERROR` | The request, server state, or device operation caused an error. |
+| `REJECTED` | The BigSky controller rejected a valid device command. |
+| `TIMEOUT` | The server did not complete a requested wait before its limit. |
+| `UNKNOWN_CONNECTION` | The connection is invalid or has no readable value. |
 
-Replaces ad-hoc `self._log("ZMQ: PROGRAM_VALUE ...")` calls in BigSky and
-`self.log_message.emit(...)` in HF_Locking.
+`error.retryable` is an advisory flag. The current BLACS client does not retry automatically.
 
----
+## Common commands
 
-## 7. Backwards compatibility
+| Action | Request fields | Success reply |
+|---|---|---|
+| `HELLO` | No command fields | `protocol_version`, `server`, `capabilities`, and optional `connections` |
+| `PING` | No command fields | `server` and `uptime_seconds` |
+| `PROGRAM_VALUE` | `connection`, `value`, optional `args` | Server-specific result |
+| `CHECK_VALUE` | `connection` | `value` |
 
-### 7.1 Purely additive
+`HELLO` and `PING` are base-server commands. Servers implement `PROGRAM_VALUE` and `CHECK_VALUE` with registered handlers.
 
-v2 servers MUST accept v1 requests (missing `v` key → respond in v1
-string/dict form per the existing protocol). v2 clients downgrade on
-HELLO if server omits `protocol_version` in reply.
+The BLACS client sends `HELLO` during connection setup. It does not send `PING` during normal operation.
 
-### 7.2 BLACS-side client behavior
+The canonical capability names are `heartbeat`, `monitors`, and `wait_for_lock`.
 
-`userlib/user_devices/RemoteControl/RemoteCommunication.py` sends `v: 2`
-once **all three** GUIs ship v2; until then it sends v1 (current shape)
-and parses both reply forms. Cleanup of the v1 dual-path code is a
-separate post-v2 ticket.
+| Server name | Capabilities | `connections` in `HELLO` |
+|---|---|---|
+| `BigSkyLasers` | `heartbeat`, `monitors` | Dynamic prefixes such as `YAG_1_*` |
+| `LaserLockGUI` | `heartbeat`, `monitors`, `wait_for_lock` | Omitted |
+| `RasteringGUI` | `heartbeat`, `monitors` | Omitted |
 
-### 7.3 Sunset policy
+Connection advertisements are hints. The implemented matcher removes trailing `*` characters and performs a prefix match.
 
-v1 sunset is **deferred to a follow-up** — out of scope for item 2.2.
-After all three GUIs ship v2, a future PR can change the policy from
-"accept v1" to "warn on v1" and eventually "refuse v1". Lab tooling
-outside this repo (external scripts using HELLO?) needs a survey first.
+The BLACS `RemoteCommunication` client does not enforce these advertisements. Each server remains the connection authority.
 
----
+### Common errors
 
-## 8. Migration order
+| Condition | Status | Error code | Retryable |
+|---|---|---|---|
+| Invalid UTF-8, invalid JSON, or non-object JSON | `ERROR` | `envelope_parse_error` | No |
+| Missing `v`, or `v` is not `2` | `ERROR` | `v1_protocol_refused` | No |
+| Unknown or missing action | `ERROR` | `unknown_action` | No |
+| Handler exception or invalid handler return | `ERROR` | `handler_exception` | No |
 
-1. **BigSky first** — already structured-reply (`rejected:` futures via
-   `_handleRemoteCommand` / `executeRemoteCommand`, commit `6c72b49`); the
-   cleanest template for `RemoteControlServerBase`. Lowest blast radius
-   (single hub, single GUI restart per laser).
+The server includes the request `id` in these errors when it can parse that field.
 
-2. **HF_Locking second** — has `SharedExperimentState` + QThread workers;
-   clean separation makes base-class adoption straightforward. The 10 Hz
-   wavemeter cadence will stress the base loop and validate perf.
+## LaserLockGUI commands
 
-3. **Rastering last** — `_zmq_loop` is inline at `raster_controller.py:1585`,
-   tightly coupled to controller state. Refactor risk highest; do last
-   with both other migrations as templates. Coordinated with rastering
-   camera Spinnaker migration (separate session).
+LaserLockGUI accepts connection strings `"1"` through `"8"`.
 
----
+### `PROGRAM_VALUE`
 
-## 9. Implementation outline (NOT yet executed)
+`value` must convert to a number. The server emits a setpoint write for the selected port.
 
-Estimated PR breakdown — one per repo to minimize blast radius:
+`args.wait_for_lock` controls the optional lock wait. An absent value means `false`.
 
-1. **parent repo** — add `userlib/external_gui_lib/{__init__.py,zmq_v2.py}`
-   defining `RemoteControlServerBase`, `Transport` ABC, concrete `ZmqReqTransport` /
-   `ZmqRepTransport` / `InMemoryTransport`, `@handler` decorator, the v2
-   envelope helpers. Plus client-side `RemoteCommunication` v2 dual-path
-   parser in `userlib/user_devices/RemoteControl/RemoteCommunication.py`.
+The BLACS client always sends this option as `true` or `false`.
 
-2. **GUIs/BigSkyControl** — port `BigSkyZmqServer` to inherit from
-   `RemoteControlServerBase`. Dispatch via decorated handlers. PUB topic
-   re-emit in standardized form (keep legacy emit for migration window).
+The server waits only when these three conditions are true:
 
-3. **GUIs/HF_Locking** — port `ZMQRepWorker` to inherit. `ZMQPubWorker`
-   stays separate (still a QThread for cadence isolation).
+- `args.wait_for_lock` is `true`.
+- The port has `lock_enabled` set.
+- Global `deviation_mode` is set.
 
-4. **GUIs/rastering** — port `_zmq_loop` to inherit. Daemon-thread model
-   preserved.
+The server returns `SUCCESS` after lock convergence. It returns `TIMEOUT/lock_wait_timeout` after 60 seconds.
 
-Each PR independently mergeable and reversible. v1 path stays alive at
-every step.
+If either gate is off, the server returns `SUCCESS` without a wait. It writes a warning to the GUI log.
 
----
+| Condition | Status | Error code | Retryable |
+|---|---|---|---|
+| Connection is not an integer string | `UNKNOWN_CONNECTION` | `unknown_connection` | No |
+| Port is outside 1 through 8 | `UNKNOWN_CONNECTION` | `port_out_of_range` | No |
+| Value is not numeric | `ERROR` | `invalid_value` | No |
+| Lock wait expires | `TIMEOUT` | `lock_wait_timeout` | Yes |
 
-## 10. Open questions for user (RESOLVED 2026-05-22)
+### `CHECK_VALUE`
 
-Original draft listed four open questions. All four are resolved below
-(§10-resolved). The original Q1–Q4 framing is preserved for historical
-context.
+`CHECK_VALUE` returns the stored setpoint from shared state. It does not return the wavemeter measurement.
 
-### Original questions (historical)
+A missing setpoint or a setpoint below 1 THz returns `UNKNOWN_CONNECTION/setpoint_not_initialized`. This error is retryable.
 
-1. **Hub-mode capability advertisement** — BigSky is a hub of N lasers,
-   each with its own connection prefix (`YAG_1_*`, `YAG_2_*`). Should
-   `capabilities` enumerate connection prefixes (e.g.,
-   `connections: ["YAG_1_*", "YAG_2_*"]`) so BLACS can fail-fast on typos
-   at HELLO time rather than at first CHECK_VALUE? Or leave per-call?
-2. **`id` correlation** — REQ-REP is synchronous so `id` is currently
-   redundant. Do we want it for future async/streaming (e.g., long-running
-   `wait_for_lock` could become a stream of progress events), or YAGNI?
-3. **Capabilities or feature flags** — `["wait_for_lock", "heartbeat"]`
-   enum vs. monotonic `feature_level: int`. Enum is more flexible but
-   harder to test exhaustively.
-4. **v1 sunset date** — soft (warn on v1 receive) or hard (refuse) after
-   all three migrate? External-script survey needed first.
+## BigSkyLasers commands
 
-### §10-resolved (canonical — supersedes the open questions above)
+Each connection starts with a registered laser name, such as `YAG_1`.
 
-#### Q1 — Hub-mode capability advertisement: OPTIONAL prefix-match glob
+### `PROGRAM_VALUE`
 
-- HELLO reply MAY include a top-level `"connections"` key with an array of
-  string patterns. Hub-mode servers (BigSky) SHOULD advertise; single-
-  instance servers (HF_Locking, Rastering) SHOULD omit.
-- **Pattern format**: a string ending in `*` matches by **prefix only**.
-  No other glob/regex metacharacters supported.
-- **BLACS-side check** (canonical algorithm):
+Writable connection suffixes are:
 
-  ```python
-  any(conn.startswith(p.rstrip("*")) for p in advertised_connections)
-  ```
+- `voltage`
+- `shutter`
+- `lamps`
+- `qswitch`
+- `lamp_mode`
+- `qswitch_mode`
+- `warmup`
+- `start_lasing`
+- `stop`
+- `keep_warm`
 
-- **NO** `fnmatch`, **NO** recursive `**`, **NO** character classes `[abc]`.
-  Three lines of matcher code, zero library dependency.
-- Advertisement is a **hint, not a contract**. BLACS-side MUST still
-  gracefully handle `UNKNOWN_CONNECTION` for any request; a server MAY
-  advertise stale data during a hot config change.
+For example, use `YAG_1_voltage`. A `_monitor` suffix is not writable.
 
-#### Q2 — `id` correlation: REQUIRED from BLACS, OPTIONAL from others
+| Condition | Status | Error code | Retryable |
+|---|---|---|---|
+| Laser prefix is unknown | `UNKNOWN_CONNECTION` | `unknown_connection` | No |
+| Laser is disconnected | `ERROR` | `laser_disconnected` | Yes |
+| Target has `_monitor` suffix | `ERROR` | `cannot_program_monitor` | No |
+| Writable suffix is unknown | `ERROR` | `unknown_writable_param` | No |
+| Controller command exceeds 10 seconds | `TIMEOUT` | `command_timeout` | Yes |
+| Controller returns a general error | `ERROR` | `command_error` | No |
 
-- v2 requests MAY include `"id": uint64` (monotonically increasing per
-  (client, server) pair).
-- **BLACS-side `RemoteCommunication` MUST emit `id` on every outbound
-  request.** Other clients (debug scripts, future external tools) MAY
-  omit. Servers MUST echo `id` if present; MUST NOT reject requests that
-  omit it.
-- **Rationale**: half-instrumented logs are useless for correlation.
-  Forcing `RemoteCommunication.send_request` to always emit `id` keeps the
-  `remotecontrol.{server}.req` structured log (§6) reliably joinable
-  end-to-end at one uint64 per message.
-- **Implementation**: `RemoteCommunication` ships a per-instance counter
-  (`self._id_counter = itertools.count()`); `id = next(self._id_counter)`
-  on every send. Resets on reconnect (acceptable — the broken connection
-  itself is the correlation breakpoint).
-- Not a streaming commitment. If future async/streaming lands, `id` is
-  already the correlation handle.
+Controller refusals return `REJECTED`. Their `error.code` identifies the refusal and is not retryable.
 
-#### Q3 — Capabilities: enum strings + CANONICAL_CAPABILITIES frozenset
+Current refusal codes include:
 
-- `capabilities` is an **array of strings** drawn from a fixed canonical set.
-- **Canonical set** (module-level constant in
-  `userlib/external_gui_lib/zmq_v2.py`):
+- `did_not_take_effect`
+- `voltage_out_of_range`
+- `lamps_not_active`
+- `lamp_mode_requires_standby`
+- `invalid_lamp_mode`
+- `qswitch_requires_lamps_and_shutter`
+- `qswitch_mode_requires_standby`
+- `invalid_qswitch_mode`
+- `serial_failure`
+- `parse_failure`
 
-  ```python
-  CANONICAL_CAPABILITIES = frozenset({"monitors", "heartbeat", "wait_for_lock"})
-  ```
+A legacy controller error that starts with `rejected` maps to `REJECTED/rejected_did_not_take_effect`.
 
-- **Invariant test** (item 2.8 pattern): every capability string emitted by
-  a v2 server MUST be in `CANONICAL_CAPABILITIES`. New capabilities
-  require a two-step PR: (1) extend `CANONICAL_CAPABILITIES`, (2) use it.
-- **NO** `feature_level: int`. Lab features are orthogonal: HF_Locking has
-  `wait_for_lock` (`workers.py:595`), BigSky has `monitors` (PUB-SUB temp/
-  voltage cache), Rastering has `monitors` only. Coupling them via an int
-  forces a server that adds a new feature to claim all earlier ones it
-  doesn't implement.
-- Precedent: ZMQ itself uses string-mechanism advertisements (`NULL`,
-  `CURVE`, `PLAIN`); HTTP uses Accept enum headers.
+### `CHECK_VALUE`
 
-#### Q4 — v1 sunset: HARD SUNSET at v2 release (no dual-path code)
+Readable suffixes are `temperature`, `voltage`, `lamps`, `shutter`, `qswitch`, `lamp_mode`, and `qswitch_mode`.
 
-- **External-HELLO survey ran 2026-05-22**:
-  - Searched `C:\Users\radmo\MIT Dropbox\Shungo Fukaya\Experiments\Main_Experiment\`
-    for `import zmq` / `zmq.` / `tcp://` / `action.*HELLO` patterns.
-  - **Result**: zero matches. Only `.ipynb` analysis notebooks exist in
-    the operator tree (no `.py` scripts). Initial keyword hits were
-    incidental matches inside PNG base64 blobs.
-  - No external code calls HELLO/REQ on ports 3796, 55535, 55540.
-- **v2 server behavior on v1 request**: return
-  `{"status": "ERROR", "error": {"code": "v1_protocol_refused",
-  "message": "Server requires v2 protocol; client must include 'v': 2 in
-  requests"}}`. No fallback path. No dual-path code.
-- **BLACS-side `RemoteCommunication`**: ships v2-only from day 1. The
-  dual-path parser that §7.2 originally described is **not written**.
-- **Migration order**: BLACS + all three GUIs (BigSky, HF, Rastering)
-  ship v2 in one coordinated round. Since they're co-located on this PC
-  under one operator, no asymmetric-version window exists.
-- **Net**: ~50–80 lines of dual-path code that would have lived in
-  `RemoteCommunication.py` are never written. **Section 7.1 (purely
-  additive)** is superseded by this v2-only stance.
+The connection can include an optional `_monitor` suffix. The reply contains the current controller value.
 
-### Resolution sign-off
+An unknown readable suffix returns `ERROR/unknown_monitor_param`. A disconnected laser returns retryable `ERROR/laser_disconnected`.
 
-All four resolutions signed off by user 2026-05-22. The spec is
-implementation-ready. Next concrete step: begin §9 PR rollout.
+## RasteringGUI commands
 
----
+RasteringGUI implements its device commands through `PROGRAM_VALUE`.
 
-## 11. References
+`args.timeout_sec` sets a motor or GUI response limit. Its default is 10 seconds.
 
-- v1 protocol: [`docs/remotecontrol-zmq-protocol.md`](remotecontrol-zmq-protocol.md)
-- External GUIs overview: [`docs/external-guis-architecture.md`](external-guis-architecture.md)
-- BigSky futures plumbing landed in commits `6c72b49`, `dc6c736`, `d37b822`,
-  `eafc229`, `1eb2321` (BigSkyControl sub-repo).
-- Audit memory: `~/.claude/projects/c--Users-radmo-labscript-suite/memory/reference_two-remotecontrol-trees.md`
-- Plan: `~/.claude/plans/look-up-all-recent-purrfect-starfish.md` (T0.5, item 2.2)
+### Coordinate commands
 
----
+| Connection | Value | Behavior |
+|---|---|---|
+| `laser_raster_x_coord` | Number | Move the X motor axis. |
+| `laser_raster_y_coord` | Number | Move the Y motor axis. |
+| `laser_raster_xy` | Two finite numbers | Move both axes as one command. |
 
-## 12. Client-side typed-status contract (BLACS worker)
+`laser_raster_xy` uses target coordinates by default. Set `args.frame` to `motor` for direct motor coordinates.
 
-The base `RemoteControlWorker` is the behavioral contract every device inherits
-(LaserLock has no `blacs_workers.py` — it is pure base). Policy for typed replies:
+The accepted frame values are `pixel` and `motor`. The default `pixel` path passes coordinates through when no calibration exists.
 
-- **Read/poll/snapshot** (`check_remote_values`, `check_all_remote_values`): a
-  non-SUCCESS reply → `_skip_non_success_read` logs a warning and skips that
-  channel. A read NEVER raises (a raising periodic poll bricks the tab with a
-  persistent error banner — the 2026-07-14 Blocker-A signature).
-- **Write** (`program_manual`, buffered `program_value`): `_check_response` raises
-  on any non-SUCCESS — real failures surface / abort the shot.
-- **BigSkyHub override (revised 2026-08-06).** BigSky no longer tolerates
-  non-SUCCESS write replies. On the write paths (`program_manual`,
-  `transition_to_buffered`, `_arm_laser`) an *enabled* laser is strict-by-base:
-  any non-SUCCESS status or error code — `laser_disconnected`,
-  `unknown_connection`, `REJECTED` with any code, `TIMEOUT` — and any transport
-  `None` propagates out of `_check_response`, setting the sticky tab
-  `error_message`, failing the shot and pausing the queue. The former typed-code
-  tolerance (`_SKIP_STATUSES` / `_SKIP_ERROR_CODES` /
-  `should_skip_buffered_response`, born 9a7cc02 for an un-launched second YAG) is
-  deleted; its job is now done explicitly by a per-laser **Disabled** checkbox in
-  the BLACS tab, mirrored live into the worker's `_disabled` prefix set via
-  `update_disabled`. The tick is recorded in tab save data (so every shot h5
-  snapshots it — front-panel provenance stays truthful) but is **deliberately
-  never restored**: each BLACS/tab start is all-lasers-enabled, and the raised
-  comms error itself names the laser and directs the operator to its checkbox —
-  a persisted silent skip would hide an unfired laser from an operator who never
-  ticked the box. A disabled laser is skipped
-  without sending on every write path, skipped by `_auto_arm_if_needed`, and
-  omitted from `check_remote_values` / `check_all_remote_values`. Reads remain
-  non-raising per the base policy. LaserLockDevice (`setpoint_not_initialized`)
-  and RasteringDevice (`position_not_initialized`) read tolerances are unchanged.
-- **Operator recovery after a BigSky raise:** troubleshoot the laser/GUI
-  connection, or tick that laser's **Disabled** checkbox to run without it;
-  then clear the banner (✕) and resume. (The `_final_values` red-fatal trap an
-  earlier revision of this bullet warned about was root-caused and fixed in
-  blacs `d1cf0b5`, hardened in `81316aa`; verified on hardware 2026-08-06.)
-- **Behavior note:** an un-programmed channel (HF `CHECK_VALUE` →
-  `UNKNOWN_CONNECTION`) is now **omitted** from the monitor snapshot, where v1's
-  always-SUCCESS `CHECK_VALUE` recorded a bogus `0.0`. Normally-programmed channels
-  are unchanged; analysis reads per-channel keys, so a missing unset channel is safe.
+Invalid coordinates return `ERROR/invalid_value`. An invalid frame returns `ERROR/invalid_frame`.
 
-When adding a device (`/new-device`), use the base worker; do NOT re-implement
-dispatch or copy BigSky's overrides. Rationale + generalization:
-`memory/feedback_remotecontrol-base-is-the-contract.md`.
-(Post-merge follow-up: add a pointer to this section from `docs/device-internals.md`,
-which lives on `master`.)
+A failed motor move returns retryable `ERROR/motor_move_failed`.
+
+### Raster control commands
+
+| Connection | Value | Success reply fields |
+|---|---|---|
+| `arm_raster` | Mode request | `mode`; a new arm also returns `armed` and `dropped` |
+| `move_to_next` | Ignored | Point metadata, `finished`, or `in_place` as applicable |
+| `shots_per_step` | Integer of 1 or more | `shots_per_step` |
+| `disarm_raster` | Ignored | `disarmed` |
+
+The strings `1`, `true`, `continuous`, and `cont` request continuous mode. Other strings request step mode.
+
+For non-string values, normal Boolean conversion selects the mode.
+
+`arm_raster` can change the mode of an active step raster. It also transfers control to the remote client.
+
+It cannot convert an active continuous raster to step mode. A new remote arm supports step mode only.
+
+The GUI can drop unreachable points during a new arm. The reply reports accepted and dropped point counts.
+
+`move_to_next` advances a remote step raster. A successful step can return these provenance fields:
+
+- `point_index`
+- `path_len`
+- `frame`
+- `target_xy`
+- `calibration_matrix`
+- `calibration_offset`
+
+An exhausted iterator returns `SUCCESS` with `finished: true`.
+
+Under local control, `move_to_next` does not move the raster. It returns the current point or `in_place: true`.
+
+`disarm_raster` releases ownership to the GUI. It preserves the armed path and clears the remote shots-per-step display.
+
+`disarm_raster` is idempotent. Its `disarmed` field is `false` when no raster was active.
+
+| Condition | Status | Error code | Retryable |
+|---|---|---|---|
+| Unknown connection | `UNKNOWN_CONNECTION` | `unknown_connection` | No |
+| No GUI raster configuration exists | `ERROR` | `no_raster_configured` | No |
+| A new remote arm requests continuous mode | `ERROR` | `continuous_arm_requires_gui` | No |
+| GUI arm call fails | `ERROR` | `arm_failed` or GUI-supplied code | No |
+| GUI arm call exceeds its limit | `ERROR` | `arm_timeout` | No |
+| Remote control has no active raster | `ERROR` | `raster_not_active` | No |
+| Remote command would stop or convert continuous mode | `ERROR` | `raster_in_continuous_mode` | No |
+| Raster step fails | `ERROR` | `raster_step_failed` | No |
+| `shots_per_step` is invalid | `ERROR` | `invalid_value` | No |
+
+### `CHECK_VALUE`
+
+The accepted connections are:
+
+- `laser_raster_x_coord`
+- `laser_raster_y_coord`
+- `laser_raster_x_coord_monitor`
+- `laser_raster_y_coord_monitor`
+
+The reply uses the cached target-coordinate frame. It never substitutes a motor-only cache value.
+
+Before the first target-position read, the server returns retryable `UNKNOWN_CONNECTION/position_not_initialized`.
+
+## PUB-SUB monitoring
+
+PUB-SUB messages are UTF-8 text. A value message has this form:
+
+```text
+topic value
+```
+
+A heartbeat contains only this text:
+
+```text
+heartbeat
+```
+
+There is no JSON PUB payload in the current implementation.
+
+### Server topics
+
+| Server | Topic | Value | Approximate rate |
+|---|---|---|---|
+| LaserLockGUI | `heartbeat` | None | 10 Hz |
+| LaserLockGUI | `1` through `8` | Wavemeter display frequency, or `0.0` | 10 Hz |
+| BigSkyLasers | `heartbeat` | None | 1 Hz |
+| BigSkyLasers | `<laser>_<parameter>_monitor` | Numeric controller value | 4 Hz |
+| RasteringGUI | `heartbeat` | None | 1 Hz |
+| RasteringGUI | `laser_raster_x_coord_monitor` | Cached target X | 4 Hz |
+| RasteringGUI | `laser_raster_y_coord_monitor` | Cached target Y | 4 Hz |
+| RasteringGUI | `raster_mode` | `idle`, `continuous`, `manual`, or `step` | 1 Hz |
+| RasteringGUI | `raster_owner` | `local`, `remote`, or `none` | 1 Hz |
+| RasteringGUI | `calibration_status` | `calibrated` or `uncalibrated` | 1 Hz |
+| RasteringGUI | `raster_progress` | Step and total text | 1 Hz |
+
+BigSky publishes `temperature`, `voltage`, `lamps`, `shutter`, and `qswitch` monitor parameters.
+
+BigSky omits monitor messages for a disconnected laser.
+
+RasteringGUI omits position messages until a target-coordinate cache exists.
+
+### BLACS monitor behavior
+
+The BLACS tab marks PUB-SUB connected after the first exact `heartbeat` message.
+
+It marks PUB-SUB disconnected after five seconds without a heartbeat. It waits two seconds before a new subscription attempt.
+
+The data subscriber starts after the first heartbeat. It splits each value message at the first space.
+
+The base monitor path accepts numeric values only. It forwards them to the worker cache for shot snapshots.
+
+Raster status topics use a separate tab callback. This path accepts their text values.
+
+## Compatibility and client policy
+
+Protocol v2 has no wire fallback to protocol v1.
+
+A v2 server rejects a missing or different version with `v1_protocol_refused`.
+
+The BLACS client rejects a reply whose `v` field is missing or is not `2`. It reports `protocol_version_mismatch` locally.
+
+The client reports invalid reply JSON as local `malformed_reply`.
+
+A transport timeout or transport error returns no reply. The client resets its REQ socket after that failure.
+
+The high-level client preserves the existing worker interface for non-success replies. It returns `status`, `value: null`, `error`, and `message`.
+
+For this local compatibility reply, `message` equals `error.message`. Current worker policy uses typed status and error fields.
+
+The standard client timeout is five seconds. A `PROGRAM_VALUE` call with `wait_for_lock: true` uses 120 seconds.
+
+Worker write paths raise on a missing reply or any non-`SUCCESS` status.
+
+`check_remote_values` and `check_all_remote_values` log and skip failed reads. They also skip `SUCCESS` replies without a value.
+
+`check_status` raises on a non-`SUCCESS` reply. It skips a `SUCCESS` reply without a value.
+
+## Verification
+
+Run the parent protocol and worker tests in the labscript environment:
+
+```powershell
+python -m pytest userlib/external_gui_lib/tests/test_zmq_v2.py `
+  userlib/user_devices/RemoteControl/tests/test_worker_typed_status.py `
+  userlib/user_devices/RemoteControl/tests/test_reply_version_gate.py -q
+```
+
+Run each server suite in its GUI environment:
+
+```powershell
+python -m pytest GUIs/BigSkyControl/tests/test_zmq_v2_protocol.py `
+  GUIs/BigSkyControl/tests/test_zmq_server.py -q
+
+python -m pytest GUIs/HF_Locking/tests/test_zmq_v2_protocol.py -q
+
+python -m pytest GUIs/rastering/tests/test_zmq_v2_protocol.py -q
+```
+
+These tests use in-memory transports for REQ-REP behavior. They do not require bound ZMQ ports.

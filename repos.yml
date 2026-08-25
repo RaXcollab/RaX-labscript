@@ -1,4 +1,4 @@
-﻿# RaX labscript suite - backend repository manifest
+# RaX labscript suite - backend repository manifest
 #
 # The labscript suite is this parent repo plus the three backend forks below.
 # Nothing else belongs here: the external GUI applications under GUIs/ are
@@ -13,23 +13,23 @@
 # Commit the result together with the parent change that depends on it.
 
 version: 1
-updated: 2026-08-19
+updated: 2026-08-21
 
 backends:
   - name: blacs
     path: blacs
     url: https://github.com/RaXcollab/blacs.git
     branch: master
-    pinned: 81316aa
+    pinned: 81316aabfc47d5f9a1d02bb86e390000b07d0ddf
 
   - name: labscript-devices
     path: labscript-devices
     url: https://github.com/RaXcollab/labscript-devices.git
     branch: master
-    pinned: b32c97e
+    pinned: b32c97ee0b6cb4526f809a45da209d7ff57e2420
 
   - name: labscript-utils
     path: labscript-utils
     url: https://github.com/RaXcollab/labscript-utils.git
     branch: master
-    pinned: 25cee8c
+    pinned: 25cee8cd44a883c34e3b32ae3e01e8bc797d07e1

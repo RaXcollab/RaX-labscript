@@ -1,7 +1,7 @@
 # RaX labscript suite
 
 **Status:** Current project context
-**Last reviewed:** 2026-08-21
+**Last reviewed:** 2026-08-24
 
 ## Repository structure
 

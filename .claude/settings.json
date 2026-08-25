@@ -1,159 +1,21 @@
 {
-  "permissions": {
-    "allow": [
-      "Read(//c/Users/radmo/labscript-suite/GUIs/rastering/**)",
-      "Bash(python -c:*)",
-      "Bash(pip show:*)",
-      "Read(//c/Users/radmo/miniconda/envs/labscript/Lib/site-packages/labscript/**)",
-      "Read(//c/Users/radmo/miniconda/envs/labscript/Lib/site-packages/labscript_utils/**)",
-      "Read(//c/Users/radmo/miniconda/envs/labscript/Lib/site-packages/blacs/**)",
-      "Bash(grep:*)",
-      "Bash(source:*)",
-      "Bash(conda activate:*)",
-      "Read(//c/Users/radmo/miniconda/**)",
-      "Bash(git add:*)",
-      "Bash(git diff:*)",
-      "Bash(git log:*)",
-      "Bash(git status:*)",
-      "Bash(git show:*)",
-      "WebFetch(domain:claudefa.st)",
-      "WebFetch(domain:www.maxitect.blog)",
-      "WebFetch(domain:docs.labscriptsuite.org)",
-      "WebFetch(domain:github.com)",
-      "WebFetch(domain:groups.google.com)",
-      "Bash(ls -1 /c/Users/radmo/miniconda/envs/labscript/Lib/site-packages/labscript/*.py)",
-      "WebFetch(domain:www.humanlayer.dev)",
-      "WebFetch(domain:www.builder.io)",
-      "Bash(find ~/miniconda/envs/labscript/Lib/site-packages/labscript -name \"*.py\" -exec grep -l \"class Shutter\" {} ;)",
-      "Bash(wc -c c:/Users/radmo/labscript-suite/CLAUDE.md c:/Users/radmo/.claude/projects/c--Users-radmo-labscript-suite/memory/MEMORY.md c:/Users/radmo/.claude/projects/c--Users-radmo-labscript-suite/memory/device-internals.md c:/Users/radmo/.claude/projects/c--Users-radmo-labscript-suite/memory/analysis-session-2026-03-06.md c:/Users/radmo/labscript-suite/.claude/rules/*.md c:/Users/radmo/labscript-suite/.claude/agents/*.md c:/Users/radmo/labscript-suite/.claude/skills/*/SKILL.md)",
-      "Bash(ls -d /c/Users/radmo/labscript-suite/GUIs/*/)",
-      "Bash(find /c/Users/radmo/labscript-suite/GUIs/BigSkyControl -maxdepth 2 -type f -name *.py)",
-      "Bash(find /c/Users/radmo/labscript-suite/GUIs -maxdepth 2 -type f -name *.py)",
-      "Bash(find c:/Users/radmo/.claude/projects/c--Users-radmo-labscript-suite/memory -type f -name *.md)",
-      "WebFetch(domain:felipeelias.github.io)",
-      "WebFetch(domain:giuseppegurgone.com)",
-      "WebFetch(domain:claudelog.com)",
-      "WebFetch(domain:www.arun.blog)",
-      "WebFetch(domain:www.hsablonniere.com)",
-      "WebFetch(domain:alirezarezvani.medium.com)",
-      "WebFetch(domain:medium.com)",
-      "WebFetch(domain:playbooks.com)",
-      "Bash(gh search:*)",
-      "Read(//c/Program Files \\(x86\\)/Spectra-Physics/Spectra-Physics//**)",
-      "Bash(for f:*)",
-      "Bash(do echo:*)",
-      "Read(//c/Users/radmo/labscript-suite/**)",
-      "Bash(done)",
-      "Bash(systeminfo)",
-      "Bash(find /c/Users/radmo/.claude -type f -name *.json)",
-      "Bash(echo \"Current shell: $SHELL\")",
-      "Bash(find '/c/Users/radmo/MIT Dropbox/Shungo Fukaya/Experiments/Main_Experiment/' -maxdepth 2 -type f -name *.h5)",
-      "Bash(find /c/Users/radmo/labscript-suite/.claude/skills -name \"SKILL.md\" -exec head -20 {} +)",
-      "Bash(where python:*)",
-      "Bash(find /c/Users/radmo/labscript-suite/userlib/user_devices -maxdepth 2 -name *.py -type f)",
-      "Bash(git --version)",
-      "Bash(git -C /c/Users/radmo/labscript-suite log --oneline -20)",
-      "Bash(find /c/Users/radmo -name startup* -o -name autorun* -o -name autostart*)",
-      "Bash(wc -l /c/Users/radmo/.claude/projects/C--Users-radmo-labscript-suite/memory/*.md)",
-      "Bash(git config:*)",
-      "Bash(ls -lh /c/Users/radmo/labscript-suite/.claude/skills/*/)",
-      "Bash(npm --version)",
-      "Read(//c/Program Files/National Instruments//**)",
-      "Read(//c/Program Files \\(x86\\)/National Instruments//**)",
-      "Read(//c/Program Files \\(x86\\)/IVI Foundation//**)",
-      "Bash(find '/c/Users/radmo/labscript-suite/userlib/analysislib/Main_Experiment/Jupyter notebooks/' -name *.ipynb)",
-      "Read(//c/Program Files/IVI Foundation//**)",
-      "Bash(conda --version)",
-      "Bash(bash -c 'source ~/miniconda/etc/profile.d/conda.sh && conda activate labscript && pip list')",
-      "Bash(bash -c 'source ~/miniconda/etc/profile.d/conda.sh && conda activate labscript && python --version')",
-      "Bash(pwsh --version)",
-      "Bash(ls -la \"/c/Program Files \\(x86\\)/IVI Foundation/VISA/\")",
-      "Bash(bash -c 'source ~/miniconda/etc/profile.d/conda.sh && conda activate analysis && pip list | head -30')",
-      "Bash(bash -c 'source ~/miniconda/etc/profile.d/conda.sh && conda activate rastering && pip list | head -30')",
-      "Bash(bash -c 'source ~/miniconda/etc/profile.d/conda.sh && conda activate hf_locking && pip list | head -30')",
-      "Bash(ls -la '/c/Program Files \\(x86\\)/National Instruments/NI-DAQmx/DAQmx ANSI C Dev/')",
-      "Bash(bash -c 'source ~/miniconda/etc/profile.d/conda.sh && conda activate labscript && python -c \"\"import serial; import serial.tools.list_ports; ports = list\\(serial.tools.list_ports.comports\\(\\)\\); print\\(f\\\\\"\"Serial ports found: {len\\(ports\\)}\\\\\"\"\\); [print\\(f\\\\\"\"  {p.device}: {p.description}\\\\\"\"\\) for p in ports]\"\" 2>&1')",
-      "Bash(conda list:*)",
-      "Bash(bash -c 'source ~/miniconda/etc/profile.d/conda.sh && conda activate labscript && python -c \"\"import PyDAQmx; print\\(\\\\\"\"PyDAQmx version:\\\\\"\", PyDAQmx.__version__\\)\"\" 2>&1')",
-      "Read(//c/Program Files/National Instruments/**)",
-      "Bash(find . -maxdepth 2 -type d -name *DAQ*)",
-      "Bash(bash -c 'source ~/miniconda/etc/profile.d/conda.sh && conda activate labscript && python -c \"\"import PyVISA; print\\(\\\\\"\"PyVISA version:\\\\\"\", PyVISA.__version__\\); rm = PyVISA.ResourceManager\\(\\); print\\(\\\\\"\"VISA resources:\\\\\"\", rm.list_resources\\(\\)\\)\"\" 2>&1')",
-      "Bash(bash -c 'source ~/miniconda/etc/profile.d/conda.sh && conda activate labscript && python -c \"\"import pyvisa; print\\(\\\\\"\"PyVISA version:\\\\\"\", pyvisa.__version__\\)\"\"')",
-      "Bash(bash -c 'source ~/miniconda/etc/profile.d/conda.sh && conda activate labscript && python -c \"\"import pyvisa; rm = pyvisa.ResourceManager\\(\\); print\\(\\\\\"\"VISA resources:\\\\\"\", rm.list_resources\\(\\)\\)\"\"')",
-      "mcp__plugin_context-mode_context-mode__ctx_search",
-      "mcp__plugin_context-mode_context-mode__ctx_execute",
-      "mcp__plugin_context-mode_context-mode__ctx_execute_file",
-      "mcp__plugin_context-mode_context-mode__ctx_batch_execute",
-      "mcp__plugin_context-mode_context-mode__ctx_index",
-      "mcp__plugin_context-mode_context-mode__ctx_fetch_and_index",
-      "mcp__plugin_context-mode_context-mode__ctx_stats",
-      "mcp__plugin_context-mode_context-mode__ctx_doctor",
-      "mcp__plugin_context-mode_context-mode__ctx_upgrade",
-      "Bash(npm view *)",
-      "Bash(reg query *)",
-      "Bash(git -C * log *)",
-      "Bash(git -C * show *)",
-      "Bash(git -C * status *)",
-      "Bash(git -C * diff *)",
-      "Bash(git -C * rev-parse *)",
-      "mcp__plugin_claude-mem_mcp-search__search",
-      "Bash(git -C * ls-remote *)",
-      "Bash(git range-diff *)",
-      "mcp__plugin_claude-mem_mcp-search__smart_outline",
-      "mcp__plugin_claude-mem_mcp-search__smart_search",
-      "mcp__plugin_context-mode_context-mode__ctx_insight",
-      "mcp__plugin_context-mode_context-mode__ctx_purge",
-      "mcp__plugin_claude-mem_mcp-search__timeline",
-      "mcp__plugin_claude-mem_mcp-search__smart_unfold",
-      "mcp__plugin_claude-mem_mcp-search__get_observations",
-      "mcp__plugin_claude-mem_mcp-search__observation_search",
-      "mcp__plugin_claude-mem_mcp-search__observation_context",
-      "mcp__plugin_claude-mem_mcp-search__observation_add",
-      "mcp__plugin_claude-mem_mcp-search__observation_record_event",
-      "mcp__plugin_claude-mem_mcp-search__observation_generation_status",
-      "mcp__plugin_claude-mem_mcp-search__query_corpus",
-      "mcp__plugin_claude-mem_mcp-search__list_corpora",
-      "mcp__plugin_claude-mem_mcp-search__build_corpus",
-      "mcp__plugin_claude-mem_mcp-search__rebuild_corpus",
-      "mcp__plugin_claude-mem_mcp-search__prime_corpus",
-      "mcp__plugin_claude-mem_mcp-search__reprime_corpus",
-      "mcp__plugin_claude-mem_mcp-search__session_start_context",
-      "Read",
-      "WebSearch",
-      "mcp__plugin_context7_context7__query-docs",
-      "mcp__plugin_context7_context7__resolve-library-id"
-    ],
-    "additionalDirectories": [
-      "c:\\Users\\radmo\\labscript-suite\\.claude\\skills",
-      "C:\\Users\\radmo\\MIT Dropbox\\Shungo Fukaya\\Experiments\\Main_Experiment",
-      "C:\\Users\\radmo\\AppData\\Local\\Packages\\Microsoft.WindowsTerminal_8wekyb3d8bbwe\\LocalState",
-      "c:\\Users\\radmo\\labscript-suite\\.claude"
-    ]
-  },
   "hooks": {
-    "SubagentStart": [
+    "PreToolUse": [
       {
-        "matcher": "claude-code-guide|general-purpose|Explore|Plan",
+        "matcher": "Bash",
         "hooks": [
           {
             "type": "command",
             "shell": "powershell",
-            "command": "& \"$env:CLAUDE_PROJECT_DIR\\.claude\\hooks\\subagent-source-discipline.ps1\"",
+            "command": "& \"$env:CLAUDE_PROJECT_DIR\\.claude\\hooks\\guard-destructive-command.ps1\"",
             "timeout": 15
-          }
-        ]
-      }
-    ],
-    "SessionStart": [
-      {
-        "matcher": "startup|resume|clear",
-        "hooks": [
+          },
           {
             "type": "command",
             "shell": "powershell",
-            "command": "& \"$env:CLAUDE_PROJECT_DIR\\.claude\\hooks\\session-start-context.ps1\"",
-            "timeout": 15,
-            "statusMessage": "Injecting session-start checklist"
+            "if": "Bash(git *)",
+            "command": "& \"$env:CLAUDE_PROJECT_DIR\\.claude\\hooks\\warn-git-chain.ps1\"",
+            "timeout": 15
           }
         ]
       }
@@ -165,58 +27,7 @@
           {
             "type": "command",
             "shell": "powershell",
-            "command": "& \"$env:CLAUDE_PROJECT_DIR\\.claude\\hooks\\mark-device-edit.ps1\"",
-            "timeout": 15,
-            "async": true
-          },
-          {
-            "type": "command",
-            "shell": "powershell",
             "command": "& \"$env:CLAUDE_PROJECT_DIR\\.claude\\hooks\\check-py-syntax.ps1\"",
-            "timeout": 15
-          }
-        ]
-      }
-    ],
-    "SubagentStop": [
-      {
-        "matcher": "blacs-expert",
-        "hooks": [
-          {
-            "type": "command",
-            "shell": "powershell",
-            "command": "& \"$env:CLAUDE_PROJECT_DIR\\.claude\\hooks\\mark-audit-ran.ps1\"",
-            "timeout": 15,
-            "async": true
-          }
-        ]
-      }
-    ],
-    "Stop": [
-      {
-        "hooks": [
-          {
-            "type": "command",
-            "shell": "powershell",
-            "command": "& \"$env:CLAUDE_PROJECT_DIR\\.claude\\hooks\\check-audit-gate.ps1\"",
-            "timeout": 15
-          }
-        ]
-      }
-    ],
-    "PreToolUse": [
-      {
-        "matcher": "Bash",
-        "hooks": [
-          {
-            "type": "command",
-            "command": "bash -c 'INPUT=$(cat); CMD=$(echo \"$INPUT\" | python -c \"import sys,json; print(json.load(sys.stdin).get(\\\"tool_input\\\",{}).get(\\\"command\\\",\\\"\\\"))\"); if echo \"$CMD\" | grep -qE \"rm\\s+-(rf|r|fr)\\s\"; then echo \"BLOCKED: rm -r/rm -rf requires explicit user approval. Ask first.\" >&2; exit 2; fi; if echo \"$CMD\" | grep -qE \"^mv\\s.*/$\"; then echo \"BLOCKED: mv on directories requires explicit user approval. Ask first.\" >&2; exit 2; fi; exit 0'"
-          },
-          {
-            "type": "command",
-            "shell": "powershell",
-            "if": "Bash(git *)",
-            "command": "& \"$env:CLAUDE_PROJECT_DIR\\.claude\\hooks\\warn-git-chain.ps1\"",
             "timeout": 15
           }
         ]

@@ -11,7 +11,7 @@ The analysis utility library in `userlib/analysislib/Main_Experiment/` provides 
 **Memory estimation rule:** Before bulk-loading trace arrays, estimate memory: `nshots × nsamples × 8 bytes`. Typical sizes per 744-shot scan: NI_SCOPE (200k samples) ≈ 1.2 GB, Absorption (40k samples) ≈ 0.24 GB. Flag anything >2 GB with a warning. Print the estimate so the user can decide whether to proceed or load a subset.
 
 **Data path conventions:**
-- Shot storage root: configured in `labconfig/RaX-Control.ini` as `experiment_shot_storage`
+- Shot storage root: configure `experiment_shot_storage` in `labconfig/<computer-name>.ini`.
 - Path structure: `{SequenceName}/YYYY/MM/DD/NNNN/` — top folder matches the sequence file name (e.g., `Closed_cell/` for `Closed_cell.py`)
 - Shot files: `YYYY-MM-DD_NNNN_{SequenceName}_SSS.h5` (4-digit sequence, 3-digit shot)
 
